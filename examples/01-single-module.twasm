@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+//
+// Example 01: Single-Module Typed Regions
+//
+// Demonstrates Levels 1-6: instruction validity, region-binding, type-compatible
+// access, null safety, bounds-proof, and result-type safety.
+//
+// Scenario: A simple game with players and enemies in contiguous memory regions.
+
+// --- Region Declarations (the "schema") ---
+
+// Vec2: a 2D position vector. 8 bytes total (4 + 4), naturally aligned.
+region Vec2 {
+    x: f32;
+    y: f32;
+}
+
+// Player region: 100 player slots in contiguous memory.
+// Each slot is 48 bytes: hp(4) + pad(4) + speed(8) + pos(8) + name(24).
+region Players[100] {
+    hp:    i32;
+    speed: f64;
+    pos:   @Vec2;          // embedded region (not a pointer — inline struct)
+    name:  u8[24];         // fixed-size UTF-8 name buffer
+
+    // Level 5: field-level constraint — hp is always in [0, 9999]
+    where 0 <= hp <= 9999;
+
+    align 8;
+}
+
+// Enemy region: 256 enemy slots.
+region Enemies[256] {
+    hp:        i32;
+    damage:    i32;
+    target:    opt<@Players>;  // Level 4: nullable — enemy may have no target
+    pos:       @Vec2;
+    is_active: bool;
+
+    where 0 <= hp <= 50000;
+    where 0 <= damage <= 1000;
+}
+
+// --- Memory Declaration ---
+
+memory game_memory {
+    initial: 64;       // 64 pages = 4MB
+    maximum: 256;      // 256 pages = 16MB max
+
+    // Explicit placement — regions are at known offsets
+    place Players at 0;          // Players starts at byte 0
+    place Enemies at 4800;       // Enemies starts after Players (100 * 48)
+}
+
+// --- Functions (typed access) ---
+
+// Level 2: region-binding — $players resolves to the Players region
+// Level 3: type-compatible — .hp is i32, so the result is i32
+// Level 6: result-type — return type is i32, matching the field type
+// Level 8: effect — read-only access to Players
+fn get_player_hp(players: &region<Players>, idx: i32) -> i32
+    effects { ReadRegion(Players) }
+{
+    // Level 5: bounds-proof — if idx comes from a validated source,
+    // the prover eliminates the bounds check entirely
+    region.get $players[idx] .hp -> hp;
+    return hp;
+}
+
+// Level 3: type-compatible — .hp is i32, amount is i32, subtraction is i32
+// Level 8: effect — writes to Players
+fn damage_player(players: &mut region<Players>, idx: i32, amount: i32)
+    effects { ReadRegion(Players), WriteRegion(Players) }
+{
+    region.get $players[idx] .hp -> current_hp;
+    let new_hp: i32 = current_hp - amount;
+
+    // Level 5: bounds constraint — hp stays in [0, 9999]
+    if new_hp < 0 {
+        region.set $players[idx] .hp, 0;
+    } else {
+        region.set $players[idx] .hp, new_hp;
+    }
+}
+
+// Level 4: null safety — target is opt<@Players>, must check before use
+fn get_enemy_target_hp(
+    enemies: &region<Enemies>,
+    players: &region<Players>,
+    enemy_idx: i32
+) -> i32
+    effects { ReadRegion(Enemies), ReadRegion(Players) }
+{
+    region.get $enemies[enemy_idx] .target -> maybe_target;
+
+    if is_null(maybe_target) {
+        return -1;  // no target
+    }
+
+    // After null check, maybe_target is proven non-null
+    region.get maybe_target .hp -> target_hp;
+    return target_hp;
+}
+
+// Level 2+6: region.scan iterates with full type information
+fn count_active_enemies(enemies: &region<Enemies>) -> i32
+    effects { ReadRegion(Enemies) }
+{
+    let mut count: i32 = 0;
+
+    region.scan $enemies where is_active == true -> |enemy| {
+        count = count + 1;
+    }
+
+    return count;
+}
+
+// Demonstrate nested field access through embedded regions
+fn move_player(
+    players: &mut region<Players>,
+    idx: i32,
+    dx: f32,
+    dy: f32
+)
+    effects { ReadRegion(Players), WriteRegion(Players) }
+{
+    // Nested access: .pos.x reaches into the embedded Vec2
+    region.get $players[idx] .pos.x -> old_x;
+    region.get $players[idx] .pos.y -> old_y;
+
+    region.set $players[idx] .pos.x, old_x + dx;
+    region.set $players[idx] .pos.y, old_y + dy;
+}

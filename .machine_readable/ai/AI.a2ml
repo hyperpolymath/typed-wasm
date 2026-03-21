@@ -1,0 +1,37 @@
+
+# AI Assistant Instructions
+
+## Repository Focus
+- `rsr-template-repo` is treated as a Rhodium Standard Repository; obey the Rhodium policies and keep `.machine_readable/` authoritative.
+- All machine-readable content lives under `.machine_readable/` — state files (a2ml), bot directives, and contractiles.
+- Prefer to keep generated files out of source control, and regenerate them with the documented commands before committing.
+
+## Workflow
+1. Inspect `.machine_readable/STATE.a2ml` for blockers and next actions.
+2. Respect any constraints listed inside `.machine_readable/AGENTIC.a2ml` when tooling changes are requested.
+3. After finishing edits, update STATE with your outcomes and commit with a concise, imperative message.
+
+## Delivery Promises
+- Mention in summaries whether STATE, `.machine_readable/contractiles/`, or `.machine_readable/bot_directives/` changed.
+- Keep this file in sync with the repository's status; update it if the governance changes.
+
+[foundational-integrations]
+# These tools form the architectural floor for all hyperpolymath repos.
+# Integrate them incrementally as the project matures.
+
+proven = "Formally verified safety library — replace raw string/JSON/URL/crypto ops"
+panic-attacker = "Static analysis — run `just assail` before every commit"
+feedback-o-tron = "Autonomous bug filing — auto-report upstream dependency failures"
+verisimdb = "Cross-repo analytics — emit scan results and build metrics"
+vexometer = "Irritation surface analysis — measure friction in CLI/UI tools"
+hypatia = "Neurosymbolic CI/CD — safety-triangle routing for automated fixes"
+boj-server = "MCP gateway — all external service integrations route through BoJ"
+
+[floor-raise-checklist]
+step-1 = "Ensure 0-AI-MANIFEST.a2ml exists at repo root"
+step-2 = "Ensure Mustfile.a2ml + Trustfile.a2ml + Dustfile.a2ml in .machine_readable/contractiles/"
+step-3 = "Add `assail` recipe to Justfile and wire into pre-commit hook"
+step-4 = "Add proven integration reference in .machine_readable/integrations/"
+step-5 = "Add verisimdb feed configuration"
+step-6 = "Add feedback-o-tron integration for upstream reporting"
+step-7 = "Add vexometer hooks for friction measurement (CLI/UI repos)"

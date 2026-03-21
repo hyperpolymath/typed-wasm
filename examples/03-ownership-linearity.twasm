@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+//
+// Example 03: Ownership, Lifetimes, and Linearity (Levels 7-10)
+//
+// Demonstrates the research-tier levels: aliasing safety, effect tracking,
+// lifetime safety, and linear resource usage.
+//
+// Scenario: A particle system where particles are dynamically allocated,
+// updated, and freed. The linear type system guarantees no leaks and no
+// double-frees — at the WASM memory level, not the source language level.
+
+// --- Region Declarations ---
+
+region Particle {
+    pos_x:     f32;
+    pos_y:     f32;
+    vel_x:     f32;
+    vel_y:     f32;
+    lifetime:  f32;       // seconds remaining
+    colour:    u32;       // RGBA packed
+    is_alive:  bool;
+
+    where lifetime >= 0.0;
+
+    align 4;
+}
+
+// Free list for particle recycling
+region FreeSlot {
+    next: opt<ptr<FreeSlot>>;  // linked list of free slots
+}
+
+// --- Level 10: Linear Allocation and Deallocation ---
+
+// Allocates a particle. Returns an OWNING handle (linear — must free exactly once).
+fn spawn_particle(
+    x: f32, y: f32,
+    vx: f32, vy: f32,
+    life: f32,
+    colour: u32
+) -> own region<Particle>
+    effects { Alloc }
+{
+    region.alloc Particle {
+        pos_x = x,
+        pos_y = y,
+        vel_x = vx,
+        vel_y = vy,
+        lifetime = life,
+        colour = colour,
+        is_alive = true
+    } -> particle;
+
+    // particle is a linear (owning) handle — it MUST be returned, stored,
+    // or freed. It cannot be silently dropped.
+    return particle;
+}
+
+// Frees a particle. Consumes the owning handle (linear — called exactly once).
+fn despawn_particle(particle: own region<Particle>)
+    effects { Free }
+{
+    region.free $particle;
+    // After this line, $particle is consumed. Any use is a Level 10 error.
+}
+
+// --- Level 7: Aliasing Safety ---
+
+// Takes a MUTABLE reference — exclusive access guaranteed.
+// No other code can hold a &mut to the same particle simultaneously.
+fn update_particle(p: &mut region<Particle>, dt: f32)
+    effects { ReadRegion(Particle), WriteRegion(Particle) }
+{
+    region.get $p .lifetime -> remaining;
+
+    if remaining <= 0.0 {
+        region.set $p .is_alive, false;
+        return;
+    }
+
+    // Update position
+    region.get $p .vel_x -> vx;
+    region.get $p .vel_y -> vy;
+    region.get $p .pos_x -> px;
+    region.get $p .pos_y -> py;
+
+    region.set $p .pos_x, px + vx * dt;
+    region.set $p .pos_y, py + vy * dt;
+    region.set $p .lifetime, remaining - dt;
+
+    // Gravity
+    region.set $p .vel_y, vy - 9.81 * dt;
+}
+
+// Takes an IMMUTABLE reference — can coexist with other & references.
+fn read_particle_pos(p: &region<Particle>) -> f32
+    effects { ReadRegion(Particle) }
+{
+    region.get $p .pos_x -> x;
+    return x;
+}
+
+// --- Level 9: Lifetime Safety ---
+
+// Demonstrates lifetime scoping: the borrowed reference cannot outlive
+// the owning handle.
+fn particle_lifecycle()
+    effects { Alloc, Free, Read, Write }
+{
+    // Allocate — creates owning handle with lifetime 'alloc
+    let p: own region<Particle> = spawn_particle(0.0, 10.0, 1.0, 0.0, 5.0, 0xFF0000FF);
+
+    // Borrow — creates &mut with lifetime <= 'alloc
+    // The borrow cannot outlive the allocation.
+    update_particle(&mut p, 0.016);
+    update_particle(&mut p, 0.016);
+
+    // Read borrow — can coexist with other reads but not with &mut
+    let x: f32 = read_particle_pos(&p);
+
+    // Free — consumes the owning handle
+    despawn_particle(p);
+
+    // ERROR at Level 9 (if attempted):
+    // let x2: f32 = read_particle_pos(&p);
+    // ^ $p has been freed — use-after-free detected at compile time
+
+    // ERROR at Level 10 (if attempted):
+    // despawn_particle(p);
+    // ^ $p already consumed — double-free detected at compile time
+}
+
+// --- Level 8: Effect Purity ---
+
+// This function is pure with respect to Particle — it only reads.
+// The type system guarantees it cannot modify any particle.
+fn find_nearest_alive(
+    particles: &region<Particle>,
+    count: i32,
+    target_x: f32,
+    target_y: f32
+) -> i32
+    effects { ReadRegion(Particle) }
+{
+    let mut best_idx: i32 = -1;
+    let mut best_dist: f32 = 999999.0;
+
+    let mut i: i32 = 0;
+    while i < count {
+        region.get $particles[i] .is_alive -> alive;
+        if alive {
+            region.get $particles[i] .pos_x -> px;
+            region.get $particles[i] .pos_y -> py;
+            let dx: f32 = px - target_x;
+            let dy: f32 = py - target_y;
+            let dist: f32 = dx * dx + dy * dy;
+            if dist < best_dist {
+                best_dist = dist;
+                best_idx = i;
+            }
+        }
+        i = i + 1;
+    }
+
+    return best_idx;
+}
+
+// --- Proof-Carrying Access (Levels 5+9+10 composed) ---
+
+// A function that provides a formal proof that its memory operations are safe.
+fn safe_batch_update(
+    particles: &mut region<Particle>,
+    count: i32,
+    dt: f32
+)
+    effects { ReadRegion(Particle), WriteRegion(Particle) }
+{
+    // Proof: all accesses in the loop are within bounds
+    proof bounds_safe {
+        given: 0 <= count <= 1024;
+        given: sizeof(Particle) == 28;
+        show:  forall i. 0 <= i < count => offset(particles, i) < 1024 * 28;
+        by:    bounds_check;
+    }
+
+    // Proof: no aliasing within the loop — each iteration touches distinct memory
+    proof no_alias {
+        given: forall i j. i != j => offset(particles, i) != offset(particles, j);
+        show:  loop iterations are independent;
+        by:    alias_freedom;
+    }
+
+    let mut i: i32 = 0;
+    while i < count {
+        region.get $particles[i] .is_alive -> alive;
+        if alive {
+            region.get $particles[i] .vel_x -> vx;
+            region.get $particles[i] .vel_y -> vy;
+            region.get $particles[i] .pos_x -> px;
+            region.get $particles[i] .pos_y -> py;
+
+            region.set $particles[i] .pos_x, px + vx * dt;
+            region.set $particles[i] .pos_y, py + vy * dt;
+            region.set $particles[i] .vel_y, vy - 9.81 * dt;
+
+            region.get $particles[i] .lifetime -> life;
+            if life - dt <= 0.0 {
+                region.set $particles[i] .is_alive, false;
+            } else {
+                region.set $particles[i] .lifetime, life - dt;
+            }
+        }
+        i = i + 1;
+    }
+}

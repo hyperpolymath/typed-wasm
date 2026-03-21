@@ -1,0 +1,191 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+//
+// Example 04: Entity Component System (ECS) with Cross-Region Invariants
+//
+// Demonstrates how typed-wasm's region system naturally models ECS patterns
+// that are common in game engines. Each component is a separate region
+// (analogous to a separate database table), and entities are linked by
+// index (analogous to foreign keys).
+//
+// This is where the database-memory analogy is most productive: ECS _is_
+// a columnar database in memory, and typed-wasm treats it as one.
+
+// --- Component Regions (the "tables") ---
+
+// Transform component — position and rotation
+region Transform[4096] {
+    x: f32;
+    y: f32;
+    z: f32;
+    rot_w: f32;    // quaternion
+    rot_x: f32;
+    rot_y: f32;
+    rot_z: f32;
+    _pad: u8[4];   // pad to 32 bytes
+
+    align 16;
+}
+
+// Health component — not all entities have health
+region Health[2048] {
+    entity_id: i32;     // which entity this belongs to (foreign key!)
+    current:   i32;
+    maximum:   i32;
+    regen:     f32;     // HP per second
+
+    where 0 <= current <= maximum;
+    where maximum > 0;
+    where regen >= 0.0;
+}
+
+// Inventory component — entities with storage
+region Inventory[512] {
+    entity_id:  i32;
+    slot_count: i32;
+    slots:      i32[16];     // item IDs (0 = empty)
+    weight:     f32;
+
+    where 1 <= slot_count <= 16;
+    where weight >= 0.0;
+}
+
+// --- Cross-Region Invariant (the "foreign key constraint") ---
+
+// Every Health.entity_id must be a valid index into Transform.
+// This is checked at compile time by the Idris2 prover — typed-wasm
+// ensures that any code writing to Health.entity_id produces a value
+// in [0, 4096).
+invariant health_entity_fk {
+    across: Health, Transform;
+    holds:  forall h in Health. 0 <= h.entity_id < 4096;
+    proof:  bounds_check;
+}
+
+// Every Inventory.entity_id must also be valid.
+invariant inventory_entity_fk {
+    across: Inventory, Transform;
+    holds:  forall inv in Inventory. 0 <= inv.entity_id < 4096;
+    proof:  bounds_check;
+}
+
+// --- ECS Systems (functions that operate on component regions) ---
+
+// Movement system: reads+writes Transform only
+fn movement_system(
+    transforms: &mut region<Transform>,
+    count: i32,
+    dt: f32
+)
+    effects { ReadRegion(Transform), WriteRegion(Transform) }
+{
+    let mut i: i32 = 0;
+    while i < count {
+        region.get $transforms[i] .x -> x;
+        region.get $transforms[i] .y -> y;
+
+        // Simple gravity
+        region.set $transforms[i] .y, y - 9.81 * dt * dt * 0.5;
+
+        i = i + 1;
+    }
+}
+
+// Health regeneration system: reads+writes Health, reads Transform for distance
+fn health_regen_system(
+    health: &mut region<Health>,
+    transforms: &region<Transform>,
+    health_count: i32,
+    dt: f32
+)
+    effects {
+        ReadRegion(Health), WriteRegion(Health),
+        ReadRegion(Transform)
+    }
+{
+    let mut i: i32 = 0;
+    while i < health_count {
+        region.get $health[i] .current -> cur;
+        region.get $health[i] .maximum -> max;
+        region.get $health[i] .regen -> regen_rate;
+
+        if cur < max {
+            let healed: i32 = cur + cast<i32>(regen_rate * dt);
+            if healed > max {
+                region.set $health[i] .current, max;
+            } else {
+                region.set $health[i] .current, healed;
+            }
+        }
+
+        i = i + 1;
+    }
+}
+
+// Damage system: applies damage from one entity to another
+// Demonstrates the foreign key traversal: Health -> Transform
+fn apply_damage(
+    health: &mut region<Health>,
+    transforms: &region<Transform>,
+    target_health_idx: i32,
+    amount: i32
+)
+    effects {
+        ReadRegion(Health), WriteRegion(Health),
+        ReadRegion(Transform)
+    }
+{
+    region.get $health[target_health_idx] .current -> cur;
+    region.get $health[target_health_idx] .entity_id -> eid;
+
+    // Follow the foreign key: get the entity's position from Transform
+    // Level 2: region-binding — eid indexes into Transform
+    // Level 5: bounds-proof — health_entity_fk invariant guarantees eid < 4096
+    region.get $transforms[eid] .x -> target_x;
+    region.get $transforms[eid] .y -> target_y;
+
+    // Apply damage, clamped to 0
+    let new_hp: i32 = cur - amount;
+    if new_hp < 0 {
+        region.set $health[target_health_idx] .current, 0;
+    } else {
+        region.set $health[target_health_idx] .current, new_hp;
+    }
+}
+
+// Inventory query: "SELECT * FROM Inventory WHERE entity_id = ?"
+// This is literally a database query compiled to memory access.
+fn get_inventory_weight(
+    inventory: &region<Inventory>,
+    inv_count: i32,
+    entity_id: i32
+) -> f32
+    effects { ReadRegion(Inventory) }
+{
+    // Linear scan — equivalent to a table scan in a database
+    region.scan $inventory where entity_id == entity_id -> |inv| {
+        region.get $inv .weight -> w;
+        return w;
+    }
+
+    return 0.0;  // entity has no inventory
+}
+
+// ============================================================================
+// WHY THIS IS BETTER THAN RAW WASM:
+//
+// In a typical WASM ECS (e.g., compiled from C++ or Rust), the component
+// arrays are just raw pointers into linear memory. The relationships between
+// components (Health.entity_id -> Transform[entity_id]) are unchecked
+// conventions. A bug in the entity ID assignment corrupts unrelated memory.
+//
+// With typed-wasm:
+// - The invariant health_entity_fk PROVES that every entity_id is valid
+// - Effect tracking PROVES that movement_system cannot touch Health data
+// - Type compatibility PROVES that you can't accidentally read a float
+//   from an integer field
+// - Cross-region invariants are the "foreign key constraints" of memory
+//
+// This is the database analogy made concrete: ECS IS a database, and
+// typed-wasm treats it as one with full type safety.
+// ============================================================================

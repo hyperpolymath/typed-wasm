@@ -1,0 +1,395 @@
+(* SPDX-License-Identifier: PMPL-1.0-or-later *)
+(* Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> *)
+(*
+ * typed-wasm — Typed Memory Regions for WebAssembly
+ * Format: Extended Backus-Naur Form (EBNF)
+ * Version: 0.1.0
+ * Date: 2026-03-21
+ *
+ * Applies TypeLL's 10 levels of type safety to WebAssembly linear memory,
+ * treating memory regions as typed schemas and memory operations as typed
+ * projections — analogous to how TypedQL treats database tables and queries.
+ *
+ * The key insight: WASM linear memory is an untyped byte store that programs
+ * "query" with load/store instructions at byte offsets. This grammar makes
+ * those queries type-safe by:
+ *   - Declaring region schemas (analogous to table definitions)
+ *   - Typing all memory access through schema projections
+ *   - Proving safety properties at compile time via dependent types
+ *   - Enabling multi-module shared memory with cross-module type agreement
+ *
+ * The 10 levels adapted for WASM memory:
+ *   Level  1: Instruction validity (well-formed access expressions)
+ *   Level  2: Region-binding (every access resolves to a declared region.field)
+ *   Level  3: Type-compatible access (load type matches field declaration)
+ *   Level  4: Null-safety (nullable pointers tracked as Option<Ptr>)
+ *   Level  5: Bounds-proof (access proven within region bounds at compile time)
+ *   Level  6: Result-type (return type of access known statically)
+ *   Level  7: Aliasing safety (mutable references do not alias)
+ *   Level  8: Effect-tracking (Read / Write / Alloc / Free distinguished)
+ *   Level  9: Lifetime safety (no use-after-free, no dangling pointers)
+ *   Level 10: Linearity (resources used exactly once, memory freed exactly once)
+ *)
+
+(* ============================================================================
+   1. MODULE STRUCTURE
+   ============================================================================
+   A typed-wasm module is a WASM module augmented with region declarations and
+   typed memory operations. It can import/export region schemas for cross-module
+   type safety — the killer feature that no source-level type system provides
+   when multiple languages compile to WASM and share linear memory.
+   ============================================================================ *)
+
+module = { declaration } ;
+
+declaration = region_decl
+            | import_region_decl
+            | export_region_decl
+            | function_decl
+            | memory_decl
+            | invariant_decl ;
+
+(* ============================================================================
+   2. REGION DECLARATIONS — The Schema Layer
+   ============================================================================
+   Regions are typed views over contiguous memory. A region is to WASM memory
+   what a table is to a database: a structured collection of typed fields at
+   known offsets.
+
+   Regions may be:
+   - Fixed-size (single struct)
+   - Array regions (homogeneous repeated structs, like a table with rows)
+   - Union regions (tagged variants, like a sum type in memory)
+
+   Alignment and padding are explicit — no hidden bytes. The schema IS the
+   memory layout.
+   ============================================================================ *)
+
+region_decl = 'region', identifier, [region_quantifier], '{',
+                  { field_decl },
+                  [alignment_decl],
+                  [invariant_block],
+              '}' ;
+
+(* Array regions: region Players[100] { ... } — 100 instances in contiguous memory *)
+region_quantifier = '[', expression, ']' ;
+
+field_decl = field_name, ':', field_type, [field_constraints], ';' ;
+
+field_name = identifier ;
+
+(* Field types: primitives, nested regions, pointers, optionals *)
+field_type = primitive_type
+           | region_ref
+           | pointer_type
+           | optional_type
+           | array_field_type
+           | union_type ;
+
+(* WASM primitive types *)
+primitive_type = 'i32' | 'i64' | 'f32' | 'f64'
+               | 'u8' | 'u16' | 'u32' | 'u64'
+               | 'i8' | 'i16'
+               | 'bool' ;
+
+(* Reference to another region — foreign key equivalent *)
+region_ref = '@', identifier ;
+
+(* Pointers: typed, with explicit ownership semantics *)
+(* ptr<T>    — owning pointer (must free exactly once = Level 10)
+   ref<T>    — borrowing pointer (no free, scoped lifetime = Level 9)
+   unique<T> — unique owning pointer (no aliasing = Level 7) *)
+pointer_type = pointer_kind, '<', field_type, '>' ;
+pointer_kind = 'ptr' | 'ref' | 'unique' ;
+
+(* Level 4: Nullable tracking — opt<T> is explicitly nullable *)
+optional_type = 'opt', '<', field_type, '>' ;
+
+(* Fixed-size array within a field *)
+array_field_type = field_type, '[', expression, ']' ;
+
+(* Tagged union — discriminated by first field *)
+union_type = 'union', '{', { variant_decl }, '}' ;
+variant_decl = variant_tag, ':', field_type, ';' ;
+variant_tag = identifier ;
+
+(* Level 5: Field-level constraints that feed into bounds proofs *)
+field_constraints = 'where', constraint_expr, { ',', constraint_expr } ;
+constraint_expr = range_constraint | predicate_constraint | align_constraint ;
+range_constraint = expression, ( '<=' | '<' | '>=' | '>' ), field_name,
+                   ( '<=' | '<' | '>=' | '>' ), expression ;
+predicate_constraint = identifier, '(', [expression_list], ')' ;
+align_constraint = 'align', '(', positive_integer, ')' ;
+
+(* Explicit alignment control *)
+alignment_decl = 'align', positive_integer, ';' ;
+
+(* Region-level invariants — proven by Idris2 at compile time *)
+invariant_block = 'invariant', '{', { invariant_expr }, '}' ;
+invariant_expr = identifier, ':', proposition, ';' ;
+proposition = expression ;
+
+(* ============================================================================
+   3. IMPORT / EXPORT — Multi-Module Type Agreement
+   ============================================================================
+   This is the breakthrough: when Module A (compiled from Rust) exports a
+   region schema and Module B (compiled from ReScript) imports it, the
+   typed-wasm checker verifies that both modules agree on the layout.
+
+   Neither Rust's borrow checker nor ReScript's type system can verify this
+   boundary — only a WASM-level type system can.
+
+   Import/export declarations carry full schema information, not just names.
+   The checker verifies structural compatibility: field names, types, offsets,
+   alignment, and invariants must all agree.
+   ============================================================================ *)
+
+import_region_decl = 'import', 'region', identifier, 'from', module_name,
+                     ['{', { field_decl }, '}'] ;
+
+export_region_decl = 'export', 'region', identifier ;
+
+module_name = string_literal ;
+
+(* ============================================================================
+   4. TYPED MEMORY ACCESS — The Query Layer
+   ============================================================================
+   Memory access in typed-wasm is expressed as typed projections, analogous
+   to SELECT queries. Instead of raw i32.load/i32.store, you project through
+   the region schema.
+
+   region.get $player $hp     ≈  SELECT hp FROM player
+   region.set $enemies $hp 0  ≈  UPDATE enemies SET hp = 0
+   region.scan $enemies       ≈  SELECT * FROM enemies
+   region.find $enemies       ≈  SELECT * FROM enemies WHERE ...
+
+   The type checker verifies every access against the region schema, just as
+   TypedQL verifies every query against the database schema.
+   ============================================================================ *)
+
+function_decl = 'fn', identifier, '(', [param_list], ')',
+                ['->', return_type],
+                [effects_clause],
+                [lifetime_clause],
+                '{', { statement }, '}' ;
+
+param_list = param, { ',', param } ;
+param = identifier, ':', param_type ;
+param_type = field_type | region_handle_type ;
+
+(* Region handles: typed references to a live region instance *)
+(* &region<Players>      — immutable borrow (Level 7/8: read-only)
+   &mut region<Players>  — mutable borrow (Level 7: exclusive)
+   own region<Players>   — ownership (Level 10: must free) *)
+region_handle_type = handle_mode, 'region', '<', identifier, '>' ;
+handle_mode = '&' | '&mut' | 'own' ;
+
+return_type = field_type | 'void' ;
+
+(* Level 8: Effect tracking — declare what a function does to memory *)
+effects_clause = 'effects', '{', effect, { ',', effect }, '}' ;
+effect = 'Read' | 'Write' | 'Alloc' | 'Free'
+       | 'ReadRegion', '(', identifier, ')'
+       | 'WriteRegion', '(', identifier, ')' ;
+
+(* Level 9: Lifetime annotations — scope memory validity *)
+lifetime_clause = 'lifetime', '{', lifetime_constraint, { ',', lifetime_constraint }, '}' ;
+lifetime_constraint = lifetime_name, ':', lifetime_bound ;
+lifetime_name = "'", identifier ;
+lifetime_bound = "'static"
+               | "'fn"
+               | "'", identifier
+               | lifetime_name, '>=', lifetime_name ;
+
+(* ============================================================================
+   5. STATEMENTS — Typed Operations on Regions
+   ============================================================================ *)
+
+statement = access_stmt
+          | scan_stmt
+          | alloc_stmt
+          | free_stmt
+          | let_stmt
+          | if_stmt
+          | while_stmt
+          | return_stmt
+          | assert_stmt
+          | proof_stmt
+          | expression_stmt ;
+
+(* --- Level 2+3: Typed access (get/set through schema projection) --- *)
+
+(* region.get: read a field from a region instance *)
+(* Compiles to: i32.load/i64.load/f32.load/f64.load at computed offset *)
+(* Level 2 check: region and field exist *)
+(* Level 3 check: result type matches field declaration *)
+access_stmt = 'region.get', region_target, field_path, ['->', binding]
+            | 'region.set', region_target, field_path, ',', expression ;
+
+(* Field path: supports nested access through embedded regions *)
+(* e.g., $player.inventory.items[0].name *)
+field_path = '.', field_name, { field_path_segment } ;
+field_path_segment = '.', field_name
+                   | '[', expression, ']' ;
+
+(* Target: a region handle (variable) or direct region name for singletons *)
+region_target = '$', identifier
+              | '$', identifier, '[', expression, ']' ;
+
+binding = identifier ;
+
+(* --- Scan: iterate over array regions --- *)
+(* Analogous to: SELECT * FROM region WHERE predicate *)
+scan_stmt = 'region.scan', region_target,
+            ['where', expression],
+            ['->', '|', identifier, '|'],
+            '{', { statement }, '}' ;
+
+(* --- Level 10: Allocation and deallocation --- *)
+(* Allocation creates a new region instance and returns an owning handle *)
+alloc_stmt = 'region.alloc', identifier, ['{', field_init_list, '}'],
+             '->', binding ;
+
+field_init_list = field_init, { ',', field_init } ;
+field_init = field_name, '=', expression ;
+
+(* Free requires an owning handle — the linear type system ensures
+   this is called exactly once per allocation *)
+free_stmt = 'region.free', '$', identifier ;
+
+(* --- Standard control flow --- *)
+let_stmt = 'let', ['mut'], identifier, [':', field_type], '=', expression, ';' ;
+if_stmt = 'if', expression, '{', { statement }, '}',
+          ['else', '{', { statement }, '}'] ;
+while_stmt = 'while', expression, '{', { statement }, '}' ;
+return_stmt = 'return', [expression], ';' ;
+
+(* --- Level 5: Compile-time assertions and proofs --- *)
+(* Static assertions: checked at compile time by Idris2 prover *)
+assert_stmt = 'static_assert', proposition, ';' ;
+
+(* Level 9+10: Proof-carrying access — attach a proof to a memory operation *)
+(* Analogous to VQL-UT's PROOF clause *)
+proof_stmt = 'proof', identifier, '{', proof_body, '}' ;
+proof_body = { proof_step } ;
+proof_step = 'given', ':',  proposition, ';'
+           | 'show',  ':', proposition, ';'
+           | 'by',    ':', proof_tactic, ';' ;
+proof_tactic = 'bounds_check' | 'linearity' | 'lifetime'
+             | 'alias_freedom' | 'effect_purity'
+             | 'induction', '(', identifier, ')'
+             | 'rewrite', '(', identifier, ')' ;
+
+(* ============================================================================
+   6. EXPRESSIONS
+   ============================================================================ *)
+
+expression = literal
+           | identifier
+           | '$', identifier                           (* region variable *)
+           | expression, binop, expression
+           | unop, expression
+           | 'sizeof', '(', identifier, ')'            (* region size *)
+           | 'offsetof', '(', identifier, '.', field_name, ')'
+           | 'typeof', '(', expression, ')'
+           | 'is_valid', '(', '$', identifier, ')'     (* Level 9: liveness check *)
+           | 'is_null', '(', expression, ')'            (* Level 4: null check *)
+           | 'cast', '<', field_type, '>', '(', expression, ')'  (* explicit cast *)
+           | '(', expression, ')' ;
+
+binop = '+' | '-' | '*' | '/' | '%'
+      | '==' | '!=' | '<' | '>' | '<=' | '>='
+      | '&&' | '||'
+      | '&' | '|' | '^' | '<<' | '>>' ;
+
+unop = '-' | '!' | '~' ;
+
+literal = integer_literal | float_literal | 'true' | 'false' | 'null' ;
+
+expression_stmt = expression, ';' ;
+expression_list = expression, { ',', expression } ;
+
+(* ============================================================================
+   7. MEMORY DECLARATION
+   ============================================================================
+   Declares the WASM linear memory that regions are mapped into.
+   Regions are allocated within named memories. Multiple memories may exist
+   (WASM multi-memory proposal) with different region assignments.
+   ============================================================================ *)
+
+memory_decl = 'memory', identifier, '{',
+                  'initial', ':', positive_integer, ';',
+                  ['maximum', ':', positive_integer, ';'],
+                  ['shared', ';'],
+                  { region_placement },
+              '}' ;
+
+(* Explicit placement: put a region at a known memory offset *)
+region_placement = 'place', identifier, 'at', expression, ';' ;
+
+(* ============================================================================
+   8. INVARIANT DECLARATIONS — Cross-Region Constraints
+   ============================================================================
+   Global invariants that span multiple regions. These are the "foreign key
+   constraints" and "CHECK constraints" of WASM memory.
+
+   Example: every enemy's target_id must reference a valid Player region slot.
+   The Idris2 prover verifies these hold for all typed access paths.
+   ============================================================================ *)
+
+invariant_decl = 'invariant', identifier, '{',
+                     'across', ':', identifier_list, ';',
+                     'holds',  ':', proposition, ';',
+                     ['proof', ':', proof_tactic, ';'],
+                 '}' ;
+
+identifier_list = identifier, { ',', identifier } ;
+
+(* ============================================================================
+   9. LEXICAL ELEMENTS
+   ============================================================================ *)
+
+identifier = letter, { letter | digit | '_' } ;
+letter = 'a' | ... | 'z' | 'A' | ... | 'Z' | '_' ;
+digit = '0' | ... | '9' ;
+positive_integer = digit - '0', { digit } ;
+integer_literal = ['-'], digit, { digit } ;
+float_literal = ['-'], digit, { digit }, '.', digit, { digit } ;
+string_literal = '"', { ? any character except '"' ? }, '"' ;
+
+(* ============================================================================
+   10. RESERVED KEYWORDS
+   ============================================================================ *)
+
+(* Region system *)
+(* region, import, export, from, field, align, invariant, across, holds *)
+
+(* Access operations *)
+(* region.get, region.set, region.scan, region.alloc, region.free *)
+
+(* Pointer kinds *)
+(* ptr, ref, unique, opt *)
+
+(* Handle modes *)
+(* own *)
+
+(* Effects *)
+(* effects, Read, Write, Alloc, Free, ReadRegion, WriteRegion *)
+
+(* Lifetimes *)
+(* lifetime *)
+
+(* Proofs *)
+(* proof, given, show, by, static_assert *)
+(* bounds_check, linearity, lifetime, alias_freedom, effect_purity *)
+(* induction, rewrite *)
+
+(* Intrinsics *)
+(* sizeof, offsetof, typeof, is_valid, is_null, cast *)
+
+(* Standard *)
+(* fn, let, mut, if, else, while, return, where, void *)
+(* true, false, null, place, at, memory, initial, maximum, shared *)
+
+(* Types *)
+(* i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, union *)

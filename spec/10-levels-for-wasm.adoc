@@ -1,0 +1,654 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= The 10 Levels of Type Safety for WebAssembly Memory
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc: preamble
+:icons: font
+:sectnums:
+
+This document adapts TypeLL's 10-level type safety framework from database
+query languages to WebAssembly linear memory. Each level addresses a specific
+class of memory safety failure that WASM's built-in type system does not prevent.
+
+== Motivation: The Database-Memory Analogy
+
+WebAssembly's linear memory is an untyped byte array. Programs access it with
+load/store instructions at byte offsets. This is structurally identical to a
+schemaless database:
+
+[cols="1,1"]
+|===
+| Database concept | WASM memory concept
+
+| Table | Region (contiguous memory segment)
+| Row | Region instance (struct at offset)
+| Column | Field (typed value at known offset within struct)
+| Schema | Region declaration (field names, types, offsets)
+| SELECT query | Load instruction sequence
+| INSERT/UPDATE | Store instruction sequence
+| Foreign key | Pointer to another region
+| CHECK constraint | Region invariant
+| Index | Computed offset function
+| Transaction | Effect-tracked access scope
+|===
+
+TypedQL's insight was: take an existing query language and layer type safety
+on top, so queries are verified against the schema at compile time.
+
+typed-wasm's insight is: take WASM memory access and layer the _same_ type
+safety on top, so loads/stores are verified against region schemas at compile
+time.
+
+== Level Stack
+
+----
++---------------------------------------------+
+|  Level 10: Linearity Safety                 |  <- Research
+|  Level  9: Lifetime Safety                  |  <- Research
+|  Level  8: Effect-Tracking Safety           |  <- Research
+|  Level  7: Aliasing Safety                  |  <- Research
++---------------------------------------------+
+|  Level  6: Result-Type Safety               |  <- Established
+|  Level  5: Bounds-Proof Safety              |  <- Established
+|  Level  4: Null Safety                      |  <- Established
+|  Level  3: Type-Compatible Access           |  <- Established
+|  Level  2: Region-Binding Safety            |  <- Established
+|  Level  1: Instruction Validity             |  <- Established
++---------------------------------------------+
+|  Level  0: Raw WASM (untyped byte array)    |  <- The danger zone
++---------------------------------------------+
+----
+
+**Levels 1-6** have direct analogues in typed assembly languages (TAL),
+Typed LLVM, and WebAssembly's own validation. What is new is expressing
+them through a query-like surface syntax with TypeLL's proof framework.
+
+**Levels 7-10** go beyond existing WASM proposals (GC, reference types,
+typed function references) by bringing ownership, effects, lifetimes, and
+linearity to the _memory_ level rather than the _reference_ level.
+
+== Progression at a Glance
+
+[cols="1,2,2,2,2"]
+|===
+| Level | What It Checks | Database Equivalent | WASM Failure Without It | How typed-wasm Implements It
+
+| 1 -- Instruction
+| Is the access expression well-formed?
+| Parse-time safety
+| Malformed load/store instruction
+| Grammar validation (EBNF parser)
+
+| 2 -- Region
+| Does the target region and field exist?
+| Schema-binding
+| Load from undefined memory offset
+| Region schema lookup
+
+| 3 -- Type
+| Does the load type match the field declaration?
+| Type-compatible operations
+| Read i32, get garbage from an f64 field
+| Field type unification
+
+| 4 -- Null
+| Are nullable pointers handled explicitly?
+| Null safety
+| Dereference null pointer -> trap or corruption
+| `opt<T>` tracking, forced unwrap
+
+| 5 -- Bounds
+| Is the access within region bounds?
+| Injection-proof
+| Out-of-bounds read/write
+| Compile-time offset + size proof
+
+| 6 -- Result
+| Is the return type of the access known statically?
+| Result-type safety
+| Caller assumes wrong type, corrupts downstream
+| Type propagation through access chains
+
+| 7 -- Alias
+| Do mutable references avoid aliasing?
+| Cardinality safety
+| Two writers corrupt same field simultaneously
+| `unique<T>` / `&mut` exclusivity proof
+
+| 8 -- Effect
+| Are Read/Write/Alloc/Free effects declared?
+| Effect-tracking
+| "Pure" function secretly writes memory
+| Effect annotations + checking
+
+| 9 -- Lifetime
+| Is the reference still valid when used?
+| Temporal safety
+| Use-after-free, dangling pointer
+| Lifetime annotations + scoped validity
+
+| 10 -- Linear
+| Is every resource used exactly once?
+| Linearity safety
+| Memory leak (allocated, never freed) or double free
+| Linear types via Idris2 QTT
+|===
+
+== Level 1: Instruction Validity
+
+=== What It Checks
+
+Every memory access expression in typed-wasm is a well-formed sentence in
+the grammar. `region.get`, `region.set`, `region.scan`, `region.alloc`, and
+`region.free` all have fixed syntactic forms that the parser validates.
+
+=== Database Analogy
+
+This is parse-time safety: "is the query syntactically valid?" Just as
+`SELCT * FORM users` fails at Level 1 in TypedQL, `region.gt $player .hp`
+fails at Level 1 in typed-wasm.
+
+=== What WASM Provides Today
+
+WASM itself validates instruction encoding — `i32.load` must have a valid
+alignment and offset immediate. But WASM has no concept of a "region" or
+"field", so there is no higher-level structure to validate against.
+
+=== What typed-wasm Adds
+
+A structured syntax for memory access that can be parsed, type-checked, and
+proven safe before compilation to raw WASM instructions.
+
+=== Implementation
+
+The parser is written in ReScript (consistent with VQL-UT) and produces a
+typed abstract syntax tree. Parse failure at this level produces a clear
+error with source location.
+
+== Level 2: Region-Binding Safety
+
+=== What It Checks
+
+Every `region.get $target .field` resolves `$target` to a declared region
+and `.field` to a declared field within that region. No access to undeclared
+memory.
+
+=== Database Analogy
+
+Schema-binding: "do the referenced tables and columns exist?" Just as
+`SELECT email FROM userz` fails at Level 2 (table `userz` does not exist),
+`region.get $playerz .hp` fails at Level 2 (region `playerz` not declared).
+
+=== What WASM Provides Today
+
+Nothing. WASM's `i32.load offset=0` has no concept of what it's loading
+from. The offset is a raw number with no schema backing.
+
+=== What typed-wasm Adds
+
+Region declarations create a compile-time schema. Every memory access is
+resolved against this schema. An access to an undeclared region or field
+is a compile-time error, not a runtime bug.
+
+=== The Multi-Module Dimension
+
+When Module A exports `region Players { hp: i32; pos: @Vec2; }` and
+Module B imports it, Level 2 verification ensures Module B's accesses
+resolve against Module A's schema. This is the multi-language boundary
+check that no source-level type system can provide.
+
+== Level 3: Type-Compatible Access
+
+=== What It Checks
+
+The type used to access a field matches the field's declaration. If
+`Players.hp` is declared as `i32`, then `region.get $player .hp` produces
+an `i32`, not an `f64` or `i64`.
+
+=== Database Analogy
+
+Type-compatible operations: "is `age + name` meaningful?" Just as you
+cannot add an integer to a string in TypedQL, you cannot load an `f64`
+from an `i32` field in typed-wasm.
+
+=== What WASM Provides Today
+
+WASM's stack machine is type-safe for _instructions_ (you cannot `i32.add`
+two `f64` values). But WASM has no type information for _memory_. You can
+`f64.load` from an address that was written with `i32.store` — WASM will
+happily reinterpret the bytes.
+
+=== What typed-wasm Adds
+
+The type of every memory access is determined by the region schema, not by
+the instruction. The instruction is _generated_ from the field type:
+
+----
+region Players {
+    hp: i32;      // region.get $player .hp compiles to i32.load
+    speed: f64;   // region.get $player .speed compiles to f64.load
+}
+----
+
+A mismatch between the access and the schema is a compile-time error.
+
+== Level 4: Null Safety
+
+=== What It Checks
+
+Nullable pointers (`opt<T>`) must be explicitly unwrapped before use.
+Non-nullable pointers are guaranteed non-null by construction.
+
+=== Database Analogy
+
+Null safety: "are nullable columns handled?" Just as a nullable `email`
+column must be handled with `COALESCE` or a null check in TypedQL, a
+nullable pointer must be unwrapped with an explicit check in typed-wasm.
+
+=== What WASM Provides Today
+
+Nothing. All pointers in WASM linear memory are just `i32`/`i64` values.
+The value 0 is not special — it's a valid memory address. Null pointers
+are indistinguishable from valid ones.
+
+=== What typed-wasm Adds
+
+The type system distinguishes `ptr<T>` (guaranteed non-null) from
+`opt<ptr<T>>` (may be null). Accessing an `opt<T>` value requires
+explicit unwrapping:
+
+----
+region Enemy {
+    target: opt<@Player>;  // may be null
+}
+
+fn chase(e: &region<Enemy>) effects { Read } {
+    // Error at Level 4: cannot access opt<@Player> without unwrap
+    // region.get $e .target.hp
+
+    // Correct: explicit null check
+    region.get $e .target -> maybe_target;
+    if !is_null(maybe_target) {
+        region.get maybe_target .hp -> target_hp;
+        // target_hp is guaranteed non-null here
+    }
+}
+----
+
+== Level 5: Bounds-Proof Safety
+
+=== What It Checks
+
+Every memory access is provably within the bounds of its region. No
+out-of-bounds read or write is possible.
+
+=== Database Analogy
+
+Injection-proof safety: "is user input separated from query structure?"
+In TypedQL, this prevents attackers from escaping the query. In typed-wasm,
+it prevents code from escaping the region — reading or writing memory that
+belongs to a different region or is unallocated.
+
+=== What WASM Provides Today
+
+WASM traps on out-of-bounds access to _linear memory as a whole_. But there
+are no bounds within linear memory — if you have 1MB of memory and access
+byte 500,000, WASM has no idea whether that byte belongs to "your" data.
+
+=== What typed-wasm Adds
+
+Regions have known sizes (computed from field types + alignment). Array
+regions have known element counts. The Idris2 prover verifies at compile
+time that:
+
+- Field offsets are within the region's size
+- Array indices are within the array's declared length
+- Pointer arithmetic stays within region bounds
+
+Where the prover cannot statically verify (e.g., dynamic indices), it
+inserts a minimal runtime bounds check — but only where necessary. Static
+proofs eliminate the check entirely.
+
+----
+region Players[100] {
+    hp: i32;
+    name: u8[32];
+}
+
+fn damage(players: &mut region<Players>, idx: i32, amount: i32)
+    effects { WriteRegion(Players) }
+{
+    // Level 5: prover asks — is idx in [0, 100)?
+    // If idx is from a loop `for i in 0..100`, proven statically.
+    // If idx is from user input, a bounds check is inserted.
+    region.get $players[idx] .hp -> current_hp;
+    region.set $players[idx] .hp, current_hp - amount;
+}
+----
+
+== Level 6: Result-Type Safety
+
+=== What It Checks
+
+The type of every memory access expression is statically known. When
+`region.get $player .hp -> val`, the type of `val` is `i32` (because
+`hp: i32`), and this is propagated through all subsequent uses.
+
+=== Database Analogy
+
+Result-type safety: "is the return type known?" Just as TypedQL knows that
+`SELECT count(*) FROM users` returns an integer, typed-wasm knows that
+`region.get $player .hp` returns an `i32`.
+
+=== What WASM Provides Today
+
+WASM instructions have fixed result types (`i32.load` always produces
+`i32`). But since the _instruction choice_ is manual, there is no guarantee
+it matches the semantic type of the data.
+
+=== What typed-wasm Adds
+
+The result type flows from the schema declaration through the access
+expression. The programmer never specifies the instruction type — it is
+inferred from the field declaration:
+
+----
+region Config {
+    max_hp: i32;
+    gravity: f64;
+    debug: bool;   // stored as u8, accessed as bool
+}
+
+fn load_config(cfg: &region<Config>) effects { Read } -> f64 {
+    region.get $cfg .gravity -> g;
+    // Type of g is f64, inferred from schema.
+    // Compile error if function returns i32 but g is f64.
+    return g;
+}
+----
+
+== Level 7: Aliasing Safety
+
+=== What It Checks
+
+Mutable references to the same memory region do not alias. If function A
+holds `&mut region<Players>`, no other function simultaneously holds a
+mutable reference to the same region instance.
+
+=== Database Analogy
+
+Cardinality safety (adapted): "how many writers exist?" Just as TypedQL
+tracks how many rows a query might affect, typed-wasm tracks how many
+mutable references exist to a region.
+
+=== What WASM Provides Today
+
+Nothing. Two WASM functions can simultaneously write to the same memory
+address. There is no aliasing discipline.
+
+=== What typed-wasm Adds
+
+Three pointer kinds with different aliasing guarantees:
+
+[cols="1,2,2"]
+|===
+| Kind | Aliasing | Guarantees
+
+| `ref<T>` / `&`
+| Unlimited shared reads
+| No mutation through this reference
+
+| `unique<T>` / `&mut`
+| Exclusive — no other mutable refs
+| Mutation safe, no data races
+
+| `ptr<T>` / `own`
+| Owning — no other owners
+| Must free exactly once (Level 10)
+|===
+
+The Idris2 prover verifies that `&mut` references are exclusive at every
+program point. This is the WASM equivalent of Rust's borrow checker, but
+operating at the _region schema_ level rather than the source language level.
+
+== Level 8: Effect-Tracking Safety
+
+=== What It Checks
+
+Every function declares its memory effects: `Read`, `Write`, `Alloc`, `Free`.
+A function declared `effects { Read }` cannot write to any region. Effects
+can be region-specific: `effects { ReadRegion(Players), WriteRegion(Config) }`.
+
+=== Database Analogy
+
+Effect-tracking: "does this query read or write?" Just as TypedQL
+distinguishes SELECT (read) from UPDATE (write), typed-wasm distinguishes
+`region.get` (read) from `region.set` (write), `region.alloc` (alloc), and
+`region.free` (free).
+
+=== What WASM Provides Today
+
+Nothing. A WASM function exported as "get_player_hp" might secretly write
+to memory, free a region, or allocate new memory. The caller has no way to
+know.
+
+=== What typed-wasm Adds
+
+Effect annotations that are checked at compile time:
+
+----
+// This function promises to only read Players
+fn get_hp(p: &region<Players>) effects { ReadRegion(Players) } -> i32 {
+    region.get $p .hp -> hp;
+    return hp;
+
+    // Error at Level 8: Write effect not declared
+    // region.set $p .hp, 0;
+}
+----
+
+Effect subsumption: `effects { Read }` is a subset of `effects { Read, Write }`.
+A function expecting a `Read`-only callback can accept any function whose
+effects are a subset of `{ Read }`.
+
+== Level 9: Lifetime Safety
+
+=== What It Checks
+
+Every reference is valid (points to live memory) when used. No
+use-after-free. No dangling pointers. References do not outlive the memory
+they point to.
+
+=== Database Analogy
+
+Temporal safety: "is the data fresh enough?" Just as TypedQL's
+`FRESH WITHIN 5 MINUTES` ensures temporal validity, typed-wasm's lifetime
+annotations ensure spatial validity — the memory is still allocated when
+you access it.
+
+=== What WASM Provides Today
+
+Nothing. After `region.free`, any existing pointers to that memory become
+dangling. WASM will happily let you load from freed memory — you'll get
+whatever bytes happen to be there.
+
+=== What typed-wasm Adds
+
+Lifetime annotations that scope reference validity:
+
+----
+fn process_player(game: &region<Game>) effects { Read } {
+    // 'player_life begins here
+    region.get $game .current_player -> player_ref;
+
+    use_player(player_ref);  // OK: within lifetime
+
+    // 'player_life ends when game ref is released
+}
+
+fn use_player(p: &region<Player>)
+    lifetime { 'p: 'fn }   // p must live at least as long as this function
+    effects { Read }
+{
+    region.get $p .hp -> hp;
+    // hp is valid here because p's lifetime covers the function body
+}
+----
+
+The Idris2 prover tracks lifetime constraints and verifies that no reference
+is used after the memory it points to has been freed or gone out of scope.
+
+== Level 10: Linearity Safety
+
+=== What It Checks
+
+Every owned resource is used exactly once:
+- Allocated memory is freed exactly once (no leaks, no double-free)
+- Owning pointers are consumed exactly once (no duplication, no discard)
+- Linear channels are completed (no abandoned protocols)
+
+=== Database Analogy
+
+Linearity safety: "are connections used exactly once?" Just as TypedQL
+ensures database connections are not leaked or double-closed, typed-wasm
+ensures memory allocations are not leaked or double-freed.
+
+=== What WASM Provides Today
+
+Nothing. There is no allocator discipline in WASM. Memory can be allocated
+and never freed (leak), freed twice (double-free), or freed and then
+accessed (use-after-free, covered by Level 9).
+
+=== What typed-wasm Adds
+
+Linear types via Idris2's Quantitative Type Theory (QTT):
+
+----
+fn create_and_destroy() effects { Alloc, Free } {
+    // Allocate returns an owning handle — linear (must use exactly once)
+    region.alloc Player { hp = 100, speed = 1.5 } -> player;
+
+    // Use the player
+    region.get $player .hp -> hp;
+
+    // Must free before function returns — linear type enforces this
+    region.free $player;
+
+    // Error at Level 10: $player already consumed
+    // region.get $player .hp -> hp2;
+}
+
+fn leak_example() effects { Alloc } {
+    region.alloc Player { hp = 100, speed = 1.5 } -> player;
+    // Error at Level 10: linear resource $player not consumed
+    // (function returns without freeing)
+}
+----
+
+The Idris2 QTT quantity `1` (linear) enforces exactly-once usage. The
+quantity `0` (erased) allows compile-time-only values. The quantity `w`
+(unrestricted) allows normal unlimited use.
+
+== Cross-Level Interactions
+
+The levels are not independent — they compose:
+
+- **L5 + L7**: Bounds-proof + aliasing safety together prove that two
+  `&mut` references never overlap in memory, even if they point to
+  different fields within the same region.
+
+- **L8 + L9**: Effect-tracking + lifetime safety together prove that
+  a `Read`-only reference cannot observe a `Free` effect on the same
+  region — the lifetime system prevents the reference from outliving
+  the region.
+
+- **L7 + L10**: Aliasing safety + linearity together give the full
+  Rust-like ownership model: unique ownership, borrowing, and exactly-once
+  destruction — but at the WASM memory level, not the source language level.
+
+- **L2 + L3 + multi-module**: Region-binding + type-compatibility across
+  module boundaries is the killer feature. This is the composition that
+  no existing tool provides.
+
+== What This Does NOT Cover
+
+typed-wasm is not a complete memory safety solution. It specifically
+does NOT address:
+
+- **WASM stack safety** — already handled by WASM's built-in stack machine
+  type system.
+- **Control flow safety** — already handled by WASM's structured control flow.
+- **Function type safety** — already handled by WASM's function type system
+  (and the typed function references proposal).
+- **Concurrency** — WASM shared memory and atomics are a separate concern.
+  typed-wasm could be extended with session types (as in TypeQL-Experimental)
+  but this is out of scope for v0.1.
+- **GC-managed objects** — the WASM GC proposal handles this separately.
+  typed-wasm targets linear memory specifically.
+
+== Relationship to Existing Work
+
+[cols="1,2,2"]
+|===
+| System | What It Does | How typed-wasm Differs
+
+| Rust borrow checker
+| Ownership + lifetime at source level
+| typed-wasm works at WASM level, covering cross-language boundaries
+
+| Typed Assembly Language (TAL)
+| Types for assembly instructions
+| typed-wasm adds region schemas, cross-module verification, query syntax
+
+| WASM GC proposal
+| Managed references with type safety
+| typed-wasm targets linear memory (unmanaged), not GC objects
+
+| WASM typed function refs
+| Type-safe function calls
+| typed-wasm types memory access, not function calls
+
+| MSWasm (Memory-Safe WASM)
+| Segments with bounds checking
+| typed-wasm adds schema-level types, not just bounds
+
+| TypedQL / VQL-UT
+| Type-safe database queries
+| typed-wasm applies the same principle to memory, not databases
+
+| GraalVM Truffle interop
+| Cross-language object sharing
+| typed-wasm provides compile-time proofs, not runtime dispatch
+|===
+
+== Implementation Architecture
+
+[cols="1,1,1"]
+|===
+| Layer | Technology | Role
+
+| ABI definitions
+| Idris2
+| Dependent types proving region schemas correct, access patterns safe
+
+| FFI bridge
+| Zig
+| C-ABI compatible memory operations, cross-compilation
+
+| Surface parser
+| ReScript
+| Parse typed-wasm syntax to AST
+
+| Proof engine
+| Idris2 (totality checker)
+| Verify levels 5-10 properties at compile time
+
+| Code generator
+| Zig -> WASM
+| Emit raw WASM load/store instructions from typed access
+
+| TypedQLiser plugin
+| Rust
+| Makes typed-wasm a TypedQLiser target language
+|===

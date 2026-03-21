@@ -1,0 +1,196 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+//
+// Example 02: Multi-Module Type Safety — THE KILLER FEATURE
+//
+// Scenario: A game engine where the physics module is compiled from Rust,
+// the AI module from ReScript, and the rendering module from C++. All three
+// share the same linear memory for entity data.
+//
+// Problem today: Rust's borrow checker types memory within Rust. ReScript's
+// type system types values within ReScript. Neither types the shared WASM
+// memory boundary. If Rust writes a struct at offset 0 and ReScript reads
+// from offset 0 assuming a different layout, you get silent corruption.
+//
+// Solution: typed-wasm declares the shared schema once. All three modules
+// import it. The typed-wasm checker verifies structural agreement at compile
+// time, before any module runs.
+
+// ============================================================================
+// MODULE A: physics.twasm (compiled from Rust)
+// This module DEFINES the Entity region schema and EXPORTS it.
+// ============================================================================
+
+region Entity[1024] {
+    // Transform data — 32 bytes
+    pos_x:    f32;
+    pos_y:    f32;
+    pos_z:    f32;
+    scale:    f32;
+    vel_x:    f32;
+    vel_y:    f32;
+    vel_z:    f32;
+    mass:     f32;
+
+    // State flags — 4 bytes
+    flags:    u32;          // bitfield: active(0), visible(1), collidable(2)
+
+    // Physics material — 8 bytes
+    friction:    f32;
+    restitution: f32;
+
+    // Padding to 48 bytes for cache-line alignment
+    _reserved: u8[4];
+
+    align 16;
+
+    invariant {
+        positive_mass: mass > 0.0;
+        unit_restitution: 0.0 <= restitution <= 1.0;
+        unit_friction: 0.0 <= friction <= 1.0;
+    }
+}
+
+export region Entity;
+
+// Physics update — only writes transform and velocity fields
+fn physics_step(entities: &mut region<Entity>, dt: f32)
+    effects { ReadRegion(Entity), WriteRegion(Entity) }
+{
+    region.scan $entities where (flags & 1) == 1 -> |e| {
+        // Euler integration
+        region.get $e .vel_x -> vx;
+        region.get $e .vel_y -> vy;
+        region.get $e .vel_z -> vz;
+        region.get $e .pos_x -> px;
+        region.get $e .pos_y -> py;
+        region.get $e .pos_z -> pz;
+
+        region.set $e .pos_x, px + vx * dt;
+        region.set $e .pos_y, py + vy * dt;
+        region.set $e .pos_z, pz + vz * dt;
+    }
+}
+
+// ============================================================================
+// MODULE B: ai.twasm (compiled from ReScript)
+// This module IMPORTS the Entity region and READS from it.
+// typed-wasm verifies that Module B's view of Entity matches Module A's.
+// ============================================================================
+
+// Import with explicit field listing — typed-wasm verifies these match
+// the export from physics.twasm
+import region Entity from "physics" {
+    pos_x: f32;
+    pos_y: f32;
+    pos_z: f32;
+    vel_x: f32;
+    vel_y: f32;
+    vel_z: f32;
+    flags: u32;
+}
+
+// AI's own region — not shared
+region AIState[1024] {
+    entity_idx:  i32;       // which Entity this AI controls
+    state:       u8;        // FSM state: 0=idle, 1=patrol, 2=chase, 3=flee
+    target_idx:  opt<i32>;  // target entity (nullable)
+    alert_level: f32;
+
+    where 0 <= state <= 3;
+    where 0.0 <= alert_level <= 1.0;
+}
+
+// AI reads entities but does not write them — effect-safe
+fn ai_decision(
+    entities: &region<Entity>,
+    ai: &mut region<AIState>,
+    ai_idx: i32
+) -> u8
+    effects { ReadRegion(Entity), ReadRegion(AIState), WriteRegion(AIState) }
+{
+    region.get $ai[ai_idx] .entity_idx -> eidx;
+    region.get $ai[ai_idx] .state -> current_state;
+
+    // Read from shared Entity region — Level 2+3 verified against
+    // the EXPORTED schema from physics.twasm
+    region.get $entities[eidx] .pos_x -> my_x;
+    region.get $entities[eidx] .pos_z -> my_z;
+
+    // Simple distance-based state transition
+    region.get $ai[ai_idx] .target_idx -> maybe_target;
+    if !is_null(maybe_target) {
+        let tidx: i32 = maybe_target;
+        region.get $entities[tidx] .pos_x -> target_x;
+        region.get $entities[tidx] .pos_z -> target_z;
+
+        let dx: f32 = target_x - my_x;
+        let dz: f32 = target_z - my_z;
+        let dist_sq: f32 = dx * dx + dz * dz;
+
+        if dist_sq < 25.0 {
+            region.set $ai[ai_idx] .state, 2;  // chase
+            return 2;
+        }
+    }
+
+    region.set $ai[ai_idx] .state, 1;  // patrol
+    return 1;
+}
+
+// ============================================================================
+// MODULE C: render.twasm (compiled from C++)
+// Imports Entity for read-only rendering. Cannot write physics data.
+// ============================================================================
+
+import region Entity from "physics" {
+    pos_x: f32;
+    pos_y: f32;
+    pos_z: f32;
+    scale: f32;
+    flags: u32;
+}
+
+// Render only reads — no WriteRegion effect allowed
+fn collect_visible(entities: &region<Entity>) -> i32
+    effects { ReadRegion(Entity) }
+{
+    let mut visible_count: i32 = 0;
+
+    region.scan $entities where (flags & 3) == 3 -> |e| {
+        // flags bit 0 = active, bit 1 = visible
+        // Both must be set to render
+        visible_count = visible_count + 1;
+    }
+
+    return visible_count;
+
+    // ERROR at Level 8 (if attempted):
+    // region.set $entities[0] .pos_x, 0.0;
+    // ^ WriteRegion(Entity) not in declared effects
+}
+
+// ============================================================================
+// WHAT typed-wasm VERIFIES AT COMPILE TIME:
+//
+// 1. Module B's imported Entity fields match Module A's exported Entity
+//    fields in name, type, offset, and alignment.
+//
+// 2. Module C's imported Entity fields are a subset of Module A's export
+//    (C only imports 5 of 12 fields — that's fine, it just can't access
+//    the others).
+//
+// 3. Module B cannot write to Entity (only ReadRegion in effects).
+//    Module C cannot write to Entity either.
+//    Only Module A (the owner) can write.
+//
+// 4. The invariants (positive_mass, unit_restitution, unit_friction) are
+//    maintained by Module A's writes and assumed by Modules B and C's reads.
+//
+// WITHOUT typed-wasm:
+// - Rust, ReScript, and C++ each have their own struct definitions
+// - If someone adds a field to the Rust struct and forgets to update
+//   the ReScript binding, every access in Module B silently reads from
+//   the wrong offset
+// - This class of bug is undetectable by any existing tool
+// ============================================================================

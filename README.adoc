@@ -1,0 +1,158 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= typed-wasm
+:toc: preamble
+:icons: font
+:sectnums:
+
+**TypeLL's 10-level type safety for WebAssembly linear memory.**
+
+== The Idea
+
+WebAssembly's linear memory is an untyped byte array. Programs access it with
+load/store instructions at byte offsets — structurally identical to a schemaless
+database where programs issue untyped queries.
+
+https://github.com/hyperpolymath/typedqliser[TypedQLiser] solved this for
+databases: layer compile-time type safety over existing query languages so that
+every query is verified against the schema before execution.
+
+**typed-wasm applies the same principle to WASM memory.** Regions are tables.
+Loads are SELECT queries. Stores are UPDATE statements. Schemas are the type
+system. The Idris2 prover verifies safety at compile time. The output is bare
+WASM instructions with zero overhead.
+
+== The 10 Levels
+
+[cols="1,2,2"]
+|===
+| Level | Database (TypedQL) | WASM (typed-wasm)
+
+| 1 | Parse-time safety | Instruction validity
+| 2 | Schema-binding | Region + field resolution
+| 3 | Type compatibility | Load/store type matching
+| 4 | Null safety | Nullable pointer tracking
+| 5 | Injection-proof | Bounds-proof (compile-time)
+| 6 | Result-type | Access return type known
+| 7 | Cardinality | Aliasing safety
+| 8 | Effect-tracking | Read/Write/Alloc/Free
+| 9 | Temporal safety | Lifetime safety (no UAF)
+| 10 | Linearity | Linear resource usage
+|===
+
+== The Killer Feature: Multi-Module Type Safety
+
+When Module A (compiled from Rust) shares memory with Module B (compiled from
+ReScript), **neither source-level type system can verify the boundary.**
+
+Rust's borrow checker types memory within Rust. ReScript's type system types
+values within ReScript. If Rust writes a struct at offset 0 and ReScript reads
+from offset 0 assuming a different layout, you get silent corruption.
+
+typed-wasm declares the shared schema once. Both modules import it. The
+typed-wasm checker verifies structural agreement at compile time, before any
+module runs.
+
+[source]
+----
+// Module A (from Rust) — declares and exports
+region Entity[1024] {
+    pos_x: f32;
+    pos_y: f32;
+    hp:    i32;
+}
+export region Entity;
+
+// Module B (from ReScript) — imports and uses
+import region Entity from "physics" {
+    pos_x: f32;
+    pos_y: f32;
+    hp:    i32;
+}
+
+fn read_hp(entities: &region<Entity>, idx: i32) -> i32
+    effects { ReadRegion(Entity) }
+{
+    region.get $entities[idx] .hp -> hp;
+    return hp;
+}
+----
+
+typed-wasm verifies that Module B's imported fields match Module A's export
+in name, type, offset, and alignment.
+
+== Architecture
+
+[cols="1,1,1"]
+|===
+| Layer | Technology | Role
+
+| ABI
+| Idris2
+| Dependent types proving region schemas correct
+
+| FFI
+| Zig
+| C-ABI compatible memory operations
+
+| Parser
+| ReScript (planned)
+| Parse `.twasm` syntax to AST
+
+| Proofs
+| Idris2 totality checker
+| Verify levels 5-10 at compile time
+
+| Codegen
+| Zig -> WASM
+| Emit raw WASM instructions from typed access
+
+| Testing
+| ECHIDNA
+| Property-based fuzzing of proof soundness
+|===
+
+== Quick Tour
+
+[source,bash]
+----
+spec/grammar.ebnf              # The grammar — core intellectual artifact
+spec/10-levels-for-wasm.adoc   # How each level maps from DB to WASM
+src/abi/*.idr                   # Idris2 formal proofs
+ffi/zig/src/main.zig            # Zig C-ABI implementation
+examples/01-single-module.twasm # Basic typed regions
+examples/02-multi-module.twasm  # THE killer feature demo
+examples/03-ownership-linearity.twasm  # Levels 7-10
+examples/04-ecs-game.twasm      # ECS as a columnar database
+docs/WHITEPAPER.md              # Full academic treatment
+----
+
+== Status
+
+**Pre-alpha / Research.** The grammar and specifications are complete. The
+Idris2 ABI and Zig FFI provide the formal foundation and runtime bridge.
+Examples demonstrate all 10 levels. The next step is building the ReScript
+parser and connecting to the Idris2 prover for end-to-end verification.
+
+== Related Projects
+
+- https://github.com/hyperpolymath/typell[TypeLL] — Type theory foundation
+- https://github.com/hyperpolymath/typedqliser[TypedQLiser] — 10-level safety for query languages
+- https://github.com/hyperpolymath/vql-ut[VQL-UT] — 10-level safety for VeriSimDB
+- https://github.com/hyperpolymath/echidna[ECHIDNA] — Property-based prover testing
+
+== GraalVM Implications
+
+GraalVM's Truffle framework has the same multi-language shared state problem.
+typed-wasm's approach could give GraalVM **compile-time guarantees** for
+cross-language interop, replacing runtime `InteropLibrary` dispatch with
+compile-time schema agreement. See `docs/WHITEPAPER.md` for details.
+
+== License
+
+PMPL-1.0-or-later
+
+== Author
+
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
