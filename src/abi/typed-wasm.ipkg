@@ -4,16 +4,16 @@
 -- Package definition for typed-wasm ABI layer.
 -- The 10-level type safety proofs for WebAssembly linear memory.
 
-package typed-wasm
+package typedwasm
 
 sourcedir = "."
 
-modules = TypedWasm.ABI.Region
-        , TypedWasm.ABI.TypedAccess
-        , TypedWasm.ABI.Levels
-        , TypedWasm.ABI.Pointer
-        , TypedWasm.ABI.Effects
-        , TypedWasm.ABI.Lifetime
-        , TypedWasm.ABI.Linear
-        , TypedWasm.ABI.MultiModule
-        , TypedWasm.ABI.Proofs
+modules = TypedWasm.ABI.Region,
+          TypedWasm.ABI.TypedAccess,
+          TypedWasm.ABI.Levels,
+          TypedWasm.ABI.Pointer,
+          TypedWasm.ABI.Effects,
+          TypedWasm.ABI.Lifetime,
+          TypedWasm.ABI.Linear,
+          TypedWasm.ABI.MultiModule,
+          TypedWasm.ABI.Proofs
