@@ -68,4 +68,22 @@ pub fn build(b: *std.Build) void {
     const run_integration = b.addRunArtifact(integration_tests);
     const integration_step = b.step("integration", "Run integration tests");
     integration_step.dependOn(&run_integration.step);
+
+    // ECHIDNA oracle tests (property-based verification)
+    const oracle_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/echidna_oracle_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "typed_wasm", .module = lib_mod },
+            },
+        }),
+    });
+    const run_oracle = b.addRunArtifact(oracle_tests);
+    const oracle_step = b.step("oracle", "Run ECHIDNA oracle property tests");
+    oracle_step.dependOn(&run_oracle.step);
+
+    // Also run oracle tests as part of the main test step
+    test_step.dependOn(&run_oracle.step);
 }
