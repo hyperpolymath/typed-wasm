@@ -455,11 +455,11 @@ test "handle encoding roundtrip" {
 
     const offset: u32 = @truncate(handle);
     const schema_id: u16 = @truncate(handle >> 32);
-    const gen: u16 = @truncate(handle >> 48);
     const owning: bool = (handle >> 63) == 1;
+    const gen: u15 = @truncate(handle >> 48);
 
     try std.testing.expectEqual(offset, 1024);
     try std.testing.expectEqual(schema_id, 42);
-    try std.testing.expectEqual(gen, 7);
+    try std.testing.expectEqual(gen, @as(u15, 7));
     try std.testing.expect(owning);
 }

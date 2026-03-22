@@ -1,0 +1,19 @@
+-- SPDX-License-Identifier: PMPL-1.0-or-later
+-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+--
+-- Package definition for typed-wasm ABI layer.
+-- The 10-level type safety proofs for WebAssembly linear memory.
+
+package typed-wasm
+
+sourcedir = "."
+
+modules = TypedWasm.ABI.Region
+        , TypedWasm.ABI.TypedAccess
+        , TypedWasm.ABI.Levels
+        , TypedWasm.ABI.Pointer
+        , TypedWasm.ABI.Effects
+        , TypedWasm.ABI.Lifetime
+        , TypedWasm.ABI.Linear
+        , TypedWasm.ABI.MultiModule
+        , TypedWasm.ABI.Proofs
