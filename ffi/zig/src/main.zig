@@ -110,13 +110,14 @@ pub const RegionError = enum(u32) {
 const MAX_REGIONS: usize = 4096;
 
 /// Generation counter for lifetime tracking (Level 9).
-var generation_counter: u16 = 0;
+/// 15 bits (0-32767) — bit 15 of the handle's generation field is the ownership flag.
+var generation_counter: u15 = 0;
 
 /// Registry entry for a live region.
 const RegistryEntry = struct {
     schema: *const RegionSchema,
     base_offset: u32,
-    generation: u16,
+    generation: u15,
     is_live: bool,
     ref_count: u16, // number of active borrows
     has_mut_borrow: bool, // exclusive mutable borrow active
@@ -141,7 +142,7 @@ var registry: [MAX_REGIONS]RegistryEntry = [_]RegistryEntry{.{
 ///
 /// The Idris2 ABI proves that the caller will free this handle exactly once.
 /// This function trusts that proof and does not add runtime linearity checks.
-export fn tw_region_alloc(
+export fn tw_region_alloc_c(
     schema: *const RegionSchema,
     memory_base: [*]u8,
     memory_size: u32,
@@ -183,7 +184,7 @@ export fn tw_region_alloc(
 
 /// Free a region instance. Consumes the owning handle.
 /// After this call, any use of the handle is a Level 9 violation.
-export fn tw_region_free(handle: RegionHandle) RegionError {
+export fn tw_region_free_c(handle: RegionHandle) RegionError {
     const slot = decode_slot(handle) orelse return .lifetime_expired;
     var entry = &registry[slot];
 
@@ -203,7 +204,7 @@ export fn tw_region_free(handle: RegionHandle) RegionError {
 /// Level 3: field type must be i32.
 /// Level 5: instance_index must be < schema.instance_count.
 /// Level 6: return type is i32.
-export fn tw_region_get_i32(
+export fn tw_region_get_i32_c(
     handle: RegionHandle,
     instance_index: u32,
     field_index: u16,
@@ -232,7 +233,7 @@ export fn tw_region_get_i32(
 
 /// Write a 32-bit integer field to a region instance.
 /// Same level checks as get, plus Level 7: requires &mut (exclusive access).
-export fn tw_region_set_i32(
+export fn tw_region_set_i32_c(
     handle: RegionHandle,
     instance_index: u32,
     field_index: u16,
@@ -260,7 +261,7 @@ export fn tw_region_set_i32(
 }
 
 /// Read a 64-bit float field from a region instance.
-export fn tw_region_get_f64(
+export fn tw_region_get_f64_c(
     handle: RegionHandle,
     instance_index: u32,
     field_index: u16,
@@ -287,7 +288,7 @@ export fn tw_region_get_f64(
 }
 
 /// Read a 32-bit float field from a region instance.
-export fn tw_region_get_f32(
+export fn tw_region_get_f32_c(
     handle: RegionHandle,
     instance_index: u32,
     field_index: u16,
@@ -319,7 +320,7 @@ export fn tw_region_get_f32(
 
 /// Acquire a shared (immutable) borrow on a region.
 /// Multiple shared borrows can coexist. Fails if a mutable borrow is active.
-export fn tw_region_borrow(handle: RegionHandle) RegionError {
+export fn tw_region_borrow_c(handle: RegionHandle) RegionError {
     const slot = decode_slot(handle) orelse return .lifetime_expired;
     var entry = &registry[slot];
 
@@ -332,7 +333,7 @@ export fn tw_region_borrow(handle: RegionHandle) RegionError {
 
 /// Acquire an exclusive (mutable) borrow on a region.
 /// Fails if any borrows (shared or mutable) are active.
-export fn tw_region_borrow_mut(handle: RegionHandle) RegionError {
+export fn tw_region_borrow_mut_c(handle: RegionHandle) RegionError {
     const slot = decode_slot(handle) orelse return .lifetime_expired;
     var entry = &registry[slot];
 
@@ -345,7 +346,7 @@ export fn tw_region_borrow_mut(handle: RegionHandle) RegionError {
 }
 
 /// Release a shared borrow.
-export fn tw_region_release(handle: RegionHandle) RegionError {
+export fn tw_region_release_c(handle: RegionHandle) RegionError {
     const slot = decode_slot(handle) orelse return .lifetime_expired;
     var entry = &registry[slot];
 
@@ -357,7 +358,7 @@ export fn tw_region_release(handle: RegionHandle) RegionError {
 }
 
 /// Release a mutable borrow.
-export fn tw_region_release_mut(handle: RegionHandle) RegionError {
+export fn tw_region_release_mut_c(handle: RegionHandle) RegionError {
     const slot = decode_slot(handle) orelse return .lifetime_expired;
     var entry = &registry[slot];
 
@@ -378,7 +379,7 @@ export fn tw_region_release_mut(handle: RegionHandle) RegionError {
 ///
 /// Returns .ok if schemas agree on all fields present in `imported`.
 /// The imported schema may be a subset (fewer fields) of the exported schema.
-export fn tw_schema_verify(
+export fn tw_schema_verify_c(
     exported: *const RegionSchema,
     imported: *const RegionSchema,
 ) RegionError {
@@ -416,6 +417,108 @@ export fn tw_schema_verify(
 }
 
 // ============================================================================
+// Simplified Public API (for Zig test modules)
+// ============================================================================
+// The export fn functions use C ABI and require explicit memory_base/memory_size
+// parameters. These pub wrappers manage an internal memory buffer so that Zig
+// test modules can call them with simpler signatures.
+
+/// Internal memory buffer used by the simplified API.
+var internal_memory: [1024 * 1024]u8 = [_]u8{0} ** (1024 * 1024);
+var internal_alloc_offset: u32 = 0;
+
+/// Allocate a region using the internal memory buffer.
+pub fn tw_region_alloc(schema: *const RegionSchema) RegionHandle {
+    const offset = internal_alloc_offset;
+    const size = schema.instance_size * schema.instance_count;
+    // Align offset to schema alignment
+    const aligned_offset = (offset + schema.alignment - 1) & ~(schema.alignment - 1);
+    internal_alloc_offset = aligned_offset + size;
+    return tw_region_alloc_c(schema, &internal_memory, @as(u32, @intCast(internal_memory.len)), aligned_offset);
+}
+
+/// Free a region (delegates to C ABI function).
+pub fn tw_region_free(handle: RegionHandle) RegionError {
+    return tw_region_free_c(handle);
+}
+
+/// Read an i32 field using the internal memory buffer.
+pub fn tw_region_get_i32(handle: RegionHandle, field_index: u16) i32 {
+    return tw_region_get_i32_c(handle, 0, field_index, &internal_memory);
+}
+
+/// Write an i32 field using the internal memory buffer.
+pub fn tw_region_set_i32(handle: RegionHandle, field_index: u16, value: i32) RegionError {
+    return tw_region_set_i32_c(handle, 0, field_index, value, &internal_memory);
+}
+
+/// Acquire a shared borrow (delegates to C ABI function).
+pub fn tw_region_borrow(handle: RegionHandle) RegionError {
+    return tw_region_borrow_c(handle);
+}
+
+/// Acquire an exclusive borrow (delegates to C ABI function).
+pub fn tw_region_borrow_mut(handle: RegionHandle) RegionError {
+    return tw_region_borrow_mut_c(handle);
+}
+
+/// Release a shared borrow (delegates to C ABI function).
+pub fn tw_region_release(handle: RegionHandle) RegionError {
+    return tw_region_release_c(handle);
+}
+
+/// Release a mutable borrow (delegates to C ABI function).
+pub fn tw_region_release_mut(handle: RegionHandle) RegionError {
+    return tw_region_release_mut_c(handle);
+}
+
+/// Verify schema compatibility. Returns 1 if compatible, 0 if not.
+/// Uses positional field matching (by index) which is safe for schemas where
+/// field names may not be unique.
+pub fn tw_schema_verify(exported: *const RegionSchema, imported: *const RegionSchema) i32 {
+    // Instance size and alignment must agree
+    if (exported.instance_size != imported.instance_size) return 0;
+    if (exported.alignment != imported.alignment) return 0;
+
+    // Imported field count must not exceed exported
+    if (imported.field_count > exported.field_count) return 0;
+
+    // Every field in the import must match the export at the same index
+    for (0..imported.field_count) |i| {
+        const imp = &imported.fields[i];
+        const exp = &exported.fields[i];
+
+        if (imp.field_type != exp.field_type) return 0;
+        if (imp.offset != exp.offset) return 0;
+        if (imp.size != exp.size) return 0;
+    }
+
+    return 1;
+}
+
+// ============================================================================
+// Schema Descriptor (simplified type for integration tests)
+// ============================================================================
+
+/// Simplified schema descriptor for integration tests.
+pub const SchemaDescriptor = struct {
+    name: []const u8,
+    field_count: u32,
+    total_size: u32,
+    alignment: u32,
+};
+
+/// Return the byte size for a WASM primitive type.
+pub fn wasmTypeSize(t: FieldType) u32 {
+    return switch (t) {
+        .i8, .u8, .bool_ => 1,
+        .i16, .u16 => 2,
+        .i32, .u32, .f32 => 4,
+        .i64, .u64, .f64, .ptr, .ref_, .unique, .region_ref => 8,
+    };
+}
+
+// ============================================================================
 // Internal Helpers
 // ============================================================================
 
@@ -423,7 +526,8 @@ export fn tw_schema_verify(
 /// Returns null if the handle's generation doesn't match (Level 9: lifetime expired).
 fn decode_slot(handle: RegionHandle) ?usize {
     const base_offset: u32 = @truncate(handle);
-    const generation: u16 = @truncate(handle >> 48);
+    // Mask out the ownership flag (bit 63) before extracting generation (bits 48-62)
+    const generation: u15 = @truncate(handle >> 48);
 
     // Linear search for matching entry (could be optimised with a hash map)
     for (&registry, 0..) |*entry, i| {
