@@ -40,7 +40,13 @@ erl_crash.dump
 
 # ReScript
 /lib/bs/
+/lib/ocaml/
 /.bsb.lock
+*.mjs
+*.cmi
+*.cmj
+*.cmt
+lib/rescript.lock
 
 # Python (SaltStack only)
 __pycache__/
