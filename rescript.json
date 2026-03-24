@@ -1,0 +1,12 @@
+{
+  "name": "typed-wasm",
+  "sources": [
+    { "dir": "src/parser", "subdirs": false },
+    { "dir": "tests/parser", "subdirs": false }
+  ],
+  "package-specs": [
+    { "module": "esmodule", "in-source": true }
+  ],
+  "suffix": ".mjs",
+  "warnings": { "number": "+a" }
+}

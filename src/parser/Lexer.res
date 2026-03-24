@@ -155,7 +155,7 @@ type token =
   | Caret // ^
   | LShift // <<
   | RShift // >>
-  | At // @
+  // At is defined above as keyword — also used for @ symbol
   // --- Special ---
   | EOF
 
