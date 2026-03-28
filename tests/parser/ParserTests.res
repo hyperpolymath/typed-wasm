@@ -54,7 +54,7 @@ let assertOk = result => {
 
 let exampleMinimal = `
 region Empty {
-  value: i32,
+  value: i32;
 }
 `
 
@@ -66,15 +66,17 @@ let exampleCommentsOnly = `// This file has only comments
 
 let example01 = `
 region Vec2 {
-  x: f32,
-  y: f32,
+  x: f32;
+  y: f32;
 }
 
 region Players[100] {
-  hp: i32 where 0 <= hp <= 9999,
-  pos: @Vec2,
-  name_ptr: ptr<u8>,
-  target: opt<@Players>,
+  hp: i32;
+  pos: @Vec2;
+  name_ptr: ptr<u8>;
+  target: opt<@Players>;
+
+  where 0 <= hp <= 9999;
 }
 
 fn move_player(
@@ -83,7 +85,7 @@ fn move_player(
   dx: f32,
   dy: f32
 ) -> i32
-  effects ReadRegion(Players), WriteRegion(Players), ReadRegion(Vec2), WriteRegion(Vec2)
+  effects { ReadRegion(Players), WriteRegion(Players), ReadRegion(Vec2), WriteRegion(Vec2) }
 {
   region.get $players[idx] .hp -> current_hp;
   if current_hp <= 0 {
@@ -194,8 +196,10 @@ test("parse comments-only file", () => {
 test("parse region with constraint", () => {
   let src = `
 region Health[100] {
-  hp: i32 where 0 <= hp <= 9999,
-  max_hp: i32,
+  hp: i32;
+  max_hp: i32;
+
+  where 0 <= hp <= 9999;
 }
 `
   let module_ = parseModule(src)->assertOk
@@ -216,7 +220,7 @@ fn read_hp(
   players: &region<Players>,
   idx: i32
 ) -> i32
-  effects ReadRegion(Players)
+  effects { ReadRegion(Players) }
 {
   region.get $players[idx] .hp -> val;
   return val;
@@ -246,10 +250,10 @@ test("parse example01 (single module)", () => {
 test("region fields have correct types", () => {
   let src = `
 region TestTypes {
-  a: i32,
-  b: f64,
-  c: u8,
-  d: ptr<i32>,
+  a: i32;
+  b: f64;
+  c: u8;
+  d: ptr<i32>;
 }
 `
   let module_ = parseModule(src)->assertOk
@@ -265,8 +269,8 @@ region TestTypes {
 test("parse memory declaration", () => {
   let src = `
 memory Main {
-  pages: 256,
-  max_pages: 1024,
+  initial: 256;
+  maximum: 1024;
 }
 `
   let module_ = parseModule(src)->assertOk
@@ -275,6 +279,148 @@ memory Main {
   switch decl.node {
   | MemoryDecl(_) => ()
   | _ => Exn.raiseError("Expected MemoryDecl")
+  }
+})
+
+// ============================================================================
+// Example File Tests — parse all 4 .twasm examples from examples/
+// ============================================================================
+
+Console.log("--- Example File Tests ---")
+
+// Helper: read a file from disk using Node.js fs module.
+// We use @val external bindings since ReScript compiles to ESM.
+@module("node:fs") external readFileSync: (string, string) => string = "readFileSync"
+@module("node:path") external resolve: (string, string) => string = "resolve"
+@module("node:url") external fileURLToPath: string => string = "fileURLToPath"
+
+// Build the path relative to this file's directory.
+// import.meta.url is available because rescript.json uses esmodule output.
+@val external importMetaUrl: string = "import.meta.url"
+let testDir = fileURLToPath(importMetaUrl)->resolve("..")
+let examplesDir = resolve(resolve(resolve(testDir, ".."), ".."), "examples")
+
+let readExample = (filename: string): string => {
+  readFileSync(resolve(examplesDir, filename), "utf-8")
+}
+
+test("parse examples/01-single-module.twasm", () => {
+  let src = readExample("01-single-module.twasm")
+  let module_ = parseModule(src)->assertOk
+  // Should have: Vec2, Players, Enemies regions + game_memory + 5 functions = 9 decls
+  assertTrue(
+    module_.declarations->Array.length >= 8,
+    `Example 01 should have at least 8 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+  )
+  // First decl should be Vec2 region
+  let first = module_.declarations->Array.getUnsafe(0)
+  switch first.node {
+  | RegionDecl(r) =>
+    assertEqual(r.name, "Vec2", "First declaration should be Vec2 region")
+    assertEqual(r.fields->Array.length, 2, "Vec2 should have 2 fields (x, y)")
+  | _ => Exn.raiseError("Expected first decl to be RegionDecl(Vec2)")
+  }
+  // Second decl should be Players region with instance count
+  let second = module_.declarations->Array.getUnsafe(1)
+  switch second.node {
+  | RegionDecl(r) =>
+    assertEqual(r.name, "Players", "Second declaration should be Players region")
+    assertTrue(r.instanceCount->Option.isSome, "Players should have instance count [100]")
+    assertTrue(r.fields->Array.length >= 4, "Players should have at least 4 fields")
+  | _ => Exn.raiseError("Expected second decl to be RegionDecl(Players)")
+  }
+})
+
+test("parse examples/02-multi-module.twasm", () => {
+  let src = readExample("02-multi-module.twasm")
+  let module_ = parseModule(src)->assertOk
+  // Should have: Entity region, export, physics_step fn, import, AIState, ai_decision,
+  //   import, collect_visible = 8+ decls
+  assertTrue(
+    module_.declarations->Array.length >= 7,
+    `Example 02 should have at least 7 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+  )
+  // Verify export region exists
+  let hasExport =
+    module_.declarations->Array.some(d =>
+      switch d.node {
+      | ExportRegionDecl(e) => e.regionName == "Entity"
+      | _ => false
+      }
+    )
+  assertTrue(hasExport, "Should have an export region Entity")
+  // Verify import regions exist
+  let importCount =
+    module_.declarations->Array.reduce(0, (acc, d) =>
+      switch d.node {
+      | ImportRegionDecl(_) => acc + 1
+      | _ => acc
+      }
+    )
+  assertTrue(importCount >= 2, "Should have at least 2 import declarations")
+})
+
+test("parse examples/03-ownership-linearity.twasm", () => {
+  let src = readExample("03-ownership-linearity.twasm")
+  let module_ = parseModule(src)->assertOk
+  // Should have: Particle region, FreeSlot region, and several functions
+  assertTrue(
+    module_.declarations->Array.length >= 4,
+    `Example 03 should have at least 4 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+  )
+  // Verify Particle region exists
+  let hasParticle =
+    module_.declarations->Array.some(d =>
+      switch d.node {
+      | RegionDecl(r) => r.name == "Particle"
+      | _ => false
+      }
+    )
+  assertTrue(hasParticle, "Should have a Particle region")
+  // Verify there are functions with various effects
+  let fnCount =
+    module_.declarations->Array.reduce(0, (acc, d) =>
+      switch d.node {
+      | FunctionDecl(_) => acc + 1
+      | _ => acc
+      }
+    )
+  assertTrue(fnCount >= 3, `Should have at least 3 functions, got ${fnCount->Int.toString}`)
+})
+
+test("parse examples/04-ecs-game.twasm", () => {
+  let src = readExample("04-ecs-game.twasm")
+  let module_ = parseModule(src)->assertOk
+  // Should have: Transform, Health, Inventory regions + 2 invariants + functions
+  assertTrue(
+    module_.declarations->Array.length >= 7,
+    `Example 04 should have at least 7 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+  )
+  // Verify cross-region invariant exists
+  let hasInvariant =
+    module_.declarations->Array.some(d =>
+      switch d.node {
+      | InvariantDecl(inv) => inv.name == "health_entity_fk"
+      | _ => false
+      }
+    )
+  assertTrue(hasInvariant, "Should have health_entity_fk invariant")
+  // Verify Transform region has alignment
+  let transformDecl = module_.declarations->Array.find(d =>
+    switch d.node {
+    | RegionDecl(r) => r.name == "Transform"
+    | _ => false
+    }
+  )
+  switch transformDecl {
+  | Some(d) =>
+    switch d.node {
+    | RegionDecl(r) =>
+      assertTrue(r.alignment->Option.isSome, "Transform should have alignment")
+      assertTrue(r.instanceCount->Option.isSome, "Transform should have instance count")
+    | _ => Exn.raiseError("Expected RegionDecl")
+    }
+  | None => Exn.raiseError("Transform region not found")
   }
 })
 

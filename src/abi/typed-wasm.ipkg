@@ -8,12 +8,4 @@ package typedwasm
 
 sourcedir = "."
 
-modules = TypedWasm.ABI.Region,
-          TypedWasm.ABI.TypedAccess,
-          TypedWasm.ABI.Levels,
-          TypedWasm.ABI.Pointer,
-          TypedWasm.ABI.Effects,
-          TypedWasm.ABI.Lifetime,
-          TypedWasm.ABI.Linear,
-          TypedWasm.ABI.MultiModule,
-          TypedWasm.ABI.Proofs
+modules = TypedWasm.ABI.Region, TypedWasm.ABI.TypedAccess, TypedWasm.ABI.Levels, TypedWasm.ABI.Pointer, TypedWasm.ABI.Effects, TypedWasm.ABI.Lifetime, TypedWasm.ABI.Linear, TypedWasm.ABI.MultiModule, TypedWasm.ABI.Proofs

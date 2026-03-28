@@ -264,45 +264,36 @@ init:
 # BUILD & COMPILE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Build the project (debug mode)
+# Build the project — ReScript parser + Zig FFI
 build *args:
-    @echo "Building {{project}} (debug)..."
-    # TODO: Replace with your build command
-    # Examples:
-    #   cargo build {{args}}                    # Rust
-    #   mix compile {{args}}                    # Elixir
-    #   zig build {{args}}                      # Zig
-    #   deno task build {{args}}                # Deno/ReScript
+    @echo "Building {{project}}..."
+    rescript build
+    cd ffi/zig && zig build
     @echo "Build complete"
 
 # Build in release mode with optimizations
 build-release *args:
     @echo "Building {{project}} (release)..."
-    # TODO: Replace with your release build command
-    # Examples:
-    #   cargo build --release {{args}}
-    #   MIX_ENV=prod mix compile {{args}}
-    #   zig build -Doptimize=ReleaseFast {{args}}
+    rescript build
+    cd ffi/zig && zig build -Doptimize=ReleaseFast
     @echo "Release build complete"
 
-# Build and watch for changes (requires entr or similar)
+# Build and watch for changes
 build-watch:
     @echo "Watching for changes..."
-    # TODO: Customize file patterns for your language
-    # Examples:
-    #   find src -name '*.rs' | entr -c just build
-    #   mix compile --force --warnings-as-errors
-    #   deno task dev
+    find src -name '*.res' | entr -c just build
 
 # Clean build artifacts [reversible: rebuild with `just build`]
 clean:
     @echo "Cleaning..."
-    # TODO: Customize for your build system
-    rm -rf target/ _build/ build/ dist/ out/ obj/ bin/
+    rescript clean
+    rm -rf lib/bs lib/ocaml
+    rm -rf ffi/zig/zig-out ffi/zig/.zig-cache
+    rm -rf src/abi/build
 
 # Deep clean including caches [reversible: rebuild]
 clean-all: clean
-    rm -rf .cache .tmp
+    rm -rf .cache .tmp node_modules
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TEST & QUALITY
@@ -911,3 +902,48 @@ maint-assault:
 assail:
     @command -v panic-attack >/dev/null 2>&1 && panic-attack assail . || echo "WARN: panic-attack not found — install from https://github.com/hyperpolymath/panic-attacker"
 
+
+# Self-diagnostic — checks dependencies, permissions, paths
+doctor:
+    @echo "Running diagnostics for typed-wasm..."
+    @echo "Checking required tools..."
+    @command -v just >/dev/null 2>&1 && echo "  [OK] just" || echo "  [FAIL] just not found"
+    @command -v git >/dev/null 2>&1 && echo "  [OK] git" || echo "  [FAIL] git not found"
+    @echo "Checking for hardcoded paths..."
+    @grep -rn '$HOME\|$ECLIPSE_DIR' --include='*.rs' --include='*.ex' --include='*.res' --include='*.gleam' --include='*.sh' . 2>/dev/null | head -5 || echo "  [OK] No hardcoded paths"
+    @echo "Diagnostics complete."
+
+# Auto-repair common issues
+heal:
+    @echo "Attempting auto-repair for typed-wasm..."
+    @echo "Fixing permissions..."
+    @find . -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+    @echo "Cleaning stale caches..."
+    @rm -rf .cache/stale 2>/dev/null || true
+    @echo "Repair complete."
+
+# Guided tour of key features
+tour:
+    @echo "=== typed-wasm Tour ==="
+    @echo ""
+    @echo "1. Project structure:"
+    @ls -la
+    @echo ""
+    @echo "2. Available commands: just --list"
+    @echo ""
+    @echo "3. Read README.adoc for full overview"
+    @echo "4. Read EXPLAINME.adoc for architecture decisions"
+    @echo "5. Run 'just doctor' to check your setup"
+    @echo ""
+    @echo "Tour complete! Try 'just --list' to see all available commands."
+
+# Open feedback channel with diagnostic context
+help-me:
+    @echo "=== typed-wasm Help ==="
+    @echo "Platform: $(uname -s) $(uname -m)"
+    @echo "Shell: $SHELL"
+    @echo ""
+    @echo "To report an issue:"
+    @echo "  https://github.com/hyperpolymath/typed-wasm/issues/new"
+    @echo ""
+    @echo "Include the output of 'just doctor' in your report."
