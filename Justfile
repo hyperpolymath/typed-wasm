@@ -299,26 +299,36 @@ clean-all: clean
 # TEST & QUALITY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Run all tests
+# Run all tests — ReScript parser tests + Zig FFI tests
 test *args:
-    @echo "Running tests..."
-    # TODO: Replace with your test command
-    # Examples:
-    #   cargo test {{args}}
-    #   mix test {{args}}
-    #   zig build test {{args}}
-    #   deno test {{args}}
-    @echo "Tests passed!"
+    @echo "Running ReScript parser tests..."
+    rescript build
+    node tests/parser/ParserTests.mjs
+    @echo ""
+    @echo "Running Zig FFI tests..."
+    cd ffi/zig && zig build test
+    @echo ""
+    @echo "All tests passed!"
 
 # Run tests with verbose output
 test-verbose:
-    @echo "Running tests (verbose)..."
-    # TODO: Replace with verbose test command
+    @echo "Running all tests (verbose)..."
+    rescript build
+    node tests/parser/ParserTests.mjs
+    cd ffi/zig && zig build test
+    node tests/smoke/e2e-smoke.mjs
 
-# Smoke test
+# End-to-end smoke test — parse example, verify ABI correspondence
 test-smoke:
-    @echo "Smoke test..."
-    # TODO: Add basic sanity checks
+    @echo "Running E2E smoke test..."
+    rescript build
+    node tests/smoke/e2e-smoke.mjs
+
+# Type-check Idris2 ABI modules (formal proofs)
+check-abi:
+    @echo "Type-checking Idris2 ABI modules..."
+    cd src/abi && idris2 --build typed-wasm.ipkg
+    @echo "All 9 ABI modules type-check successfully."
 
 # Run all quality checks
 quality: fmt-check lint test
