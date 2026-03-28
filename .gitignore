@@ -43,6 +43,7 @@ erl_crash.dump
 /lib/ocaml/
 /.bsb.lock
 *.mjs
+!tests/smoke/*.mjs
 *.cmi
 *.cmj
 *.cmt

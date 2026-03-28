@@ -1,0 +1,11 @@
+{
+  "name": "typed-wasm",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "license": "PMPL-1.0-or-later",
+  "dependencies": {
+    "@rescript/runtime": "^12.0.0",
+    "rescript": "^12.0.0"
+  }
+}
