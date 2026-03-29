@@ -20,7 +20,7 @@ Key capabilities delivered:
 * `.twasm` grammar (spec/grammar.ebnf) -- EBNF surface syntax
 * 10-level spec (spec/10-levels-for-wasm.adoc) -- DB-to-WASM level mapping
 * Example `.twasm` files demonstrating all features
-* arXiv-ready whitepaper draft (docs/WHITEPAPER.md)
+* arXiv-ready whitepaper (docs/WHITEPAPER.md + docs/arxiv/typed-wasm.tex)
 * No dangerous patterns (believe_me, assert_total, unsafeCoerce)
 
 == v0.1.0 -- Formal Foundations (Complete)
@@ -35,21 +35,23 @@ Key capabilities delivered:
 * [x] Example `.twasm` files
 * [x] Multi-module shared memory type definitions
 
-== v0.2.0 -- ECHIDNA Integration
+== v0.2.0 -- ECHIDNA Integration (Complete — 2026-03-29)
 
-* [ ] Property-based testing of proof soundness via ECHIDNA Prover Wars
-* [ ] Random `.twasm` program generation
-* [ ] Prover oracle testing (Idris2 prover pass but runtime fail = soundness bug)
+* [x] Property-based testing of proof soundness via ECHIDNA Prover Wars
+* [x] Random `.twasm` program generation (tests/echidna/echidna-harness.mjs)
+* [x] Prover oracle testing (ffi/zig/test/echidna_oracle_test.zig — 7 properties)
 
-== v0.3.0 -- arXiv Paper
+== v0.3.0 -- arXiv Paper (Complete — 2026-03-29)
 
-* [ ] Formalise whitepaper for arXiv submission
+* [x] Formalise whitepaper for arXiv submission (docs/arxiv/typed-wasm.tex — ACM sigplan format)
+* [x] BibTeX bibliography (docs/arxiv/typed-wasm.bib — 15 references)
 * [ ] Benchmark multi-module type checking overhead
 * [ ] Comparison with existing WASM safety approaches
+* [ ] Submit to arXiv (cs.PL) — requires manual upload
 
-== v0.4.0 -- Ecosystem Integration
+== v0.4.0 -- Ecosystem Integration (Partially Complete)
 
-* [ ] TypedQLiser plugin (WASM as a "query target")
+* [x] TypedQLiser plugin (WASM as a "query target") — typedqliser/src/plugins/wasm.rs (541 lines)
 * [ ] VQL-UT sibling integration (same levels, different domain)
 * [ ] GraalVM/Truffle target (multi-language shared state type safety)
 

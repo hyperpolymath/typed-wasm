@@ -9,3 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Run: just changelog -->
 
 ## [Unreleased]
+
+### Added
+- ECHIDNA prover oracle JS harness (tests/echidna/echidna-harness.mjs) — random .twasm generator, 4 property tests, optional ECHIDNA submission
+- arXiv-ready LaTeX paper (docs/arxiv/typed-wasm.tex) — ACM sigplan format, 851 lines
+- BibTeX bibliography (docs/arxiv/typed-wasm.bib) — 15 references
+- TypedQLiser plugin exists at typedqliser/src/plugins/wasm.rs (541 lines, 9 tests)
