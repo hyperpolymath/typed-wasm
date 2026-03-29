@@ -44,6 +44,7 @@ erl_crash.dump
 /.bsb.lock
 *.mjs
 !tests/smoke/*.mjs
+!tests/echidna/*.mjs
 *.cmi
 *.cmj
 *.cmt
