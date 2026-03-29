@@ -1,0 +1,851 @@
+% SPDX-License-Identifier: PMPL-1.0-or-later
+% Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+%
+% typed-wasm: Applying Database Query Type Safety to WebAssembly Linear Memory
+% Prepared for arXiv submission using ACM acmart document class.
+
+\documentclass[sigplan,nonacm,screen]{acmart}
+
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+
+% --------------------------------------------------------------------------
+% Theorem-like environments
+% --------------------------------------------------------------------------
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{conjecture}{Conjecture}
+
+% --------------------------------------------------------------------------
+% Listings configuration
+% --------------------------------------------------------------------------
+\definecolor{codebg}{gray}{0.96}
+\definecolor{codegreen}{rgb}{0.0,0.45,0.0}
+\definecolor{codepurple}{rgb}{0.5,0.0,0.5}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+
+\lstdefinelanguage{Idris2}{
+  morekeywords={data,where,Type,let,in,do,module,import,total,covering,partial,
+    using,namespace,record,interface,implementation,with,proof,impossible,
+    forall,auto,default,public,export,private},
+  sensitive=true,
+  morecomment=[l]{--},
+  morecomment=[s]{\{-}{-\}},
+  morestring=[b]",
+  literate={->}{{$\to$}}2 {=>}{{$\Rightarrow$}}2,
+}
+
+\lstdefinelanguage{twasm}{
+  morekeywords={region,import,export,module,field,align,invariant,across,holds,
+    forall,effects,ReadRegion,WriteRegion,Alloc,Free,ptr,ref,unique,opt,
+    own,where,scan,get,set,free},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  keywordstyle=\color{codepurple}\bfseries,
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{codegray},
+  numbers=none,
+  numberstyle=\tiny\color{codegray},
+  frame=single,
+  framerule=0.4pt,
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=2,
+  captionpos=b,
+  columns=flexible,
+  keepspaces=true,
+  showstringspaces=false,
+}
+
+% --------------------------------------------------------------------------
+% Metadata
+% --------------------------------------------------------------------------
+\title{typed-wasm: Applying Database Query Type Safety to WebAssembly Linear Memory}
+
+\author{Jonathan D.A. Jewell}
+\affiliation{%
+  \institution{The Open University}
+  \city{Milton Keynes}
+  \country{United Kingdom}
+}
+\email{j.d.a.jewell@open.ac.uk}
+
+\begin{abstract}
+WebAssembly (Wasm) linear memory is an untyped byte array shared across
+module boundaries. When independently compiled modules --- potentially from
+different source languages --- read and write the same memory regions, no
+existing type system covers the cross-module interface. We present
+\textbf{typed-wasm}, a type system that applies a 10-level type safety
+framework, originally developed for database query languages, to Wasm
+linear memory. The system treats contiguous memory segments as \emph{typed
+region schemas} and load/store operations as \emph{typed projections} verified
+against those schemas at compile time. We formalise the system in Idris~2
+using Quantitative Type Theory (QTT), providing proofs of bounds safety,
+aliasing freedom, effect purity, lifetime validity, and linearity --- all
+erased before code generation, yielding zero runtime overhead. Our
+principal contribution is \textbf{multi-module schema agreement}: a static
+verification that independently compiled Wasm modules agree on the
+layout, types, alignment, and invariants of shared memory regions --- a
+property that no source-level type system, and no existing Wasm proposal,
+can express.
+\end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+  <concept>
+    <concept_id>10011007.10011006.10011008.10011009.10011012</concept_id>
+    <concept_desc>Software and its engineering~Formal language definitions</concept_desc>
+    <concept_significance>500</concept_significance>
+  </concept>
+  <concept>
+    <concept_id>10011007.10011074.10011099.10011102</concept_id>
+    <concept_desc>Software and its engineering~Software verification and validation</concept_desc>
+    <concept_significance>500</concept_significance>
+  </concept>
+  <concept>
+    <concept_id>10003752.10003790.10003795</concept_id>
+    <concept_desc>Theory of computation~Program verification</concept_desc>
+    <concept_significance>300</concept_significance>
+  </concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Software and its engineering~Formal language definitions}
+\ccsdesc[500]{Software and its engineering~Software verification and validation}
+\ccsdesc[300]{Theory of computation~Program verification}
+
+\keywords{WebAssembly, type safety, dependent types, linear memory,
+multi-module verification, quantitative type theory, memory safety}
+
+\maketitle
+
+% ==========================================================================
+\section{Introduction}
+\label{sec:introduction}
+% ==========================================================================
+
+The WebAssembly specification~\cite{haas2017} defines a stack-based
+virtual machine with strong instruction-level type safety: the validator
+rejects programs whose stack operations are type-incorrect, and the
+structured control flow ensures that branches target valid labels. These
+properties make Wasm a safe compilation target for individual languages.
+
+However, Wasm's linear memory --- the flat byte array that serves as the
+heap for compiled C, Rust, and other systems languages --- is entirely
+untyped. An \texttt{i32.load offset=0} and an \texttt{f64.load offset=0}
+targeting the same address are both valid instructions, regardless of
+what was actually stored there. The Wasm validator checks that the
+instruction encoding is correct, not that the memory access is
+semantically meaningful.
+
+This gap becomes a safety hazard when multiple independently compiled
+modules share linear memory --- an increasingly common pattern in plugin
+architectures, game engines, and polyglot Wasm compositions. If Module~A
+(compiled from Rust) writes a struct to shared memory and Module~B
+(compiled from C or ReScript) reads the same memory with a different
+layout assumption, the result is silent data corruption undetectable by
+either source-level type system.
+
+We observe that this problem has the same structure as untyped database
+access: programs issue ``queries'' (load/store instructions) against a
+``schema'' (memory layout) with no static guarantee that the query is
+compatible with the schema. The database query language community has
+developed mature solutions to this problem, culminating in progressive
+type safety frameworks that verify queries against schemas at compile time.
+
+This paper presents typed-wasm, which applies this approach to Wasm
+linear memory. Our contributions are:
+
+\begin{enumerate}
+  \item \textbf{The database--memory analogy as a design principle}
+    (Section~\ref{sec:analogy}): a structural correspondence between
+    database schemas and memory region declarations, between queries and
+    typed memory access, that yields a concrete grammar and type system.
+
+  \item \textbf{A 10-level progressive type safety framework for Wasm memory}
+    (Section~\ref{sec:levels}): adapting established levels (parse-time
+    validity, schema binding, type compatibility, null safety, bounds proofs,
+    result typing) and research levels (aliasing safety, effect tracking,
+    lifetime safety, linearity) from the database domain to the memory domain.
+
+  \item \textbf{Multi-module schema agreement} (Section~\ref{sec:multimodule}):
+    a static verification that independently compiled Wasm modules agree on
+    shared memory layout --- the principal contribution, addressing a class of
+    bugs that no existing tool can detect.
+
+  \item \textbf{A formalisation in Idris~2 with QTT}
+    (Section~\ref{sec:formal}): dependent types that prove safety properties
+    at compile time, with proof erasure yielding identical runtime code to
+    hand-written Wasm.
+\end{enumerate}
+
+% ==========================================================================
+\section{Problem Statement}
+\label{sec:problem}
+% ==========================================================================
+
+\subsection{The Untyped Byte Array}
+
+Wasm's linear memory model~\cite{wasmspec2024} exposes a resizable byte
+array to all code within an instance. Memory access instructions
+(\texttt{i32.load}, \texttt{f64.store}, etc.) take an integer offset and
+an alignment hint. The Wasm validator ensures that the alignment is valid
+for the instruction and that the access falls within the allocated page
+range, but it imposes no constraints on the \emph{semantic content} at
+the accessed offset.
+
+Formally, if $M$ is the linear memory (a function from byte offsets to
+bytes), then \texttt{i32.load offset=k} computes
+$M[k] \mid (M[k{+}1] \ll 8) \mid (M[k{+}2] \ll 16) \mid (M[k{+}3] \ll 24)$
+regardless of what was stored at offsets $k$ through $k{+}3$. The
+instruction cannot fail for type reasons --- only for out-of-bounds
+access beyond the memory's page limit.
+
+\subsection{The Cross-Module Boundary Problem}
+
+When multiple modules share linear memory, each module compiles with its
+own struct layout assumptions. Consider:
+
+\begin{itemize}
+  \item \textbf{Module~A} (Rust, \texttt{\#[repr(C)]}):
+    \texttt{Player \{ hp: i32 @ 0, \_pad: [u8;4] @ 4, speed: f64 @ 8, name: [u8;32] @ 16 \}}
+    --- 48 bytes, 8-byte aligned.
+  \item \textbf{Module~B} (C, packed):
+    \texttt{player\_t \{ int hp @ 0, double speed @ 4, char name[32] @ 12 \}}
+    --- 44 bytes, unaligned.
+\end{itemize}
+
+Module~B reads \texttt{speed} from offset~4, which in Module~A's layout
+is padding. Module~B writes \texttt{name} starting at offset~12, which
+overlaps Module~A's \texttt{speed} field. Neither module's type checker
+detects this: Rust's borrow checker validates within Rust; C's type
+system validates within~C. The mismatch exists at the Wasm level, below
+both.
+
+\subsection{Bug Taxonomy}
+
+We identify five classes of cross-module memory bugs:
+
+\begin{table}[ht]
+\centering
+\caption{Cross-module memory bug taxonomy.}
+\label{tab:bugs}
+\begin{tabular}{@{}llp{4.2cm}@{}}
+\toprule
+\textbf{Class} & \textbf{Description} & \textbf{Consequence} \\
+\midrule
+B1 & Type reinterpretation & Silent value corruption \\
+B2 & Layout disagreement & All fields after the first are misread \\
+B3 & Null sentinel divergence & Valid pointers treated as null, or vice versa \\
+B4 & Lifetime mismatch & Use-after-free, data from reallocated memory \\
+B5 & Ownership confusion & Double-free, heap corruption \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These bugs share a common root: the absence of a shared schema that all
+modules agree upon and that a static checker can verify.
+
+\subsection{Insufficiency of Existing Approaches}
+
+\begin{table}[ht]
+\centering
+\caption{Existing approaches and their coverage gaps.}
+\label{tab:existing}
+\begin{tabular}{@{}lp{3cm}p{3.5cm}@{}}
+\toprule
+\textbf{Approach} & \textbf{What it covers} & \textbf{What it misses} \\
+\midrule
+Rust borrow checker & Ownership within Rust & Cross-module access from non-Rust code \\
+Wasm validation & Instruction encoding, page bounds & Semantic correctness within pages \\
+Wasm GC proposal & Managed reference types & Linear memory (unmanaged) \\
+TAL~\cite{morrisett1999} & Register/stack types & Structured regions, cross-module schemas \\
+MSWasm~\cite{disselkoen2022} & Segment bounds checking & Field-level types, schema agreement \\
+Component Model~\cite{wasmcomponent2024} & Function call interfaces & Shared mutable memory \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ==========================================================================
+\section{The Database--Memory Analogy}
+\label{sec:analogy}
+% ==========================================================================
+
+\subsection{Structural Correspondence}
+
+The TypedQL framework~\cite{jewell2026} provides 10 progressive levels of
+type safety for database query languages. Its central mechanism is
+verifying \emph{query projections} against a \emph{declared schema} at
+compile time. We observe that Wasm memory access has identical structure:
+
+\begin{table}[ht]
+\centering
+\caption{Structural correspondence between database queries and Wasm memory access.}
+\label{tab:analogy}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Database} & \textbf{Wasm Memory} & \textbf{Structural Role} \\
+\midrule
+Table & Region & Named container of typed records \\
+Row & Region instance & Single record at a computed offset \\
+Column & Field & Named, typed datum within a record \\
+Schema & Region declaration & Compile-time layout specification \\
+\texttt{SELECT col FROM table} & \texttt{region.get \$r .field} & Read projection \\
+\texttt{UPDATE table SET col = v} & \texttt{region.set \$r .field, v} & Write projection \\
+Foreign key & \texttt{ptr<@OtherRegion>} & Cross-region typed reference \\
+\texttt{CHECK} constraint & \texttt{invariant \{ \ldots \}} & Domain validity rule \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Why the Analogy Is Load-Bearing}
+
+This is not a surface-level metaphor. The correspondence determines
+concrete design decisions:
+
+\begin{enumerate}
+  \item \textbf{Region declarations} use declarative syntax isomorphic to
+    \texttt{CREATE TABLE}:
+    \texttt{region Players[100] \{ hp: i32; speed: f64; align 8; \}}.
+
+  \item \textbf{Import/export of region schemas} mirrors shared database
+    schemas across services. Module~A exports; Module~B imports; the
+    checker verifies structural compatibility.
+
+  \item \textbf{Cross-region invariants} are foreign key constraints over
+    memory: \texttt{invariant \{ across: Enemies, Players; holds: forall
+    e.\ 0 <= e.target\_id < 4096; \}}.
+
+  \item \textbf{\texttt{region.scan} with \texttt{where}} is
+    \texttt{SELECT * FROM region WHERE predicate}, extending naturally to
+    iteration, filtering, and aggregation over array regions.
+\end{enumerate}
+
+The 10-level framework transfers directly because the safety properties
+are properties of \emph{projections against schemas}, independent of
+whether the schema describes a database table or a memory region.
+
+\subsection{Where the Analogy Diverges}
+
+Three aspects of Wasm memory have no direct database counterpart:
+
+\begin{itemize}
+  \item \textbf{Alignment and padding.} Memory fields require alignment to
+    natural boundaries. typed-wasm makes alignment explicit in declarations
+    and includes it in the type-checking contract.
+
+  \item \textbf{Pointer arithmetic.} Wasm linear memory is addressed by
+    integer offsets. typed-wasm introduces pointer types (\texttt{ptr},
+    \texttt{ref}, \texttt{unique}) with ownership semantics borrowed from
+    substructural type theory.
+
+  \item \textbf{Concurrency.} Database transactions provide isolation; Wasm
+    shared memory provides none. typed-wasm's aliasing safety (Level~7)
+    addresses single-threaded aliasing; concurrent access is deferred to
+    future work.
+\end{itemize}
+
+% ==========================================================================
+\section{The 10 Levels of Type Safety for Wasm Memory}
+\label{sec:levels}
+% ==========================================================================
+
+TypeLL defines a progressive stack of 10 type safety levels. Each level
+addresses a specific class of failure. Levels are cumulative: a program
+cannot achieve Level~$n$ without satisfying Levels~1 through~$n{-}1$.
+Simple operations exit early --- a read from a singleton region achieves
+Level~6 with no ownership, effect, lifetime, or linearity analysis.
+
+\subsection{Established Levels (1--6)}
+
+\textbf{Level~1 --- Instruction Validity.}
+The access expression conforms to the typed-wasm grammar. Analogous to
+parse-time safety for queries. Wasm itself validates instruction encoding
+but not higher-level access structure.
+
+\textbf{Level~2 --- Region-Binding.}
+Every \texttt{region.get \$target .field} resolves \texttt{\$target} to a
+declared region and \texttt{.field} to a declared field. Analogous to
+schema binding. Wasm has no concept of named regions or fields.
+
+\textbf{Level~3 --- Type-Compatible Access.}
+The result type of a memory access is determined by the field declaration,
+not by the programmer's choice of load instruction. If \texttt{hp: i32},
+then \texttt{region.get \$p .hp} produces \texttt{i32} and compiles to
+\texttt{i32.load} --- never \texttt{f64.load}. Analogous to type-compatible
+operations in queries.
+
+\textbf{Level~4 --- Null Safety.}
+The type system distinguishes \texttt{ptr<T>} (non-nullable) from
+\texttt{opt<ptr<T>{}>} (nullable). Accessing a nullable value requires
+explicit unwrapping. Analogous to null safety in query result handling.
+
+\textbf{Level~5 --- Bounds-Proof.}
+Every memory access is provably within the region's bounds. For static
+indices, the Idris~2 prover verifies the bound at compile time. For
+dynamic indices, a minimal runtime check is inserted only where the prover
+cannot discharge the obligation. Analogous to injection-proof safety
+(separation of structure from data).
+
+\textbf{Level~6 --- Result-Type.}
+The return type of every memory access expression is statically known and
+propagated through bindings and function returns. Analogous to result-type
+safety in queries.
+
+\subsection{Research Levels (7--10)}
+
+\textbf{Level~7 --- Aliasing Safety.}
+Mutable references (\texttt{\&mut}) to the same region do not alias.
+typed-wasm provides three pointer kinds:
+
+\begin{itemize}
+  \item \texttt{\&} (shared borrow): unlimited concurrent readers, no mutation.
+  \item \texttt{\&mut} (exclusive borrow): exactly one mutable reference, no concurrent readers.
+  \item \texttt{own} (owning): single owner, must transfer or free (Level~10).
+\end{itemize}
+
+The prover verifies exclusivity at every program point. This is
+structurally analogous to Rust's borrow discipline, but operates at the
+Wasm region schema level rather than the source language level.
+
+\textbf{Level~8 --- Effect Tracking.}
+Functions declare their memory effects:
+\texttt{effects \{ ReadRegion(Players), WriteRegion(Config) \}}. A function
+declared read-only cannot perform writes. Effects are checked by
+subsumption: $\mathit{actual} \subseteq \mathit{declared}$. Analogous to
+distinguishing \texttt{SELECT} from \texttt{UPDATE} in queries.
+
+\textbf{Level~9 --- Lifetime Safety.}
+References carry lifetime annotations scoping their validity. A reference
+with lifetime $\ell$ is valid only while $\ell$ is live. The prover
+verifies that no reference is used after the memory it points to has been
+freed. Analogous to temporal freshness in queries.
+
+\textbf{Level~10 --- Linearity.}
+Owning handles are bound with QTT quantity~1, enforcing exactly-once
+consumption. An allocation must be freed exactly once: the type checker
+rejects programs with zero uses (leak) or two uses (double-free) of the
+handle. This composes with Level~9: freeing invalidates the lifetime,
+making all references with that lifetime unusable. Analogous to connection
+linearity in database access.
+
+\subsection{Cross-Level Composition}
+
+The levels compose to provide compound guarantees:
+
+\begin{itemize}
+  \item \textbf{L5 $\wedge$ L7:} Bounds-proof plus aliasing safety proves
+    that two exclusive references never overlap in memory, even for different
+    fields within the same region.
+  \item \textbf{L8 $\wedge$ L9:} Effect tracking plus lifetime safety proves
+    that a read-only reference cannot observe a free effect on its target region.
+  \item \textbf{L7 $\wedge$ L10:} Aliasing safety plus linearity yields the
+    full ownership model at the Wasm memory level.
+  \item \textbf{L2 $\wedge$ L3 $\wedge$ multi-module:} Region-binding plus
+    type-compatibility across module boundaries is the composition unique to
+    typed-wasm.
+\end{itemize}
+
+% ==========================================================================
+\section{Multi-Module Schema Agreement}
+\label{sec:multimodule}
+% ==========================================================================
+
+\subsection{The Verification Problem}
+
+Given Module~A exporting region $R_A$ with schema $S_A$ and Module~B
+importing region $R_B$ (claiming to correspond to $R_A$) with schema
+$S_B$, verify that $S_B$ is structurally compatible with $S_A$.
+
+\subsection{Compatibility Relation}
+
+We define structural compatibility $S_B \preceq S_A$ (import compatible
+with export) as follows:
+
+\begin{definition}[Field Compatibility]
+Fields $f_A$ and $f_B$ are compatible, written $f_B \sim f_A$, iff:
+\begin{itemize}
+  \item $f_B.\mathit{name} = f_A.\mathit{name}$
+  \item $f_B.\mathit{type} = f_A.\mathit{type}$ (strict equality, no implicit conversions)
+  \item $f_B.\mathit{offset} = f_A.\mathit{offset}$ (computed from types and alignment)
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Schema Compatibility]
+$S_B \preceq S_A$ iff:
+\begin{itemize}
+  \item For every field $f_B \in S_B$, there exists $f_A \in S_A$ such that $f_B \sim f_A$.
+  \item $S_B.\mathit{alignment} = S_A.\mathit{alignment}$
+  \item $S_B.\mathit{instance\_count} = S_A.\mathit{instance\_count}$
+\end{itemize}
+\end{definition}
+
+Note that $\preceq$ permits $S_B$ to be a \emph{subset} of $S_A$:
+Module~B may import fewer fields than Module~A exports. Module~B simply
+cannot access the omitted fields. This is analogous to a database view
+that projects a subset of columns.
+
+\begin{definition}[Multi-Module Agreement]
+A set of modules $\{M_1, \ldots, M_n\}$ sharing region $R$ satisfies
+multi-module agreement iff exactly one module $M_e$ exports $R$ with
+schema $S_e$, and for every importing module $M_i$ with schema $S_i$,
+$S_i \preceq S_e$.
+\end{definition}
+
+\subsection{Formalisation}
+
+In the Idris~2 ABI layer, schema agreement is a dependent type:
+
+\begin{lstlisting}[language=Idris2,caption={Schema agreement certificate in Idris~2.}]
+data CompatCertificate : Type where
+  MkCompat : (agreement : SchemaAgreement)
+          -> (alignment : AlignmentAgrees ea ia)
+          -> (instances : InstanceCountAgrees ec ic)
+          -> CompatCertificate
+\end{lstlisting}
+
+Constructing a \texttt{CompatCertificate} requires providing proofs of
+each component. If any proof cannot be constructed --- a field name
+mismatch, a type difference, an alignment disagreement --- the certificate
+cannot be produced, and the program is rejected at compile time.
+
+\subsection{Diagnostic Reporting}
+
+When verification fails, the checker produces structured diagnostics:
+
+\begin{lstlisting}[caption={Example diagnostic output for a schema mismatch.}]
+Schema mismatch for region 'Player' imported by module_b from module_a:
+  Field 'speed': type mismatch
+    Expected (from module_a): f64
+    Found (in module_b):      f32
+  Field 'name': offset mismatch
+    Expected (from module_a): offset 16 (8-byte aligned)
+    Found (in module_b):      offset 12 (assumes packed layout)
+\end{lstlisting}
+
+\subsection{Practical Applications}
+
+Multi-module schema agreement enables:
+
+\begin{itemize}
+  \item \textbf{Plugin architectures} where the host exports region schemas
+    and plugins import them. Schema-breaking changes are caught at plugin
+    compile time.
+
+  \item \textbf{Polyglot Wasm compositions} where Rust, C, and ReScript
+    modules share structured data with compile-time layout verification.
+
+  \item \textbf{Hot-reloadable modules} where a new module version is
+    checked for schema compatibility with existing modules before deployment.
+\end{itemize}
+
+% ==========================================================================
+\section{Implications for GraalVM}
+\label{sec:graalvm}
+% ==========================================================================
+
+GraalVM's Truffle framework~\cite{wurthinger2017} enables cross-language
+interoperation through \texttt{InteropLibrary}, which dispatches member
+reads, writes, and invocations at runtime. When a JavaScript object is
+accessed from Python code, \texttt{InteropLibrary.readMember()} performs
+runtime type checking and conversion.
+
+This has two costs: runtime dispatch overhead and the absence of
+compile-time guarantees. typed-wasm's region schemas could serve as a
+compile-time contract between Truffle languages:
+
+\begin{enumerate}
+  \item Language~A exports a region schema describing shared state.
+  \item Language~B imports the schema.
+  \item The checker verifies agreement at AOT compilation time.
+  \item The Truffle partial evaluator replaces \texttt{InteropLibrary}
+    dispatch with direct memory access at known offsets, justified by the
+    schema proof.
+\end{enumerate}
+
+This applies specifically to GraalVM's native interop paths (Sulong,
+shared memory). Adapting the approach to Truffle's object-based interop
+for managed languages requires mapping object shapes to region schemas,
+which is feasible given Truffle's \texttt{DynamicObject} shape tracking
+but remains future work.
+
+% ==========================================================================
+\section{Formal Foundations}
+\label{sec:formal}
+% ==========================================================================
+
+\subsection{Idris~2 and Dependent Types}
+
+typed-wasm's proofs are written in Idris~2~\cite{brady2021}, a dependently
+typed language where types may depend on values. This is necessary because
+memory safety properties inherently depend on values: ``index~$i$ is
+within the bounds of array of size~$n$'' is a proposition over the value
+of~$i$.
+
+A region schema is a value-level record:
+
+\begin{lstlisting}[language=Idris2,caption={Region schema as a dependently typed list.}]
+data Schema : List (String, FieldType) -> Type where
+  Nil  : Schema []
+  (::) : Field name ty -> Schema rest -> Schema ((name, ty) :: rest)
+\end{lstlisting}
+
+A typed access is indexed by the schema:
+
+\begin{lstlisting}[language=Idris2,caption={Typed memory access indexed by schema.}]
+data TypedGet : Schema fields -> (name : String) -> FieldType -> Type where
+  GetHere  : TypedGet (MkField {name} {ty} :: rest) name ty
+  GetThere : TypedGet rest name ty -> TypedGet (f :: rest) name ty
+\end{lstlisting}
+
+The result type of \texttt{region.get \$r .name} is \emph{computed} from
+the schema, not declared by the programmer.
+
+\subsection{Quantitative Type Theory}
+
+Idris~2's QTT~\cite{atkey2018,mcbride2016} assigns quantities to bindings:
+
+\begin{table}[ht]
+\centering
+\caption{QTT quantities and their application in typed-wasm.}
+\label{tab:qtt}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Quantity} & \textbf{Usage} & \textbf{typed-wasm application} \\
+\midrule
+0 (erased) & Compile-time only & Proof witnesses, schema metadata, bounds evidence \\
+1 (linear) & Exactly once at runtime & Owning handles, allocation tokens \\
+$\omega$ (unrestricted) & Any number of times & Normal values, shared references \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Level~10 is implemented by binding allocation handles with quantity~1:
+
+\begin{lstlisting}[language=Idris2,caption={Linear resource handling via QTT quantity~1.}]
+freeRegion : (1 _ : LinHandle token) -> RegionLive token -> FreeResult
+\end{lstlisting}
+
+The \texttt{(1 \_)} annotation means the type checker rejects any program
+where the handle is used zero times (leak) or more than once (double-free).
+
+\subsection{Proof Erasure}
+
+All quantity-0 terms --- which includes all proof witnesses, bounds
+evidence, schema metadata, compatibility certificates, and lifetime
+annotations --- are erased by the Idris~2 compiler before code generation.
+
+\begin{theorem}[Zero-Overhead Property (informal)]
+The runtime representation of a well-typed typed-wasm program is identical
+to the Wasm instructions that a hand-written program would produce. The
+type safety is a compile-time property with no runtime manifestation.
+\end{theorem}
+
+This is the zero-overhead guarantee: \texttt{region.get \$player .hp}
+compiles to exactly \texttt{i32.load offset=0}, with the proof that this
+instruction is correct existing only during compilation.
+
+\subsection{Soundness Sketch}
+
+We conjecture the following soundness property:
+
+\begin{conjecture}[typed-wasm Soundness]
+If a typed-wasm program type-checks at all 10 levels, then the compiled
+Wasm program:
+\begin{enumerate}
+  \item[(a)] never performs a type-confused memory read (L3),
+  \item[(b)] never accesses memory outside a declared region (L5),
+  \item[(c)] never holds aliased mutable references (L7),
+  \item[(d)] never performs an undeclared memory effect (L8),
+  \item[(e)] never dereferences a freed region (L9), and
+  \item[(f)] never leaks or double-frees an allocation (L10).
+\end{enumerate}
+\end{conjecture}
+
+A full mechanised proof is future work. The current Idris~2 formalisation
+provides dependent-type-level evidence for properties~(a)--(f), verified
+by the totality checker, but does not yet connect to a formal Wasm
+operational semantics.
+
+% ==========================================================================
+\section{Implementation Architecture}
+\label{sec:implementation}
+% ==========================================================================
+
+\begin{table}[ht]
+\centering
+\caption{Implementation layers of typed-wasm.}
+\label{tab:architecture}
+\begin{tabular}{@{}llp{5cm}@{}}
+\toprule
+\textbf{Layer} & \textbf{Language} & \textbf{Role} \\
+\midrule
+ABI definitions & Idris~2 & Dependent types: region schemas, access rules, proof obligations \\
+FFI bridge & Zig & C-ABI runtime: region management, typed load/store, Wasm codegen \\
+Surface parser & ReScript & Parse \texttt{.twasm} syntax to typed AST \\
+Proof engine & Idris~2 & Discharge levels 5--10 obligations via totality checker \\
+Code generator & Zig $\to$ Wasm & Emit raw Wasm instructions from verified typed access \\
+Ecosystem plugin & Rust (TypedQLiser) & Integration as a TypedQLiser target language \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Zig FFI.}
+Zig provides native C ABI compatibility, built-in
+\texttt{wasm32-freestanding} target support, cross-compilation without
+runtime dependencies, and memory-safe defaults. Region handles encode base
+offset, schema ID, generation counter (for lifetime tracking), and
+ownership flag in a 64-bit value.
+
+\textbf{ReScript parser.}
+The surface syntax parser is written in ReScript, consistent with the
+VQL-UT parser in the TypedQL ecosystem. ReScript compiles to
+JavaScript/Wasm via Deno.
+
+\textbf{TypedQLiser integration.}
+typed-wasm implements the \texttt{QueryLanguagePlugin} trait from
+TypedQLiser, making Wasm memory a target alongside SQL, GraphQL, and VQL.
+This enables end-to-end verification: a database query is type-checked by
+TypedQLiser, and the memory region holding its results is type-checked by
+typed-wasm.
+
+% ==========================================================================
+\section{Related Work}
+\label{sec:related}
+% ==========================================================================
+
+\textbf{Typed Assembly Language.}
+Morrisett et al.~\cite{morrisett1999} introduced TAL, assigning types to
+registers and stack slots to prove progress and preservation for assembly
+programs. typed-wasm extends this approach with structured region schemas,
+cross-module import/export, and a 10-level progressive framework. TAL
+types individual memory cells; typed-wasm types structured multi-field
+regions.
+
+\textbf{MSWasm.}
+Disselkoen et al.~\cite{disselkoen2022} add memory segments with bounds
+checking to Wasm, enforcing spatial safety. typed-wasm builds on this by
+adding field-level types within bounded regions, cross-module schema
+agreement, effect tracking, and linearity. The two are complementary:
+MSWasm ensures access is within bounds; typed-wasm ensures access is also
+type-correct within those bounds.
+
+\textbf{Wasm GC Proposal.}
+The GC proposal~\cite{wasmgc2024} introduces managed struct and array
+types. These are type-safe by construction but apply only to GC-managed
+objects, not to linear memory. Systems languages (C, Rust) that manage
+their own memory cannot benefit. typed-wasm and Wasm GC are complementary.
+
+\textbf{Wasm Component Model.}
+The Component Model~\cite{wasmcomponent2024} types function call interfaces
+with automatic marshalling. It addresses isolation-based composition
+(copying data across boundaries). typed-wasm addresses shared-memory
+composition (typing in-place access). Both are valid architectural choices;
+typed-wasm covers the case where copying is too expensive.
+
+\textbf{Rust Ownership.}
+Rust's affine type system~\cite{jung2018} prevents use-after-free,
+double-free, and data races within Rust code. typed-wasm's Levels~7, 9,
+and 10 are deliberately analogous but operate at the Wasm level, covering
+cross-language boundaries that Rust cannot reach.
+
+\textbf{Checked C and Typed LLVM.}
+Checked C~\cite{elliott2018} adds bounds-checked pointers to C. Both
+improve single-language compilation pipelines. typed-wasm operates at the
+Wasm convergence point, where multiple source languages meet.
+
+\textbf{Substructural Type Systems.}
+Linear types~\cite{wadler1990}, uniqueness types~\cite{barendsen1996}, and
+quantitative type theory~\cite{atkey2018} provide the theoretical
+foundation for typed-wasm's Levels~7--10. Our contribution is not new type
+theory but rather the application of these ideas to the specific problem
+of cross-module Wasm memory safety.
+
+% ==========================================================================
+\section{Limitations and Future Work}
+\label{sec:limitations}
+% ==========================================================================
+
+\textbf{Concurrency.}
+typed-wasm v0.1 does not address Wasm shared memory with atomics.
+Concurrent access to shared regions requires session types or fractional
+permissions, which are explored in the TypeQL-Experimental project but not
+yet integrated.
+
+\textbf{GC interaction.}
+The boundary between linear memory and GC-managed objects is currently
+untyped. A \texttt{gcref<T>} field type is conceivable but requires
+runtime cooperation beyond static checking.
+
+\textbf{Dynamic layouts.}
+Programs that determine memory layout at runtime (JIT compilers, dynamic
+object models) cannot use static region declarations without an adaptation
+layer.
+
+\textbf{Adoption barrier.}
+All participating modules must carry typed-wasm annotations. Automatic
+schema inference from \texttt{\#[repr(C)]} attributes, C headers, and Wasm
+debug custom sections could lower this barrier.
+
+\textbf{Proof completeness.}
+Levels~5--10 depend on the Idris~2 totality checker. Complex arithmetic
+bounds may require manual proof assistance. The practical frequency of
+this in real Wasm modules is an empirical question.
+
+\textbf{Mechanised soundness.}
+The soundness conjecture (Section~\ref{sec:formal}) is not yet
+mechanically verified against a formal Wasm operational semantics.
+Connecting the Idris~2 formalisation to an existing Wasm mechanisation
+(e.g., WasmCert~\cite{watt2018}) is a priority.
+
+% ==========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% ==========================================================================
+
+Wasm's linear memory is the largest untyped shared mutable state surface
+in modern software. Multiple languages compile to Wasm; multiple modules
+share linear memory; no existing type system covers the boundary between
+them.
+
+typed-wasm addresses this by recognising that Wasm memory access has the
+same structure as database queries --- projections against a declared
+schema. By applying a 10-level type safety framework to memory regions,
+typed-wasm provides:
+
+\begin{enumerate}
+  \item \textbf{Region schemas} that declare memory layout with field
+    names, types, alignment, and invariants.
+  \item \textbf{Multi-module schema agreement} that statically verifies
+    layout compatibility across independently compiled modules.
+  \item \textbf{10 levels of progressive type safety} from instruction
+    validity through linearity, with formal proofs in Idris~2 and zero
+    runtime overhead through proof erasure.
+  \item \textbf{A practical architecture} integrating Idris~2, Zig,
+    ReScript, and the TypedQLiser ecosystem.
+\end{enumerate}
+
+The implication extends beyond Wasm. Any system where multiple languages
+share untyped mutable state --- GraalVM Truffle interop, JNI, FFI bridges,
+shared memory IPC --- faces the same class of bugs. typed-wasm demonstrates
+that database query type safety is a transferable framework for these
+domains.
+
+% ==========================================================================
+% Bibliography
+% ==========================================================================
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{typed-wasm}
+
+\end{document}
