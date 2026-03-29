@@ -1,22 +1,67 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
-= YOUR Template Repo Roadmap
+= typed-wasm Roadmap
+:author: Jonathan D.A. Jewell
+:revdate: 2026-03-29
 
-== Current Status
+== Current State
 
-Initial development phase.
+typed-wasm applies TypeLL's 10-level type safety to WebAssembly linear memory.
+Pre-alpha / research stage. Core insight: WASM linear memory is a schemaless
+database; typed-wasm adds region schemas and typed access operations.
 
-== Milestones
+Killer feature: multi-module shared memory type safety across language boundaries
+(e.g. Rust Module A shares WASM memory with ReScript Module B -- neither source
+type system covers the boundary; typed-wasm does).
 
-=== v0.1.0 - Foundation
-* [ ] Core functionality
-* [ ] Basic documentation
-* [ ] CI/CD pipeline
+Key capabilities delivered:
 
-=== v1.0.0 - Stable Release
-* [ ] Full feature set
-* [ ] Comprehensive tests
-* [ ] Production ready
+* Idris2 ABI proofs (src/abi/) -- region schemas, typed access, 10-level verification
+* Zig FFI (ffi/zig/) -- C-ABI bridge for runtime region management, typed load/store
+* `.twasm` grammar (spec/grammar.ebnf) -- EBNF surface syntax
+* 10-level spec (spec/10-levels-for-wasm.adoc) -- DB-to-WASM level mapping
+* Example `.twasm` files demonstrating all features
+* arXiv-ready whitepaper draft (docs/WHITEPAPER.md)
+* No dangerous patterns (believe_me, assert_total, unsafeCoerce)
 
-== Future Directions
+== v0.1.0 -- Formal Foundations (Complete)
 
-_To be determined based on community feedback._
+* [x] Idris2 ABI: region schema proofs
+* [x] Idris2 ABI: typed access proofs
+* [x] Idris2 ABI: 10-level verification hierarchy
+* [x] Zig FFI: runtime region management
+* [x] Zig FFI: typed load/store operations
+* [x] `.twasm` EBNF grammar
+* [x] 10-level specification document
+* [x] Example `.twasm` files
+* [x] Multi-module shared memory type definitions
+
+== v0.2.0 -- ECHIDNA Integration
+
+* [ ] Property-based testing of proof soundness via ECHIDNA Prover Wars
+* [ ] Random `.twasm` program generation
+* [ ] Prover oracle testing (Idris2 prover pass but runtime fail = soundness bug)
+
+== v0.3.0 -- arXiv Paper
+
+* [ ] Formalise whitepaper for arXiv submission
+* [ ] Benchmark multi-module type checking overhead
+* [ ] Comparison with existing WASM safety approaches
+
+== v0.4.0 -- Ecosystem Integration
+
+* [ ] TypedQLiser plugin (WASM as a "query target")
+* [ ] VQL-UT sibling integration (same levels, different domain)
+* [ ] GraalVM/Truffle target (multi-language shared state type safety)
+
+== v1.0.0 -- Stable Release
+
+* [ ] Complete `.twasm` parser (beyond EBNF grammar)
+* [ ] End-to-end pipeline: `.twasm` source -> verified WASM module
+* [ ] Multi-language binding generation from typed region schemas
+* [ ] CI/CD with proof validation
+
+== Future
+
+* GraalVM compile-time guarantees replacing runtime InteropLibrary dispatch
+* Browser-side `.twasm` validation tooling
+* Language server protocol support for `.twasm` files
