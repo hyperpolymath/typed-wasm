@@ -1,16 +1,12 @@
 -- SPDX-License-Identifier: PMPL-1.0-or-later
 -- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 --
--- Levels.idr — The 10 levels of type safety as Idris2 proof types
+-- Levels.idr — Progressive type safety levels as Idris2 proof types
 --
--- Each of the 10 levels from the typed-wasm specification is encoded as
--- a type (a proposition) that can be inhabited (proven) or not. A program
--- that type-checks at level N has a proof witness for that level.
---
--- The levels form a stack: higher levels build on lower ones. Level 10
--- (linearity) implies all of levels 1-9. A "proof certificate" is a
--- product of all 10 level proofs — it is the strongest guarantee that
--- typed-wasm can provide.
+-- Each level is encoded as a type (proposition) that can be inhabited
+-- (proven) or not. A program that type-checks at level N has a proof
+-- witness for that level. The levels form a stack: higher levels build
+-- on lower ones. A "proof certificate" is a product of level proofs.
 --
 -- Level  1: Instruction validity (well-formed syntax)
 -- Level  2: Region-binding (field resolves to declared schema)
@@ -22,6 +18,9 @@
 -- Level  8: Effect-tracking (Read/Write/Alloc/Free declared)
 -- Level  9: Lifetime safety (no use-after-free)
 -- Level 10: Linearity (resources used exactly once)
+-- Level 11: Tropical cost-tracking (access path cost bounded)
+-- Level 12: Epistemic safety (reader knowledge is fresh)
+-- Level 13+: Reserved (open-ended framework)
 
 module TypedWasm.ABI.Levels
 
