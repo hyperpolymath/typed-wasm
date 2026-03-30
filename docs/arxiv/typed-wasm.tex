@@ -957,6 +957,68 @@ that database query type safety is a transferable framework for these
 domains.
 
 % ==========================================================================
+\appendix
+\section{Level Achievement Status}
+\label{app:levels}
+% ==========================================================================
+
+Table~\ref{tab:levelstatus} reports the implementation status of each
+level as of version~1.0.  Levels marked \emph{[sfap]} (``so far as
+possible'') have machine-checked proofs in Idris~2 with zero
+\texttt{believe\_me}, \texttt{postulate}, or \texttt{assert\_total}.
+Full mechanical verification against a formal Wasm operational semantics
+(e.g.\ WasmCert-Isabelle~\cite{watt2018}) remains future work.
+
+\begin{table}[ht]
+\centering
+\caption{Level achievement status (v1.0).}
+\label{tab:levelstatus}
+\begin{tabular}{@{}rlllll@{}}
+\toprule
+\textbf{Lv} & \textbf{Name} & \textbf{Proof} & \textbf{Runtime} & \textbf{Tests} & \textbf{Status} \\
+\midrule
+1  & Instruction     & Region.idr       & Parser      & $10^5$ & E2E \\
+2  & Region-binding  & TypedAccess.idr  & Schema      & $10^5$ & E2E \\
+3  & Type-compat.    & TypedAccess.idr  & Load/store  & $10^5$ & E2E \\
+4  & Null safety     & Pointer.idr      & Ptr kinds   & $10^5$ & E2E \\
+5  & Bounds-proof    & Levels.idr       & Bounds chk  & $10^5$ & E2E \\
+6  & Result-type     & TypedAccess.idr  & Type flow   & $10^5$ & E2E \\
+\midrule
+7  & Aliasing        & Pointer.idr      & Erased      & $10^4$ & Proven [sfap] \\
+8  & Effects         & Effects.idr      & Erased      & $10^4$ & Proven [sfap] \\
+9  & Lifetime        & Lifetime.idr     & Erased      & $10^4$ & Proven [sfap] \\
+10 & Linearity       & Linear.idr       & Erased      & $10^4$ & Proven [sfap] \\
+\midrule
+11 & Tropical cost   & Tropical.idr     & ---         & ---    & Formalised [sfap] \\
+12 & Epistemic       & Epistemic.idr    & ---         & ---    & Formalised [sfap] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Versioning scheme.}
+typed-wasm versions track the highest fully-achieved level tier:
+v1.0 = L1--10 (proven erasable stack);
+v1.1 = L11--12 (tropical + epistemic integrated into toolchain);
+v2.0 = L13+ (future levels).
+
+\textbf{``Proven, erased'' (L7--10).}
+These levels are verified by the Idris~2 type checker at compile time,
+then erased before code generation via QTT.  The emitted Wasm instructions
+are identical to hand-written code --- zero runtime overhead.  This is by
+design: the proofs catch bugs at compile time and are not needed at runtime.
+
+\textbf{``Formalised'' (L11--12).}
+Levels~11 and 12 have Idris~2 type definitions and proof structures with
+zero \texttt{believe\_me}, but no Zig FFI implementation.  They are
+machine-checked mathematical definitions awaiting toolchain integration.
+
+\textbf{Proof inventory.}
+All 11 Idris~2 ABI files (Region, TypedAccess, Levels, Pointer, Effects,
+Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic) contain zero
+instances of \texttt{believe\_me}, \texttt{postulate}, or
+\texttt{assert\_total}.
+
+% ==========================================================================
 % Bibliography
 % ==========================================================================
 \bibliographystyle{ACM-Reference-Format}
