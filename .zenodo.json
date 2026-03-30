@@ -1,0 +1,55 @@
+{
+  "title": "typed-wasm: Applying Database Query Type Safety to WebAssembly Linear Memory",
+  "description": "WebAssembly linear memory is an untyped byte array shared across module boundaries. We present typed-wasm, a type system that applies a 10-level progressive type safety framework to Wasm linear memory. The system treats memory segments as typed region schemas and load/store operations as typed projections verified at compile time. Formalised in Idris 2 with Quantitative Type Theory (QTT), with proofs erased before code generation yielding zero runtime overhead. Principal contribution: multi-module schema agreement — static verification that independently compiled Wasm modules agree on shared memory layout.",
+  "upload_type": "publication",
+  "publication_type": "preprint",
+  "creators": [
+    {
+      "name": "Jewell, Jonathan D.A.",
+      "affiliation": "The Open University",
+      "orcid": ""
+    }
+  ],
+  "keywords": [
+    "WebAssembly",
+    "type safety",
+    "dependent types",
+    "linear memory",
+    "multi-module verification",
+    "quantitative type theory",
+    "memory safety",
+    "formal verification",
+    "Idris2",
+    "database query types"
+  ],
+  "subjects": [
+    {
+      "term": "Programming Languages",
+      "identifier": "cs.PL",
+      "scheme": "arxiv"
+    },
+    {
+      "term": "Software Engineering",
+      "identifier": "cs.SE",
+      "scheme": "arxiv"
+    }
+  ],
+  "license": {
+    "id": "other-open"
+  },
+  "language": "eng",
+  "access_right": "open",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/hyperpolymath/typed-wasm",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ],
+  "communities": [
+    {
+      "identifier": "zenodo"
+    }
+  ],
+  "notes": "Preprint. Companion code and Idris 2 proofs at https://github.com/hyperpolymath/typed-wasm"
+}

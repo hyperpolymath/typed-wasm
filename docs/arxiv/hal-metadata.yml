@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# HAL (hal.science) deposit metadata for typed-wasm
+# Use this when submitting via https://hal.science/submit
+#
+# HAL accepts PDF upload + manual metadata entry.
+# This file documents the values to enter.
+
+title: "typed-wasm: Applying Database Query Type Safety to WebAssembly Linear Memory"
+
+authors:
+  - name: "Jonathan D.A. Jewell"
+    email: "j.d.a.jewell@open.ac.uk"
+    affiliation: "The Open University"
+    country: "United Kingdom"
+
+abstract: |
+  WebAssembly (Wasm) linear memory is an untyped byte array shared across
+  module boundaries. When independently compiled modules — potentially from
+  different source languages — read and write the same memory regions, no
+  existing type system covers the cross-module interface. We present
+  typed-wasm, a type system that applies a 10-level type safety framework,
+  originally developed for database query languages, to Wasm linear memory.
+  The system treats contiguous memory segments as typed region schemas and
+  load/store operations as typed projections verified against those schemas
+  at compile time. We formalise the system in Idris 2 using Quantitative
+  Type Theory (QTT), providing proofs of bounds safety, aliasing freedom,
+  effect purity, lifetime validity, and linearity — all erased before code
+  generation, yielding zero runtime overhead. Our principal contribution is
+  multi-module schema agreement: a static verification that independently
+  compiled Wasm modules agree on the layout, types, alignment, and
+  invariants of shared memory regions — a property that no source-level
+  type system, and no existing Wasm proposal, can express.
+
+# HAL document type
+document_type: preprint  # "preprint" or "conference paper" or "journal article"
+
+# HAL domain classification
+domains:
+  - "info.info-pl"    # Computer Science / Programming Languages
+  - "info.info-se"    # Computer Science / Software Engineering
+  - "info.info-lo"    # Computer Science / Logic in Computer Science
+
+keywords:
+  - WebAssembly
+  - type safety
+  - dependent types
+  - linear memory
+  - multi-module verification
+  - quantitative type theory
+  - memory safety
+  - formal verification
+  - Idris2
+
+language: en
+
+# File to upload
+file: typed-wasm.pdf  # Compile typed-wasm.tex first
+
+# License for HAL deposit
+license: "CC-BY-4.0"  # HAL prefers Creative Commons; PMPL for code, CC-BY for the paper text
+
+# Additional links
+software: "https://github.com/hyperpolymath/typed-wasm"
