@@ -40,3 +40,35 @@ that MUST hold at all times.
 - description: No Makefiles (use Justfile)
 - run: test ! -f Makefile
 - severity: warning
+
+## Invariants
+
+### multi-module-proof
+- description: Multi-module ABI proof file is present and tracked.
+- run: test -f src/abi/TypedWasm/ABI/MultiModule.idr
+- severity: critical
+
+### lifetime-proof
+- description: Lifetime semantics capture region safety for the proof domain.
+- run: test -f src/abi/TypedWasm/ABI/Lifetime.idr
+- severity: critical
+
+### levels-definition
+- description: The 10-level lattice file exists for type safety claims.
+- run: test -f src/abi/TypedWasm/ABI/Levels.idr
+- severity: warning
+
+### parser-definition
+- description: The ReScript parser definition is available.
+- run: test -f src/parser/Parser.res
+- severity: critical
+
+### no-template-placeholders
+- description: Replace template placeholders before publication.
+- run: "! rg '{{PROJECT}}\\|{{PLACEHOLDER}}\\|rsr-template-repo' -n src -g'*.*' 2>/dev/null | head -1 | grep -q ."
+- severity: error
+
+### placeholder-fuzz
+- description: Remove the placeholder fuzz file to avoid false coverage.
+- run: test ! -f tests/fuzz/placeholder.txt
+- severity: warning
