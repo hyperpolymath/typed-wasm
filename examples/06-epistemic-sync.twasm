@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+//
+// Example 06: Epistemic Safety (Level 12)
+//
+// Demonstrates how the type checker tracks each module's KNOWLEDGE of shared
+// state. After Module A writes a field, Module B's view is stale until an
+// explicit sync point. Reads from stale state are rejected at compile time.
+//
+// Scenario: A game server (Module A) updates player health. A UI renderer
+// (Module B) reads health to draw HP bars. Without region.sync, Module B
+// might render stale health values after a hit.
+//
+// In database terms: this is read consistency. A transaction sees a committed
+// snapshot, not live mutations by concurrent transactions.
+
+// --- Shared Region (exported by game_server, imported by ui_renderer) ---
+
+region GameState[64] {
+    hp:         i32;
+    max_hp:     i32;
+    shield:     i32;
+    pos_x:      f32;
+    pos_y:      f32;
+    is_alive:   bool;
+    align 4;
+}
+
+export region GameState;
+
+// =========================================================================
+// MODULE A: game_server — writes to GameState
+// =========================================================================
+
+// When Module A writes hp, it automatically has fresh knowledge of hp
+// (WriteSync in the Idris2 formalisation). No explicit sync needed for
+// the writer.
+fn apply_damage(&mut region<GameState>, i32, i32)
+    effects { ReadRegion(GameState), WriteRegion(GameState) }
+{
+    region.get $GameState[$1] .hp -> current_hp;
+    region.get $GameState[$1] .shield -> shield;
+
+    let absorbed = if $0 < shield { $0 } else { shield };
+    let remaining = $0 - absorbed;
+    let new_hp = current_hp - remaining;
+
+    region.set $GameState[$1] .hp, new_hp;
+    region.set $GameState[$1] .shield, shield - absorbed;
+
+    if new_hp <= 0 {
+        region.set $GameState[$1] .is_alive, false;
+    }
+}
+
+// =========================================================================
+// MODULE B: ui_renderer — reads from GameState (imported)
+// =========================================================================
+
+import region GameState from "game_server";
+
+// CORRECT: Sync before reading. The region.sync statement updates this
+// module's knowledge version to match the field's current version.
+fn render_hp_bar(&region<GameState>, i32) -> i32
+    effects { ReadRegion(GameState) }
+    fresh { GameState.hp, GameState.max_hp }
+{
+    // Sync before reading — updates our knowledge to current version.
+    region.sync $GameState[$1] .hp;
+    region.sync $GameState[$1] .max_hp;
+
+    // Now the read is epistemically safe — our knowledge is fresh.
+    region.get $GameState[$1] .hp -> hp;
+    region.get $GameState[$1] .max_hp -> max_hp;
+
+    // Compute bar width (0-100 scale).
+    return hp * 100 / max_hp;
+}
+
+// CORRECT: Using is_fresh() guard for conditional sync.
+fn render_if_changed(&region<GameState>, i32) -> i32
+    effects { ReadRegion(GameState) }
+{
+    if !is_fresh($GameState[$1] .hp) {
+        region.sync $GameState[$1] .hp;
+        region.sync $GameState[$1] .max_hp;
+    }
+
+    // After the if-branch, the type checker knows hp is fresh on both paths:
+    // - if entered: sync made it fresh
+    // - if not entered: it was already fresh
+    region.get $GameState[$1] .hp -> hp;
+    region.get $GameState[$1] .max_hp -> max_hp;
+
+    return hp * 100 / max_hp;
+}
+
+// REJECTED: Reading without sync. Uncomment to see the compile-time error:
+//   "Epistemic safety violation: module 'ui_renderer' reads GameState.hp
+//    at version 0 but field is at version 3. Insert region.sync or
+//    prove freshness."
+//
+// fn bad_stale_read(&region<GameState>, i32) -> i32
+//     effects { ReadRegion(GameState) }
+// {
+//     // No sync! Our knowledge of hp is at version 0 (Unknown).
+//     region.get $GameState[$1] .hp -> hp;  // REJECTED: stale read
+//     return hp;
+// }
+
+// --- Version Queries ---
+// version_of() returns the current version counter for debugging/logging.
+fn debug_versions(&region<GameState>, i32)
+    effects { ReadRegion(GameState) }
+{
+    let hp_ver = version_of($GameState[$1] .hp);
+    let shield_ver = version_of($GameState[$1] .shield);
+    // These are intrinsics — they don't require freshness (they report
+    // metadata, not field values).
+}

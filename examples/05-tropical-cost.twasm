@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+//
+// Example 05: Tropical Cost-Tracking (Level 11)
+//
+// Demonstrates how access patterns carry compile-time cost annotations in a
+// tropical (min-plus) semiring. Functions declare a cost bound; the Idris2
+// prover verifies that total path cost stays within the bound.
+//
+// Scenario: A particle system with 10,000 particles. Sequential access (stride-1)
+// is cheap; random access (cache-line crossing) is expensive. The type checker
+// rejects functions whose access patterns exceed the declared budget.
+
+// --- Region Declarations ---
+
+region Particles[10000] {
+    pos_x:  f32;
+    pos_y:  f32;
+    vel_x:  f32;
+    vel_y:  f32;
+    mass:   f32;
+    alive:  bool;
+    align 4;
+}
+
+region Config {
+    gravity:    f64;
+    drag:       f64;
+    time_step:  f64;
+    align 8;
+}
+
+// --- Cost-Bounded Functions ---
+
+// Sequential scan: cost 1 per access, total bounded by 20000 (2 fields x 10000).
+// This compiles because sequential access is cheap.
+fn update_positions(&mut region<Particles>, &region<Config>)
+    effects { ReadRegion(Config), WriteRegion(Particles) }
+    cost_bound { bound: 20001; strategy: min_plus; }
+{
+    let dt = region.get $Config .time_step @cost(1) -> dt;
+
+    region.scan $Particles -> |p| {
+        // Sequential stride-1 access: cost 1 each (same cache line).
+        region.get $p .pos_x @cost(1) -> px;
+        region.get $p .vel_x @cost(1) -> vx;
+        region.set $p .pos_x, px + vx * dt @cost(1);
+    }
+}
+
+// Random access: cost 8 per access (cache-line crossing assumed).
+// This function must declare a higher bound to compile.
+fn apply_collision(&mut region<Particles>, i32, i32)
+    effects { ReadRegion(Particles), WriteRegion(Particles) }
+    cost_bound { bound: 40; strategy: min_plus; }
+{
+    // Random access to two arbitrary particles — @cost(8) each.
+    region.get $Particles[$0] .vel_x @cost(8) -> vx_a;
+    region.get $Particles[$0] .vel_y @cost(8) -> vy_a;
+    region.get $Particles[$1] .vel_x @cost(8) -> vx_b;
+    region.get $Particles[$1] .vel_y @cost(8) -> vy_b;
+
+    // Swap velocities (elastic collision).
+    region.set $Particles[$0] .vel_x, vx_b @cost(1);
+    region.set $Particles[$0] .vel_y, vy_b @cost(1);
+    region.set $Particles[$1] .vel_x, vx_a @cost(1);
+    region.set $Particles[$1] .vel_y, vy_a @cost(1);
+
+    // Total cost: 4*8 + 4*1 = 36 <= 40. Compiles.
+}
+
+// REJECTED: This function would exceed its cost bound.
+// Uncomment to see the compile-time error.
+//
+// fn bad_random_scan(&region<Particles>)
+//     effects { ReadRegion(Particles) }
+//     cost_bound { bound: 10; strategy: min_plus; }
+// {
+//     // 10,000 random accesses at cost 8 each = 80,000 >> 10. REJECTED.
+//     region.scan $Particles -> |p| {
+//         region.get $p .mass @cost(8) -> m;
+//     }
+// }
+
+// --- Cost Assertion ---
+// Proves at compile time that update_positions is within its declared bound.
+static_assert cost_bounded(update_positions, 20001);

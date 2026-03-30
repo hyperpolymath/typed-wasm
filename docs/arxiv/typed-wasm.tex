@@ -12,6 +12,7 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{url}
+\usepackage{mathpartir}
 
 % --------------------------------------------------------------------------
 % Theorem-like environments
@@ -495,6 +496,23 @@ proven in the Idris~2 ABI layer. In the database analogy, this
 corresponds to query cost estimation --- but verified at compile time
 rather than estimated by a query planner.
 
+In the surface syntax, functions declare cost bounds and accesses carry
+cost annotations:
+
+\begin{lstlisting}[language=twasm,caption={Level~11 surface syntax: cost-bounded function.}]
+fn update_positions(&mut region<Particles>, &region<Config>)
+    effects { ReadRegion(Config), WriteRegion(Particles) }
+    cost_bound { bound: 20001; strategy: min_plus; }
+{
+    let dt = region.get $Config .time_step @cost(1) -> dt;
+    region.scan $Particles -> |p| {
+        region.get $p .pos_x @cost(1) -> px;
+        region.get $p .vel_x @cost(1) -> vx;
+        region.set $p .pos_x, px + vx * dt @cost(1);
+    }
+}
+\end{lstlisting}
+
 \textbf{Level~12 --- Epistemic Safety.}
 In multi-module compositions, Module~A may write to a shared field while
 Module~B holds a stale view. Level~12 applies epistemic modal logic
@@ -538,6 +556,27 @@ In the database analogy, this is read consistency: a transaction sees a
 committed snapshot, not live mutations by concurrent transactions. No
 existing Wasm type system, and no existing shared-memory type system we are
 aware of, provides epistemic safety at the type level.
+
+In the surface syntax, functions declare freshness requirements and use
+explicit sync points:
+
+\begin{lstlisting}[language=twasm,caption={Level~12 surface syntax: epistemic sync and freshness.}]
+import region GameState from "game_server";
+
+fn render_hp_bar(&region<GameState>, i32) -> i32
+    effects { ReadRegion(GameState) }
+    fresh { GameState.hp, GameState.max_hp }
+{
+    // Sync updates our knowledge to the current version.
+    region.sync $GameState[$1] .hp;
+    region.sync $GameState[$1] .max_hp;
+
+    // Now the read is epistemically safe.
+    region.get $GameState[$1] .hp -> hp;
+    region.get $GameState[$1] .max_hp -> max_hp;
+    return hp * 100 / max_hp;
+}
+\end{lstlisting}
 
 \subsection{Cross-Level Composition}
 
@@ -762,9 +801,108 @@ This is the zero-overhead guarantee: \texttt{region.get \$player .hp}
 compiles to exactly \texttt{i32.load offset=0}, with the proof that this
 instruction is correct existing only during compilation.
 
+\subsection{Typing Rules}
+
+We present selected inference rules for key levels. The judgement
+$\Gamma; \Sigma \vdash e : \tau \dashv \Delta$ reads: ``under type
+environment $\Gamma$ and schema environment $\Sigma$, expression $e$
+has type $\tau$, producing output context $\Delta$.''
+
+\textbf{Level~3 --- Typed Access.}
+A read from region $r$ at field $f$ has the type declared in the schema:
+
+\begin{mathpar}
+  \inferrule*[right=T-Get]
+    {\Sigma(r) = S \\ S(f) = \tau \\ \Gamma \vdash r : \mathsf{RegHandle}(S)}
+    {\Gamma; \Sigma \vdash \texttt{region.get}\ r\ f : \tau}
+\end{mathpar}
+
+\textbf{Level~5 --- Bounds-Proof.}
+An indexed access into an array region requires a bounds witness:
+
+\begin{mathpar}
+  \inferrule*[right=T-BoundsGet]
+    {\Sigma(r) = S[n] \\ S(f) = \tau \\ \Gamma \vdash i : \mathsf{Nat} \\
+     \Gamma \vdash \mathsf{LT}(i, n)}
+    {\Gamma; \Sigma \vdash \texttt{region.get}\ r[i]\ f : \tau}
+\end{mathpar}
+
+\textbf{Multi-Module --- Schema Compatibility.}
+An import is well-typed if the imported schema is a structural subtype of
+the exported schema:
+
+\begin{mathpar}
+  \inferrule*[right=T-Import]
+    {M_e\ \texttt{exports}\ r : S_e \\ S_i \preceq S_e \\
+     \forall f \in S_i.\ f.\mathit{type} = S_e(f.\mathit{name}).\mathit{type} \\
+     S_i.\mathit{align} = S_e.\mathit{align}}
+    {M_i; \Sigma \vdash \texttt{import}\ r\ \texttt{from}\ M_e : S_i}
+\end{mathpar}
+
+\textbf{Level~11 --- Cost-Bounded Access.}
+An access path with accumulated cost $c$ is well-typed under cost bound
+$B$ if $c \le B$:
+
+\begin{mathpar}
+  \inferrule*[right=T-CostGet]
+    {\Gamma; \Sigma \vdash \texttt{region.get}\ r\ f : \tau \\
+     \mathsf{cost}(r, f) = k \\
+     c' = c \otimes k \\ c' \le B}
+    {\Gamma; \Sigma; (c, B) \vdash \texttt{region.get}\ r\ f\ @\texttt{cost}(k) : \tau
+     \dashv (c', B)}
+\end{mathpar}
+
+\textbf{Level~12 --- Epistemic Fresh Read.}
+A read is epistemically safe if the reader's knowledge version matches
+the field's current version:
+
+\begin{mathpar}
+  \inferrule*[right=T-FreshGet]
+    {\Gamma; \Sigma \vdash \texttt{region.get}\ r\ f : \tau \\
+     \mathsf{ver}(m, f) = v_k \\ \mathsf{cur}(f) = v_c \\
+     v_k = v_c}
+    {\Gamma; \Sigma; \mathcal{K}_m \vdash \texttt{region.get}\ r\ f : \tau}
+  \and
+  \inferrule*[right=T-Sync]
+    {\mathsf{cur}(f) = v}
+    {\Gamma; \Sigma; \mathcal{K}_m \vdash \texttt{region.sync}\ r\ f
+     \dashv \mathcal{K}_m[f \mapsto v]}
+\end{mathpar}
+
 \subsection{Soundness Sketch}
 
 We conjecture the following soundness property:
+
+We sketch progress and preservation arguments informally. A full
+mechanised proof against a Wasm operational semantics remains future work,
+but the Idris~2 totality checker provides strong evidence for each
+property.
+
+\textbf{Progress.}
+A well-typed access expression does not get stuck. For Levels~1--6, this
+follows from the schema lookup: every field name resolves to a declared
+field with a known type and offset, so the compiled \texttt{i32.load}
+targets a valid offset. For Levels~7--10, the QTT-enforced linearity
+ensures that owning handles are consumed exactly once, so \texttt{free}
+always targets a live allocation. For Level~11, the cost bound ensures
+that the path terminates within finite cost. For Level~12, the freshness
+requirement ensures that reads always observe a consistent state.
+
+\textbf{Preservation.}
+Typed-wasm's types are preserved under reduction. A \texttt{region.set}
+that writes value $v : \tau$ to field $f : \tau$ preserves the schema
+invariant. The QTT quantity annotations ensure that linear handles
+(quantity~1) are consumed, not duplicated, preserving the ownership
+invariant. Cost annotations compose via the tropical semiring, preserving
+the cost bound. Synchronisation updates the knowledge map monotonically,
+preserving the freshness invariant.
+
+The Idris~2 formalisation checks these properties via the totality
+checker: every function in the ABI layer is declared \texttt{total}, and
+the type checker rejects any case split that does not cover all
+constructors. This is not a mechanised proof of progress/preservation in
+the traditional sense, but it provides comparable assurance for the
+properties encoded in the dependent types.
 
 \begin{conjecture}[typed-wasm Soundness]
 If a typed-wasm program type-checks at all 12 levels, then the compiled

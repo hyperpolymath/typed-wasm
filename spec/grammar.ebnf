@@ -176,7 +176,12 @@ function_decl = 'fn', identifier, '(', [param_list], ')',
                 ['->', return_type],
                 [effects_clause],
                 [lifetime_clause],
+                [cost_bound_clause],
+                [freshness_clause],
                 '{', { statement }, '}' ;
+
+(* Level 12: Freshness requirements on function parameters *)
+freshness_clause = 'fresh', '{', freshness_constraint, { ',', freshness_constraint }, '}' ;
 
 param_list = param, { ',', param } ;
 param = identifier, ':', param_type ;
@@ -220,6 +225,8 @@ statement = access_stmt
           | return_stmt
           | assert_stmt
           | proof_stmt
+          | sync_stmt
+          | cost_assert_stmt
           | expression_stmt ;
 
 (* --- Level 2+3: Typed access (get/set through schema projection) --- *)
@@ -228,8 +235,8 @@ statement = access_stmt
 (* Compiles to: i32.load/i64.load/f32.load/f64.load at computed offset *)
 (* Level 2 check: region and field exist *)
 (* Level 3 check: result type matches field declaration *)
-access_stmt = 'region.get', region_target, field_path, ['->', binding]
-            | 'region.set', region_target, field_path, ',', expression ;
+access_stmt = 'region.get', region_target, field_path, [cost_annotation], ['->', binding]
+            | 'region.set', region_target, field_path, ',', expression, [cost_annotation] ;
 
 (* Field path: supports nested access through embedded regions *)
 (* e.g., $player.inventory.items[0].name *)
@@ -282,6 +289,8 @@ proof_step = 'given', ':',  proposition, ';'
            | 'by',    ':', proof_tactic, ';' ;
 proof_tactic = 'bounds_check' | 'linearity' | 'lifetime'
              | 'alias_freedom' | 'effect_purity'
+             | 'cost_bounded'                            (* Level 11 *)
+             | 'freshness'                               (* Level 12 *)
              | 'induction', '(', identifier, ')'
              | 'rewrite', '(', identifier, ')' ;
 
@@ -299,6 +308,8 @@ expression = literal
            | 'typeof', '(', expression, ')'
            | 'is_valid', '(', '$', identifier, ')'     (* Level 9: liveness check *)
            | 'is_null', '(', expression, ')'            (* Level 4: null check *)
+           | knowledge_check_expr                       (* Level 12: freshness check *)
+           | version_expr                               (* Level 12: version query *)
            | 'cast', '<', field_type, '>', '(', expression, ')'  (* explicit cast *)
            | '(', expression, ')' ;
 
@@ -351,10 +362,78 @@ invariant_decl = 'invariant', identifier, '{',
 identifier_list = identifier, { ',', identifier } ;
 
 (* ============================================================================
-   9. LEXICAL ELEMENTS
+   9. TROPICAL COST-TRACKING (Level 11)
+   ============================================================================
+   Every memory access carries a cost in a tropical (min-plus) semiring.
+   Functions that access shared memory declare a cost bound; the Idris2
+   prover verifies that the total cost of all access paths is within the
+   bound. This prevents pathologically expensive access patterns from
+   compiling without explicit acknowledgement.
+
+   In the database analogy: query cost estimation, but verified at compile
+   time rather than estimated by a query planner.
+   ============================================================================ *)
+
+(* Cost bound on a function — declares the maximum tropical cost *)
+cost_bound_clause = 'cost_bound', '{',
+                        'bound', ':', positive_integer, ';',
+                        ['strategy', ':', cost_strategy, ';'],
+                    '}' ;
+
+(* Cost strategy selects which tropical semiring to use *)
+cost_strategy = 'min_plus'       (* latency: cheapest path *)
+              | 'max_plus'       (* throughput: bottleneck path *)
+              | 'counting' ;     (* simple operation count *)
+
+(* Per-access cost annotation — attached to region.get / region.set *)
+cost_annotation = '@cost', '(', positive_integer, ')' ;
+
+(* Cost-annotated access: region.get $player .hp @cost(1) -> val *)
+(* The cost tracks cache-line crossings, alignment penalties, stride *)
+(* Extends access_stmt from section 5 *)
+
+(* Cost assertion: prove a path is within bound *)
+cost_assert_stmt = 'static_assert', 'cost_bounded', '(', identifier, ',',
+                   positive_integer, ')', ';' ;
+
+(* ============================================================================
+   10. EPISTEMIC SAFETY (Level 12)
+   ============================================================================
+   Tracks which module KNOWS what about shared memory state. Module A writes
+   field X; Module B's knowledge of X is stale until an explicit sync point.
+   The type checker prevents acting on stale knowledge — a read is only
+   valid if the reader's knowledge is fresh.
+
+   In the database analogy: read consistency — a transaction sees a committed
+   snapshot, not live mutations by concurrent transactions.
+
+   No existing WASM type system provides epistemic safety at the type level.
+   ============================================================================ *)
+
+(* Synchronisation point: update a module's knowledge of a field *)
+sync_stmt = 'region.sync', region_target, field_path, ';' ;
+
+(* Knowledge check expression: is this module's view of a field fresh? *)
+(* Returns bool — usable in if-guards before reads *)
+(* Extends expression from section 6 *)
+knowledge_check_expr = 'is_fresh', '(', region_target, field_path, ')' ;
+
+(* Version query: get the current version counter of a field *)
+version_expr = 'version_of', '(', region_target, field_path, ')' ;
+
+(* Freshness requirement on function parameters *)
+(* A function can require that a region handle carries fresh knowledge *)
+freshness_constraint = 'fresh', '(', identifier, '.', field_name, ')' ;
+
+(* Extends function_decl: fn foo(&region<R>) fresh(R.hp) { ... } *)
+(* Extends proof_tactic with: 'freshness' | 'cost_bounded' *)
+
+(* ============================================================================
+   11. LEXICAL ELEMENTS
    ============================================================================ *)
 
 identifier = letter, { letter | digit | '_' } ;
+module_id = identifier ;   (* used in epistemic tracking *)
 letter = 'a' | ... | 'z' | 'A' | ... | 'Z' | '_' ;
 digit = '0' | ... | '9' ;
 positive_integer = digit - '0', { digit } ;
@@ -387,7 +466,14 @@ string_literal = '"', { ? any character except '"' ? }, '"' ;
 (* Proofs *)
 (* proof, given, show, by, static_assert *)
 (* bounds_check, linearity, lifetime, alias_freedom, effect_purity *)
+(* cost_bounded, freshness *)
 (* induction, rewrite *)
+
+(* Tropical (Level 11) *)
+(* cost_bound, bound, strategy, min_plus, max_plus, counting *)
+
+(* Epistemic (Level 12) *)
+(* fresh, is_fresh, version_of, region.sync *)
 
 (* Intrinsics *)
 (* sizeof, offsetof, typeof, is_valid, is_null, cast *)
