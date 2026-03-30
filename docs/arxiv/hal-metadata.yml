@@ -5,7 +5,7 @@
 # HAL accepts PDF upload + manual metadata entry.
 # This file documents the values to enter.
 
-title: "typed-wasm: Applying Database Query Type Safety to WebAssembly Linear Memory"
+title: "typed-wasm: Progressive Type Safety for WebAssembly Linear Memory"
 
 authors:
   - name: "Jonathan D.A. Jewell"
@@ -18,18 +18,23 @@ abstract: |
   module boundaries. When independently compiled modules — potentially from
   different source languages — read and write the same memory regions, no
   existing type system covers the cross-module interface. We present
-  typed-wasm, a type system that applies a 10-level type safety framework,
-  originally developed for database query languages, to Wasm linear memory.
-  The system treats contiguous memory segments as typed region schemas and
-  load/store operations as typed projections verified against those schemas
-  at compile time. We formalise the system in Idris 2 using Quantitative
-  Type Theory (QTT), providing proofs of bounds safety, aliasing freedom,
-  effect purity, lifetime validity, and linearity — all erased before code
-  generation, yielding zero runtime overhead. Our principal contribution is
+  typed-wasm, a type system that applies a 12-level progressive type safety
+  framework, originally developed for database query languages, to Wasm
+  linear memory. The system treats contiguous memory segments as typed
+  region schemas and load/store operations as typed projections verified
+  against those schemas at compile time. We formalise the system in Idris 2
+  using Quantitative Type Theory (QTT), providing proofs of bounds safety,
+  aliasing freedom, effect purity, lifetime validity, linearity, cost
+  boundedness, and epistemic freshness — all erased before code generation,
+  yielding zero runtime overhead. Our principal contribution is
   multi-module schema agreement: a static verification that independently
   compiled Wasm modules agree on the layout, types, alignment, and
   invariants of shared memory regions — a property that no source-level
-  type system, and no existing Wasm proposal, can express.
+  type system, and no existing Wasm proposal, can express. We further
+  extend the framework with tropical cost-tracking (Level 11, bounding
+  access pattern costs via a min-plus semiring) and epistemic safety
+  (Level 12, preventing reads of stale shared state across module
+  boundaries).
 
 # HAL document type
 document_type: preprint  # "preprint" or "conference paper" or "journal article"
@@ -42,7 +47,7 @@ domains:
 
 keywords:
   - WebAssembly
-  - type safety
+  - progressive type safety
   - dependent types
   - linear memory
   - multi-module verification
@@ -50,6 +55,9 @@ keywords:
   - memory safety
   - formal verification
   - Idris2
+  - tropical semiring
+  - epistemic logic
+  - cost-tracking
 
 language: en
 
