@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= Fuzz Status
+
+This directory does not yet contain a release-grade fuzz corpus.
+
+Current property and oracle coverage lives under `tests/echidna/` and
+`ffi/zig/test/`. A dedicated fuzz harness and retained corpus are still
+required before stable release.

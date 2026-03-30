@@ -121,7 +121,7 @@ writerKnowsFresh : (writer : ModuleId) -> (field : String) -> (ver : Nat) ->
 writerKnowsFresh _ _ _ = MkFresh Refl
 
 ||| Staleness is decidable: given two versions, knowledge is either fresh or stale.
-||| Uses Nat ordering directly — no believe_me.
+||| Uses Nat ordering directly and keeps the comparison explicit.
 export
 freshOrStale : (known, current : Nat) ->
                Either (known = current) (LT known current `Either` LT current known)

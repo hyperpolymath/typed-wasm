@@ -9,9 +9,9 @@
 image:https://zenodo.org/badge/DOI/10.5281/zenodo.19329508.svg[DOI,link="https://doi.org/10.5281/zenodo.19329508"]
 image:https://img.shields.io/badge/OpenSSF-Best_Practices-green?logo=opensourcesecurity[OpenSSF Best Practices,link="https://www.bestpractices.dev/en/projects/new?repo_url=https://github.com/hyperpolymath/typed-wasm"]
 image:https://img.shields.io/badge/believe__me-0-brightgreen[believe_me: 0]
-image:https://img.shields.io/badge/Levels-12_(L1--10_proven,_L11--12_formalised)-blue[Levels: 12]
+image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_draft)-blue[Levels: checked core]
 
-**Progressive type safety for WebAssembly linear memory — 12 levels, 0 believe_me.**
+**Progressive type safety for WebAssembly linear memory — checked L1-L10 core, 0 believe_me in the checked proof package.**
 
 == The Idea
 
@@ -28,7 +28,7 @@ Loads are SELECT queries. Stores are UPDATE statements. Schemas are the type
 system. The Idris2 prover verifies safety at compile time. The output is bare
 WASM instructions with zero overhead.
 
-== The 10 Levels
+== The Checked Core: 10 Levels
 
 [cols="1,2,2"]
 |===
@@ -45,6 +45,10 @@ WASM instructions with zero overhead.
 | 9 | Temporal safety | Lifetime safety (no UAF)
 | 10 | Linearity | Linear resource usage
 |===
+
+L11-L12 research files exist in the repository, but they are not part of the
+default checked Idris2 package and are not currently claimed as integrated or
+machine-checked proof surface.
 
 == The Killer Feature: Multi-Module Type Safety
 
@@ -107,7 +111,7 @@ in name, type, offset, and alignment.
 
 | Proofs
 | Idris2 totality checker
-| Verify levels 5-10 at compile time
+| Verify the checked L5-L10 core at compile time
 
 | Codegen
 | Zig -> WASM
@@ -123,22 +127,24 @@ in name, type, offset, and alignment.
 [source,bash]
 ----
 spec/grammar.ebnf              # The grammar — core intellectual artifact
-spec/10-levels-for-wasm.adoc   # How each level maps from DB to WASM
+spec/10-levels-for-wasm.adoc    # Checked L1-L10 mapping from DB to WASM
 src/abi/*.idr                   # Idris2 formal proofs
 ffi/zig/src/main.zig            # Zig C-ABI implementation
 examples/01-single-module.twasm # Basic typed regions
 examples/02-multi-module.twasm  # THE killer feature demo
 examples/03-ownership-linearity.twasm  # Levels 7-10
 examples/04-ecs-game.twasm      # ECS as a columnar database
+LEVEL-STATUS.md                 # Current claim envelope and audit status
 docs/WHITEPAPER.md              # Full academic treatment
 ----
 
 == Status
 
-**Pre-alpha / Research.** The grammar and specifications are complete. The
-Idris2 ABI and Zig FFI provide the formal foundation and runtime bridge.
-Examples demonstrate all 10 levels. The next step is building the ReScript
-parser and connecting to the Idris2 prover for end-to-end verification.
+**Pre-alpha / Research.** The checked L1-L10 ABI core, Zig FFI, parser tests,
+and smoke tests are in place. L11-L12 files are experimental drafts: they are
+not part of the default proof package and are not yet claimable as integrated
+proofs. The next step is to de-template the release path, expand end-to-end and
+aspect coverage, and either complete or withdraw the higher-level claims.
 
 == Related Projects
 

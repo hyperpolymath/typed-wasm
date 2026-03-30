@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= typed-wasm Audit 2026-03-30
+:revdate: 2026-03-30
+
+== Summary
+
+Status: `fail`
+
+The repository has a real checked core, but it is not yet honest enough for
+stable release or venue-facing submission. The checked claim envelope is
+currently L1-L10 only.
+
+== Evidence Confirmed
+
+* `just test` passes.
+* `just check-abi` passes for the default `typed-wasm.ipkg` package.
+* `node tests/smoke/e2e-smoke.mjs` passes.
+
+== Critical Findings
+
+* Root metadata previously identified the repo as `rsr-template-repo` and as
+  `production` / `maintenance`; this was false.
+* Claim surfaces mixed a checked 10-level core with 12-level language.
+* `TypedWasm/ABI/Tropical.idr` is not part of `typed-wasm.ipkg` and its
+  standalone `idris2 --check` currently fails.
+* `TypedWasm/ABI/Epistemic.idr` is not part of `typed-wasm.ipkg` and its
+  standalone `idris2 --check` currently fails.
+* The repository contained fake or templated evidence surfaces, including a
+  placeholder fuzz file and a template Zig integration test in an inactive path.
+* A second remediation pass removed inactive devcontainer, container, duplicate
+  FFI, and packaging scaffolds rather than leaving templated residue in place.
+* Venue-facing paper assets still require claim and benchmark reconciliation.
+
+== Immediate Next Actions
+
+* Keep public claims bounded to the checked L1-L10 core until L11-L12 compile,
+  enter the package, and gain tests.
+* Continue removing or rewriting the remaining template-era documentation
+  surfaces that still describe the repo as if it were a generic scaffold.
+* Replace benchmark and paper claims with evidence-backed statements before any
+  submission attempt.

@@ -310,7 +310,9 @@ test("parse examples/01-single-module.twasm", () => {
   // Should have: Vec2, Players, Enemies regions + game_memory + 5 functions = 9 decls
   assertTrue(
     module_.declarations->Array.length >= 8,
-    `Example 01 should have at least 8 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+    `Example 01 should have at least 8 declarations, got ${module_.declarations
+      ->Array.length
+      ->Int.toString}`,
   )
   // First decl should be Vec2 region
   let first = module_.declarations->Array.getUnsafe(0)
@@ -338,25 +340,25 @@ test("parse examples/02-multi-module.twasm", () => {
   //   import, collect_visible = 8+ decls
   assertTrue(
     module_.declarations->Array.length >= 7,
-    `Example 02 should have at least 7 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+    `Example 02 should have at least 7 declarations, got ${module_.declarations
+      ->Array.length
+      ->Int.toString}`,
   )
   // Verify export region exists
-  let hasExport =
-    module_.declarations->Array.some(d =>
-      switch d.node {
-      | ExportRegionDecl(e) => e.regionName == "Entity"
-      | _ => false
-      }
-    )
+  let hasExport = module_.declarations->Array.some(d =>
+    switch d.node {
+    | ExportRegionDecl(e) => e.regionName == "Entity"
+    | _ => false
+    }
+  )
   assertTrue(hasExport, "Should have an export region Entity")
   // Verify import regions exist
-  let importCount =
-    module_.declarations->Array.reduce(0, (acc, d) =>
-      switch d.node {
-      | ImportRegionDecl(_) => acc + 1
-      | _ => acc
-      }
-    )
+  let importCount = module_.declarations->Array.reduce(0, (acc, d) =>
+    switch d.node {
+    | ImportRegionDecl(_) => acc + 1
+    | _ => acc
+    }
+  )
   assertTrue(importCount >= 2, "Should have at least 2 import declarations")
 })
 
@@ -366,25 +368,25 @@ test("parse examples/03-ownership-linearity.twasm", () => {
   // Should have: Particle region, FreeSlot region, and several functions
   assertTrue(
     module_.declarations->Array.length >= 4,
-    `Example 03 should have at least 4 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+    `Example 03 should have at least 4 declarations, got ${module_.declarations
+      ->Array.length
+      ->Int.toString}`,
   )
   // Verify Particle region exists
-  let hasParticle =
-    module_.declarations->Array.some(d =>
-      switch d.node {
-      | RegionDecl(r) => r.name == "Particle"
-      | _ => false
-      }
-    )
+  let hasParticle = module_.declarations->Array.some(d =>
+    switch d.node {
+    | RegionDecl(r) => r.name == "Particle"
+    | _ => false
+    }
+  )
   assertTrue(hasParticle, "Should have a Particle region")
   // Verify there are functions with various effects
-  let fnCount =
-    module_.declarations->Array.reduce(0, (acc, d) =>
-      switch d.node {
-      | FunctionDecl(_) => acc + 1
-      | _ => acc
-      }
-    )
+  let fnCount = module_.declarations->Array.reduce(0, (acc, d) =>
+    switch d.node {
+    | FunctionDecl(_) => acc + 1
+    | _ => acc
+    }
+  )
   assertTrue(fnCount >= 3, `Should have at least 3 functions, got ${fnCount->Int.toString}`)
 })
 
@@ -394,16 +396,17 @@ test("parse examples/04-ecs-game.twasm", () => {
   // Should have: Transform, Health, Inventory regions + 2 invariants + functions
   assertTrue(
     module_.declarations->Array.length >= 7,
-    `Example 04 should have at least 7 declarations, got ${module_.declarations->Array.length->Int.toString}`,
+    `Example 04 should have at least 7 declarations, got ${module_.declarations
+      ->Array.length
+      ->Int.toString}`,
   )
   // Verify cross-region invariant exists
-  let hasInvariant =
-    module_.declarations->Array.some(d =>
-      switch d.node {
-      | InvariantDecl(inv) => inv.name == "health_entity_fk"
-      | _ => false
-      }
-    )
+  let hasInvariant = module_.declarations->Array.some(d =>
+    switch d.node {
+    | InvariantDecl(inv) => inv.name == "health_entity_fk"
+    | _ => false
+    }
+  )
   assertTrue(hasInvariant, "Should have health_entity_fk invariant")
   // Verify Transform region has alignment
   let transformDecl = module_.declarations->Array.find(d =>

@@ -6,10 +6,9 @@
  * Version: 0.1.0
  * Date: 2026-03-21
  *
- * Applies TypeLL's 12-level progressive type safety framework to WebAssembly
- * linear memory, treating memory regions as typed schemas and memory operations
- * as typed projections — analogous to how TypedQL treats database tables and
- * queries.
+ * Applies a checked TypeLL-derived 10-level core to WebAssembly linear memory,
+ * treating memory regions as typed schemas and memory operations as typed
+ * projections — analogous to how TypedQL treats database tables and queries.
  *
  * The key insight: WASM linear memory is an untyped byte store that programs
  * "query" with load/store instructions at byte offsets. This grammar makes
@@ -18,10 +17,9 @@
  *   - Typing all memory access through schema projections
  *   - Proving safety properties at compile time via dependent types
  *   - Enabling multi-module shared memory with cross-module type agreement
- *   - Bounding access pattern costs via tropical semiring annotations
- *   - Preventing stale reads via epistemic freshness tracking
+ *   - Exploring higher-level cost and epistemic extensions as draft research
  *
- * The 12 levels adapted for WASM memory:
+ * Current checked core:
  *   Level  1: Instruction validity (well-formed access expressions)
  *   Level  2: Region-binding (every access resolves to a declared region.field)
  *   Level  3: Type-compatible access (load type matches field declaration)
@@ -32,6 +30,8 @@
  *   Level  8: Effect-tracking (Read / Write / Alloc / Free distinguished)
  *   Level  9: Lifetime safety (no use-after-free, no dangling pointers)
  *   Level 10: Linearity (resources used exactly once, memory freed exactly once)
+ *
+ * Draft research extensions (not part of the checked claim surface yet):
  *   Level 11: Tropical cost-tracking (access pattern costs bounded by semiring)
  *   Level 12: Epistemic safety (reads require fresh knowledge of shared state)
  *)

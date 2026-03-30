@@ -27,7 +27,7 @@ These files MUST exist in `.machine_readable/` directory ONLY:
 | `spec/` | Grammar (EBNF) and level specifications — the core intellectual artifacts |
 | `src/abi/` | Idris2 ABI definitions — formal proofs of region type safety |
 | `ffi/zig/` | Zig FFI — C-ABI compatible memory operations |
-| `examples/` | `.twasm` example files demonstrating all 10 levels |
+| `examples/` | `.twasm` example files for the checked L1-L10 core; higher-level drafts may also appear |
 | `docs/` | Whitepaper, motivation, comparison with related work |
 | `generated/abi/` | Auto-generated C headers from Idris2 ABI |
 | `bindings/` | Language-specific wrappers (future) |
@@ -36,16 +36,17 @@ These files MUST exist in `.machine_readable/` directory ONLY:
 
 1. **NO believe_me, assert_total, unsafePerformIO** in Idris2 code
 2. **NO raw memory access** — all access through typed region operations
-3. **10 levels are progressive** — cannot skip levels
-4. **Region schemas are immutable** — once declared, layout is fixed
-5. **Multi-module schemas must agree** — structural compatibility required
-6. **SPDX: PMPL-1.0-or-later** on all files
-7. **Author: Jonathan D.A. Jewell** <j.d.a.jewell@open.ac.uk>
+3. **The checked core is L1-L10 and is progressive** — cannot skip levels
+4. **Do not overclaim L11-L12** — they remain draft research until they type-check and join the default proof build
+5. **Region schemas are immutable** — once declared, layout is fixed
+6. **Multi-module schemas must agree** — structural compatibility required
+7. **SPDX: PMPL-1.0-or-later** on all files
+8. **Author: Jonathan D.A. Jewell** <j.d.a.jewell@open.ac.uk>
 
 ## PROJECT IDENTITY
 
 - **Name:** typed-wasm
-- **Tagline:** TypeLL's 10-level type safety for WebAssembly linear memory
+- **Tagline:** TypeLL-derived checked core for WebAssembly linear memory
 - **Core insight:** WASM linear memory is an untyped data store. Typed-wasm
   treats it as a database: regions are tables, loads/stores are queries,
   schemas are type-checked at compile time.
@@ -56,7 +57,7 @@ These files MUST exist in `.machine_readable/` directory ONLY:
 
 ## ECOSYSTEM POSITION
 
-- **TypeLL** — foundational type theory (the 10 levels)
+- **TypeLL** — foundational type theory for the checked progressive core
 - **TypedQLiser** — applies levels to database query languages
 - **VQL-UT** — applies levels to VeriSimDB queries
 - **typed-wasm** — applies levels to WASM linear memory (THIS REPO)
