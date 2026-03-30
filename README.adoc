@@ -6,7 +6,7 @@
 :icons: font
 :sectnums:
 
-image:https://img.shields.io/badge/DOI-10.5281%2Fzenodo.PENDING-blue[DOI,link="https://zenodo.org/"]
+image:https://zenodo.org/badge/DOI/10.5281/zenodo.19329508.svg[DOI,link="https://doi.org/10.5281/zenodo.19329508"]
 image:https://img.shields.io/badge/OpenSSF-Best_Practices-green?logo=opensourcesecurity[OpenSSF Best Practices,link="https://www.bestpractices.dev/en/projects/new?repo_url=https://github.com/hyperpolymath/typed-wasm"]
 image:https://img.shields.io/badge/believe__me-0-brightgreen[believe_me: 0]
 image:https://img.shields.io/badge/Levels-12_(L1--10_proven,_L11--12_formalised)-blue[Levels: 12]
