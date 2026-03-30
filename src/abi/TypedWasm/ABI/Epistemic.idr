@@ -121,21 +121,30 @@ writerKnowsFresh : (writer : ModuleId) -> (field : String) -> (ver : Nat) ->
 writerKnowsFresh _ _ _ = MkFresh Refl
 
 ||| Staleness is decidable: given two versions, knowledge is either fresh or stale.
+||| Uses Nat ordering directly — no believe_me.
 export
 freshOrStale : (known, current : Nat) ->
                Either (known = current) (LT known current `Either` LT current known)
-freshOrStale known current with (decEq known current)
-  freshOrStale known known | Yes Refl = Left Refl
-  freshOrStale known current | No neq with (isLT known current)
-    freshOrStale known current | No neq | Yes lt = Right (Left lt)
-    freshOrStale known current | No neq | No nlt = Right (Right (notLTImpliesGT neq nlt))
-      where
-        -- If known /= current and NOT known < current, then current < known.
-        notLTImpliesGT : Not (known = current) -> Not (LT known current) -> LT current known
-        notLTImpliesGT neq nlt = believe_me ()
-        -- NOTE: This single believe_me is a known gap. The full proof requires
-        -- trichotomy on Nat which Idris2 stdlib provides but the import chain
-        -- is complex. Tracked as a TODO for the next proof session.
+freshOrStale known current with (compare known current) proof prf
+  freshOrStale known current | EQ with (compareEq known current prf)
+    freshOrStale current current | EQ | Refl = Left Refl
+  freshOrStale known current | LT =
+    Right (Left (compareLT known current prf))
+  freshOrStale known current | GT =
+    Right (Right (compareGT known current prf))
+  where
+    -- Extract LT proof from Ordering witness
+    compareLT : (a, b : Nat) -> compare a b = LT -> LT a b
+    compareLT Z (S _) _ = LTESucc LTEZero
+    compareLT (S a) (S b) prf = LTESucc (compareLT a b prf)
+    -- Extract GT proof from Ordering witness (GT a b means LT b a)
+    compareGT : (a, b : Nat) -> compare a b = GT -> LT b a
+    compareGT (S _) Z _ = LTESucc LTEZero
+    compareGT (S a) (S b) prf = LTESucc (compareGT a b prf)
+    -- Extract equality from EQ ordering
+    compareEq : (a, b : Nat) -> compare a b = EQ -> a = b
+    compareEq Z Z _ = Refl
+    compareEq (S a) (S b) prf = cong S (compareEq a b prf)
 
 ||| Sync restores freshness.
 export
