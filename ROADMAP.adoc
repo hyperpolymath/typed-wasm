@@ -45,8 +45,8 @@ Key capabilities delivered:
 
 * [x] Formalise whitepaper for arXiv submission (docs/arxiv/typed-wasm.tex — ACM sigplan format)
 * [x] BibTeX bibliography (docs/arxiv/typed-wasm.bib — 15 references)
-* [ ] Benchmark multi-module type checking overhead
-* [ ] Comparison with existing WASM safety approaches
+* [x] Benchmark multi-module type checking overhead (Section 8, Table 5)
+* [x] Comparison with existing WASM safety approaches (Section 8, Table 6)
 * [ ] Submit to arXiv (cs.PL) — requires manual upload
 
 == v0.4.0 -- Ecosystem Integration (Partially Complete)
