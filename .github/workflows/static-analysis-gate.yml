@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  REPO_OWNER: ${{ github.repository_owner }}
+
 jobs:
   # ---------------------------------------------------------------------------
   # Job 1: panic-attack assail
@@ -30,7 +33,7 @@ jobs:
         id: install
         run: |
           # Try to fetch the latest release binary from the org
-          PA_URL="https://github.com/{{OWNER}}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          PA_URL="https://github.com/${REPO_OWNER}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
           if curl -fsSL --head "$PA_URL" >/dev/null 2>&1; then
             curl -fsSL -o /usr/local/bin/panic-attack "$PA_URL"
             chmod +x /usr/local/bin/panic-attack
@@ -142,7 +145,7 @@ jobs:
         id: build
         continue-on-error: true
         run: |
-          git clone https://github.com/{{OWNER}}/hypatia.git "$HOME/hypatia" 2>/dev/null || true
+          git clone "https://github.com/${REPO_OWNER}/hypatia.git" "$HOME/hypatia" 2>/dev/null || true
           if [ -f "$HOME/hypatia/mix.exs" ]; then
             cd "$HOME/hypatia"
             if [ ! -f hypatia-v2 ]; then
@@ -246,7 +249,7 @@ jobs:
       - name: Install panic-attack (if available)
         id: install
         run: |
-          PA_URL="https://github.com/{{OWNER}}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          PA_URL="https://github.com/${REPO_OWNER}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
           if curl -fsSL --head "$PA_URL" >/dev/null 2>&1; then
             curl -fsSL -o /usr/local/bin/panic-attack "$PA_URL"
             chmod +x /usr/local/bin/panic-attack
