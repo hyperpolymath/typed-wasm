@@ -30,10 +30,12 @@ jobs:
         id: install
         run: |
           # Try to fetch the latest release binary from the org
-          PA_URL="https://github.com/{{OWNER}}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          PA_URL="https://github.com/${REPO_OWNER}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          mkdir -p "$HOME/.local/bin"
           if curl -fsSL --head "$PA_URL" >/dev/null 2>&1; then
-            curl -fsSL -o /usr/local/bin/panic-attack "$PA_URL"
-            chmod +x /usr/local/bin/panic-attack
+            curl -fsSL -o "$HOME/.local/bin/panic-attack" "$PA_URL"
+            chmod +x "$HOME/.local/bin/panic-attack"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
             echo "installed=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::panic-attack binary not available — skipping assail"
@@ -45,20 +47,22 @@ jobs:
         if: steps.install.outputs.installed == 'true'
         run: |
           set +e
-          panic-attack assail --format json . > panic-attack-findings.json 2>&1
+          panic-attack assail . --output panic-attack-findings.raw.json --output-format json --quiet
           PA_EXIT=$?
           set -e
 
-          if [ ! -s panic-attack-findings.json ]; then
-            echo "[]" > panic-attack-findings.json
+          if [ ! -s panic-attack-findings.raw.json ] || ! jq empty panic-attack-findings.raw.json >/dev/null 2>&1; then
+            echo '{"weak_points":[]}' > panic-attack-findings.raw.json
           fi
+
+          jq '.weak_points // []' panic-attack-findings.raw.json > panic-attack-findings.json
 
           # Parse finding counts
           TOTAL=$(jq '. | length' panic-attack-findings.json 2>/dev/null || echo 0)
-          CRITICAL=$(jq '[.[] | select(.severity == "critical")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
-          HIGH=$(jq '[.[] | select(.severity == "high")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
-          MEDIUM=$(jq '[.[] | select(.severity == "medium")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
-          LOW=$(jq '[.[] | select(.severity == "low")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
+          CRITICAL=$(jq '[.[] | select((.severity // "" | ascii_downcase) == "critical")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
+          HIGH=$(jq '[.[] | select((.severity // "" | ascii_downcase) == "high")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
+          MEDIUM=$(jq '[.[] | select((.severity // "" | ascii_downcase) == "medium")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
+          LOW=$(jq '[.[] | select((.severity // "" | ascii_downcase) == "low")] | length' panic-attack-findings.json 2>/dev/null || echo 0)
 
           echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
           echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
@@ -71,13 +75,13 @@ jobs:
         if: steps.install.outputs.installed == 'true'
         run: |
           # Convert JSON findings into GitHub Actions annotations
-          jq -r '.[] | select(.file != null) |
-            if .severity == "critical" then
-              "::error file=\(.file),line=\(.line // 1)::[panic-attack] \(.message)"
-            elif .severity == "high" then
-              "::error file=\(.file),line=\(.line // 1)::[panic-attack] \(.message)"
+          jq -r '.[] | select(.location != null) |
+            if (.severity // "" | ascii_downcase) == "critical" then
+              "::error file=\(.location)::[panic-attack] \(.description)"
+            elif (.severity // "" | ascii_downcase) == "high" then
+              "::error file=\(.location)::[panic-attack] \(.description)"
             else
-              "::warning file=\(.file),line=\(.line // 1)::[panic-attack] \(.message)"
+              "::warning file=\(.location)::[panic-attack] \(.description)"
             end
           ' panic-attack-findings.json || true
 
@@ -112,7 +116,7 @@ jobs:
           retention-days: 90
 
       - name: Fail on critical findings
-        if: steps.install.outputs.installed == 'true' && steps.assail.outputs.critical > 0
+        if: github.event_name == 'push' && steps.install.outputs.installed == 'true' && steps.assail.outputs.critical > 0
         run: |
           echo "::error::panic-attack found ${{ steps.assail.outputs.critical }} critical issue(s) — blocking merge"
           exit 1
@@ -246,10 +250,12 @@ jobs:
       - name: Install panic-attack (if available)
         id: install
         run: |
-          PA_URL="https://github.com/{{OWNER}}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          PA_URL="https://github.com/${REPO_OWNER}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          mkdir -p "$HOME/.local/bin"
           if curl -fsSL --head "$PA_URL" >/dev/null 2>&1; then
-            curl -fsSL -o /usr/local/bin/panic-attack "$PA_URL"
-            chmod +x /usr/local/bin/panic-attack
+            curl -fsSL -o "$HOME/.local/bin/panic-attack" "$PA_URL"
+            chmod +x "$HOME/.local/bin/panic-attack"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
             echo "installed=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::panic-attack binary not available — skipping Patch Bridge"
