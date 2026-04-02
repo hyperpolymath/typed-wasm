@@ -34,7 +34,7 @@ jobs:
       - name: Clone Hypatia
         run: |
           if [ ! -d "$HOME/hypatia" ]; then
-            git clone https://github.com/{{OWNER}}/hypatia.git "$HOME/hypatia"
+            git clone https://github.com/hyperpolymath/hypatia.git "$HOME/hypatia"
           fi
 
       - name: Build Hypatia scanner (if needed)
@@ -83,7 +83,8 @@ jobs:
           retention-days: 90
 
       - name: Submit findings to gitbot-fleet (Phase 2)
-        if: steps.scan.outputs.findings_count > 0
+        if: github.event_name == 'push' && steps.scan.outputs.findings_count > 0
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -93,7 +94,7 @@ jobs:
 
           # Clone gitbot-fleet to temp directory
           FLEET_DIR="/tmp/gitbot-fleet-$$"
-          git clone https://github.com/{{OWNER}}/gitbot-fleet.git "$FLEET_DIR"
+          git clone https://github.com/hyperpolymath/gitbot-fleet.git "$FLEET_DIR"
 
           # Run submission script
           bash "$FLEET_DIR/scripts/submit-finding.sh" hypatia-findings.json
@@ -140,13 +141,14 @@ jobs:
           These findings feed Hypatia's learning engine to improve future rules.
 
           ---
-          *Powered by [Hypatia](https://github.com/{{OWNER}}/hypatia) - Neurosymbolic CI/CD Intelligence*
+          *Powered by [Hypatia](https://github.com/hyperpolymath/hypatia) - Neurosymbolic CI/CD Intelligence*
           EOF
 
           cat hypatia-report.md >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR with findings
         if: github.event_name == 'pull_request' && steps.scan.outputs.findings_count > 0
+        continue-on-error: true
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v7
         with:
           script: |
