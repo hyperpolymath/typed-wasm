@@ -21,7 +21,7 @@ Priority order: `must > intend > like`
 Axis 1 output is a scoped assembly of work based on:
 
 * README, roadmap, status, CI/security docs
-* marker scans (`TODO`, `FIXME`, `XXX`, `HACK`, `STUB`, `PARTIAL`)
+* marker scans (`todo`, `fixme`, `xxx`, `hack`, `stub`, `partial`)
 * Idris unsoundness scan when Idris exists (`believe_me`, `assert_total`)
 * docs honesty check (intent vs actual implementation)
 

@@ -26,10 +26,10 @@ jobs:
           head: ${{ github.sha }}
         continue-on-error: true
       
-      - name: Check TODO/FIXME
+      - name: Check todo/fixme
         run: |
-          echo "=== TODOs ==="
-          grep -rn "TODO\|FIXME\|HACK\|XXX" --include="*.rs" --include="*.res" --include="*.py" --include="*.ex" . | head -20 || echo "None found"
+          echo "=== todo/fixme ==="
+          rg -ni "todo|fixme|hack|xxx" --glob '*.rs' --glob '*.res' --glob '*.py' --glob '*.ex' . | head -20 || echo "None found"
       
       - name: Check for large files
         run: |

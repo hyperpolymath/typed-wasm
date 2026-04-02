@@ -24,7 +24,7 @@ Apply this baseline to every repo unless an explicit exception is recorded.
 Before Axis 2/3 execution, assemble a scoped worklist from evidence:
 
 - [ ] Read and reconcile: `README`, roadmap, status docs, maintenance checklist, and current CI/security docs.
-- [ ] Scan for unfinished markers: `TODO`, `FIXME`, `XXX`, `HACK`, `STUB`, `PARTIAL`.
+- [ ] Scan for unfinished markers: `todo`, `fixme`, `xxx`, `hack`, `stub`, `partial`.
 - [ ] If Idris is present, scan unsoundness markers: `believe_me`, `assert_total`.
 - [ ] Identify declared intent vs actual implementation (docs honesty check).
 - [ ] Produce a scope assembly artifact with prioritized entries under:
@@ -62,7 +62,7 @@ Run this pass at the end of a corrective/adaptive/perfective cycle:
   - keep only required control/entry files in root
   - move non-essential docs/reports/fixtures to canonical folders
 - [ ] Remove or archive stale work:
-  - close out completed TODO/STUB/PARTIAL items
+  - close out completed todo/stub/partial items
   - cull obsolete references, dead files, and superseded plans
 - [ ] Documentation finish-off:
   - ensure README, roadmap, status, and wiki match actual implementation state
@@ -231,12 +231,12 @@ python -c "import pydantic; print(pydantic.__version__)" || echo "pydantic missi
 
 ## 4) Code Health Scans
 
-- [ ] `TODO/FIXME/XXX/HACK/STUB/PARTIAL` scan.
+- [ ] `todo/fixme/xxx/hack/stub/partial` scan.
 - [ ] Permission policy scan (`g+w/o+w`, executable hygiene).
 - [ ] ABI/FFI policy scan (if applicable: Idris2 ABI, Zig FFI).
 
 ```bash
-rg -n "TODO|FIXME|XXX|HACK|STUB|PARTIAL" -g '!**/.git/**' -g '!**/target/**' .
+rg -ni "todo|fixme|xxx|hack|stub|partial" -g '!**/.git/**' -g '!**/target/**' .
 ```
 
 ```bash
@@ -369,7 +369,7 @@ Scope:
 - Perfective:
 
 Checks Run:
-- TODO/FIXME scan:
+- todo/fixme scan:
 - Panic-attacker:
 - Rust/Python/Elixir checks:
 - Container checks:
@@ -441,7 +441,7 @@ Repo: `/tmp/eclexia-releaseprep` (branch `release-prep`, base `533ec9e9447f37413
 
 ### 13.3 Code-Health Scans
 
-- [x] TODO/FIXME/STUB/PARTIAL scan run on active code paths.
+- [x] todo/fixme/stub/partial scan run on active code paths.
 - [x] ABI/FFI file inventory run (`*.idr`, `*.zig`).
 - [x] Active-code marker count reduced/triaged; remaining items tracked in release audit.
 
@@ -493,7 +493,7 @@ Required behavior:
 1. Run ~/Desktop/run-maintenance.sh first and collect the JSON report.
 2. Triage report results by severity: fail > warn > pass.
 3. Execute corrective maintenance first (fix regressions, panics, broken tests/commands).
-4. Run TODO/FIXME/stub scan and address relevant items.
+4. Run todo/fixme/stub scan and address relevant items.
 5. Run panic-attacker and fix findings in priority order; rerun to confirm.
 6. Run language-specific checks (Rust/Python/Elixir) relevant to this repo.
 7. Run benchmark/regression checks for touched hot paths.

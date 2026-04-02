@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= typed-wasm Publication Review 2026-03-31
+:revdate: 2026-03-31
+
+== Verdict
+
+Status: `publishable after repair`
+
+The repository is no longer in the immediate overclaim state it was in during
+the earlier tranche audit, but it is still not ready for HOL-grade or DOI-grade
+publication today. The core reason is now narrower: the checked L1--10 envelope
+is defensible, while the wider release reproducibility and final polish still
+need closure.
+
+== What changed in this pass
+
+* `docs/arxiv/typed-wasm.tex` was pulled back to the checked L1--10 core.
+  The abstract, contribution list, evaluation section, conclusion, and
+  appendix now describe L11--L12 as draft research extensions rather than
+  shipped proof artefacts.
+* The paper's benchmark wording now matches the actual shipped benchmark
+  surface (`benchmarks/parser-bench.mjs`) instead of implying a broader
+  full-toolchain timing suite than the repo currently contains.
+* The ECHIDNA discussion now matches the actual offline harness
+  (`tests/echidna/echidna-harness.mjs`) rather than claiming larger fuzz
+  counts or stronger proof-soundness guarantees than the repo presently shows.
+
+== Evidence checked in this pass
+
+Directly rerun from the current workspace:
+
+* `./release-pre-flight/v1-audit.sh /var/mnt/eclipse/repos/typed-wasm`
+  from `standards/` now returns `PASS`.
+* `node tests/parser/ParserTests.mjs` passes (`21 passed, 0 failed`).
+* `node tests/e2e/e2e-smoke.mjs` passes (`40 passed, 0 failed`).
+* `node tests/aspect/claim-envelope.mjs` passes (`13 passed, 0 failed`).
+* `node benchmarks/parser-bench.mjs` passes (`200` successful parses,
+  `1.223 ms/parse` mean in this rerun).
+* `node tests/echidna/echidna-harness.mjs` passes (`104 passed, 0 failed`,
+  `100` offline iterations).
+
+Could not fully re-verify in this sandbox:
+
+* `just check-abi` fails here for environment reasons rather than a paper fact:
+  the Idris2/pack path wants to write under `/home/hyper/.cache/pack`, which is
+  read-only in the current sandbox.
+* `just test`, `just test-e2e`, and `just bench` did not complete within the
+  observation window because `rescript build` did not finish in-session, even
+  though the corresponding checked Node-backed artefacts above execute cleanly.
+
+== Remaining blockers before publication
+
+* `just lint` is still known to fail on live ReScript warning debt in parser
+  sources, so the repo does not yet satisfy a clean release-quality closure.
+* The ABI proof path should be rerun in an environment where Idris2 can use its
+  cache normally, so the checked package can be reproduced without qualification.
+* The paper has been demoted to honesty, but it still needs a final compile and
+  venue-facing read-through after the textual edits made in this pass.
+
+== Decision
+
+Treat `typed-wasm` as `YELLOW`, not `GREEN`:
+
+* acceptable to continue polishing toward publication
+* not yet acceptable for Zenodo/HAL submission today
+* no longer a repo that should present itself as completed 12-level verified work

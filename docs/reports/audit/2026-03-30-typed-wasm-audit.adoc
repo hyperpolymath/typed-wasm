@@ -1,41 +1,100 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
-= typed-wasm Audit 2026-03-30
+= typed-wasm Audit 2026-03-30 (v2)
 :revdate: 2026-03-30
+
+This note is the second, evidence-driven pass. The `(v2)` label emphasises that
+we continue iterating on the claims, welcoming discussion, and pushing the audit
+upward rather than letting the first pass become the final word.
 
 == Summary
 
 Status: `fail`
 
-The repository has a real checked core, but it is not yet honest enough for
-stable release or venue-facing submission. The checked claim envelope is
-currently L1-L10 only.
+The repository runs real L1–L10 proofs and tests, but the broader L11–L12
+claims, 12-level publications, and governance metadata still outpace the
+machine-checked evidence. Stable release, publication, and Zenodo-ready claims
+must wait until ReScript linting is clean, the additional Idris modules compile,
+and the template residue is fully cleared.
 
-== Evidence Confirmed
+== Evidence log
 
-* `just test` passes.
-* `just check-abi` passes for the default `typed-wasm.ipkg` package.
-* `node tests/smoke/e2e-smoke.mjs` passes.
+* `just test`, `just check-abi`, `just test-e2e`, `just test-aspect`, `just bench`,
+  and `just fmt-check` currently pass, reaffirming that the checked L1–L10
+  layer is backed by runnable CI surfaces.
+* `just lint` fails because ReScript compiler warnings number 30 (duplicate
+  label names like `name`, `target`, `fieldPath`, `binding`, `body` in
+  `src/parser/Ast.res`) and number 45 (`open Ast` shadows constructors such as
+  `Eq`, `LtEq`, `GtEq`, and `Lifetime` in `src/parser/Parser.res`) are configured
+  as errors. The log lists 16 warning-turned-errors that must be cleaned before
+  `just lint` can be green.
+* `idris2 --check src/abi/TypedWasm/ABI/Epistemic.idr` and
+  `idris2 --check src/abi/TypedWasm/ABI/Tropical.idr` both fail because
+  `TypedWasm.ABI.Region` is not yet visible to these modules, so the L11–L12
+  artifacts cannot be type-checked in isolation or as part of `typed-wasm.ipkg`.
+* The Idris package `src/abi/typed-wasm.ipkg` currently only exposes the nine
+  core modules (`Region`, `TypedAccess`, `Levels`, `Pointer`, `Effects`, `Lifetime`,
+  `Linear`, `MultiModule`, `Proofs`), meaning `Epistemic`/`Tropical` are not even
+  part of the shipped ABI and thus cannot show up in publication claims until they
+  are integrated.
+* Template scaffolds were removed from devcontainers, `container/`, and
+  duplicate FFI paths, but the release gate still flags a handful of governance
+  docs, container metadata, and templated statements as residual template
+  evidence. `stable-gate` currently splits the failure between real template
+  paths and false positives from rules that scan the `dist/` and governance text.
+* The paper(s) still mix 10-level implementable statements with 12-level
+  goals and cite benchmarks that only run within the trimmed L1–L10 slices, so
+  we must continue to align the prose with the evidence before submitting.
 
-== Critical Findings
+== Confirmed blockers
 
-* Root metadata previously identified the repo as `rsr-template-repo` and as
-  `production` / `maintenance`; this was false.
-* Claim surfaces mixed a checked 10-level core with 12-level language.
-* `TypedWasm/ABI/Tropical.idr` is not part of `typed-wasm.ipkg` and its
-  standalone `idris2 --check` currently fails.
-* `TypedWasm/ABI/Epistemic.idr` is not part of `typed-wasm.ipkg` and its
-  standalone `idris2 --check` currently fails.
-* The repository contained fake or templated evidence surfaces, including a
-  placeholder fuzz file and a template Zig integration test in an inactive path.
-* A second remediation pass removed inactive devcontainer, container, duplicate
-  FFI, and packaging scaffolds rather than leaving templated residue in place.
-* Venue-facing paper assets still require claim and benchmark reconciliation.
+* `just lint` remains blocked by ReScript warnings in `Ast.res`/`Parser.res`
+  (duplicate label definitions, open-statements shadowing constructors). Until
+  those warnings disappear, the release gate rejects the repo for creeping
+  non-determinism in the parser grammar.
+* `idris2 --check` fails for `Epistemic` and `Tropical` because `TypedWasm.ABI.Region`
+  is not exported/visible to those modules, so the generation of L11–L12 proofs
+  cannot proceed and they cannot be packaged.
+* The package `typed-wasm.ipkg` does not include the `Epistemic`/`Tropical`
+  modules, even though the paper continues to describe them, so the release claims
+  outpace the actually shipped artefacts.
+* Template and governance text still contains `TODO`/`STUB` markers and outdated
+  release scaffolding, so the auditor erroneously flags them unless we rewrite or
+  reclassify the content.
+* The publication-level papers reference the 12-level envelope and benchmark
+  numbers that only apply to the current L1–L10 proofs, so the claim-vs-evidence
+  gap persists until we either retract the stronger statements or prove them.
 
-== Immediate Next Actions
+== Containment actions taken
 
-* Keep public claims bounded to the checked L1-L10 core until L11-L12 compile,
-  enter the package, and gain tests.
-* Continue removing or rewriting the remaining template-era documentation
-  surfaces that still describe the repo as if it were a generic scaffold.
-* Replace benchmark and paper claims with evidence-backed statements before any
-  submission attempt.
+* Template metadata that described the repo as `rsr-template-repo`, `production`,
+  or `maintenance` has been rewritten to describe the current research boundary.
+* Duplicate devcontainer/container scaffolds were removed along with stale Zig
+  integration tests and FFI directories so that the repo no longer advertises
+  inactive release paths.
+* The audit note now exists and documents the `just lint` log, package gaps, and
+  template issues so future reviewers know why the gate still fails.
+* Paper surfaces continue to emphasise the prototype nature of the work
+  (L1–L10 real, L11–L12 aspirational) and carry disclaimers about ongoing
+  mechanisation.
+
+== Immediate next actions
+
+* Clean the ReScript warnings flagged as errors (duplicate record labels,
+  `open Ast` shadowing types/constructors) so `just lint` succeeds again.
+* Update the Idris package definition so `Epistemic`/`Tropical` have access to
+  their dependencies (`TypedWasm.ABI.Region`) and compile successfully, or
+  purposely keep them separate and explicitly mark them as draft/proof sketches.
+* Decide whether the `Epistemic`/`Tropical` modules should be part of
+  `typed-wasm.ipkg`. If they are, extend the package file; if not, pull the
+  corresponding claims from the paper/presentation.
+* Continue removing or rewriting remaining template release scaffolds so nothing
+  in devcontainer/flake/Containerfile triggers a template scan.
+* Reconcile the paper/benchmark claims with the actual tests and proofs before
+  delivering any Zenodo/HAL submission.
+
+== Invitation for review
+
+If you disagree with any of the findings or can help finish the remaining
+lint-proof/proof-package tasks, please annotate this document or open an issue.
+The audit is intentionally transparent and open-ended; the community is welcome
+to push on any point where it thinks the claim bar is too high or too low.

@@ -549,7 +549,7 @@ loc:
 
 # Show TODO comments
 todos:
-    @grep -rn "TODO\|FIXME\|HACK\|XXX" --include="*.rs" --include="*.ex" --include="*.res" --include="*.gleam" --include="*.zig" --include="*.idr" --include="*.hs" . 2>/dev/null || echo "No TODOs"
+    @rg -ni "todo|fixme|hack|xxx|stub|partial" --glob '*.rs' --glob '*.ex' --glob '*.res' --glob '*.gleam' --glob '*.zig' --glob '*.idr' --glob '*.hs' . 2>/dev/null || echo "No TODO-style markers"
 
 # Open in editor
 edit:

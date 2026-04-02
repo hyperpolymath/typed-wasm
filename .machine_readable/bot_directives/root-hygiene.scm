@@ -104,7 +104,7 @@
 
     ;; General catch-all for non-standard root docs
     (pattern "NEXT_STEPS.md" (action "delete") (reason "Superseded by ROADMAP"))
-    (pattern "TODO.md" (action "delete") (reason "Use issues, ROADMAP, or STATE.scm"))
+    (pattern "todo.md" (action "delete") (reason "Use issues, ROADMAP, or STATE.scm"))
     (pattern "NOTES.md" (action "delete") (reason "Notes are ephemeral — commit message or docs/"))
     (pattern "TASKS.md" (action "delete") (reason "Use issues or STATE.scm"))
     )

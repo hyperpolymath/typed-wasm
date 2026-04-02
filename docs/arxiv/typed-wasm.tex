@@ -87,23 +87,23 @@ WebAssembly (Wasm) linear memory is an untyped byte array shared across
 module boundaries. When independently compiled modules --- potentially from
 different source languages --- read and write the same memory regions, no
 existing type system covers the cross-module interface. We present
-\textbf{typed-wasm}, a type system that applies a 12-level progressive
-type safety framework, originally developed for database query languages,
+\textbf{typed-wasm}, a type system with a checked 10-level progressive
+type safety core, originally developed for database query languages,
 to Wasm linear memory. The system treats contiguous memory segments as \emph{typed
 region schemas} and load/store operations as \emph{typed projections} verified
 against those schemas at compile time. We formalise the system in Idris~2
 using Quantitative Type Theory (QTT), providing proofs of bounds safety,
-aliasing freedom, effect purity, lifetime validity, linearity, cost
-boundedness, and epistemic freshness --- all erased before code generation,
-yielding zero runtime overhead. Our principal contribution is
+aliasing freedom, effect purity, lifetime validity, and linearity --- all
+erased before code generation, yielding zero runtime overhead for the
+checked core. Our principal contribution is
 \textbf{multi-module schema agreement}: a static verification that
 independently compiled Wasm modules agree on the layout, types, alignment,
 and invariants of shared memory regions --- a property that no source-level
 type system, and no existing Wasm proposal, can express. We further extend
-the framework with two novel levels: \emph{tropical cost-tracking}
-(Level~11), which proves that memory access patterns have bounded cost via
-a min-plus semiring, and \emph{epistemic safety} (Level~12), which prevents
-modules from acting on stale knowledge of shared state.
+the framework with two draft research levels: \emph{tropical cost-tracking}
+(Level~11) and \emph{epistemic safety} (Level~12). These extensions are
+described as formalisation targets in the repository, but they are not yet
+part of the checked claim envelope or shipped toolchain.
 \end{abstract}
 
 \begin{CCSXML}
@@ -179,28 +179,31 @@ linear memory. Our contributions are:
     database schemas and memory region declarations, between queries and
     typed memory access, that yields a concrete grammar and type system.
 
-  \item \textbf{A 12-level progressive type safety framework for Wasm memory}
+  \item \textbf{A progressive type safety framework for Wasm memory}
     (Section~\ref{sec:levels}): adapting established levels (parse-time
     validity, schema binding, type compatibility, null safety, bounds proofs,
     result typing), research levels (aliasing safety, effect tracking,
-    lifetime safety, linearity), and novel levels (tropical cost-tracking,
-    epistemic safety) from the database domain to the memory domain.
+    lifetime safety, linearity), plus two draft extensions (tropical
+    cost-tracking and epistemic safety) from the database domain to the
+    memory domain. The current checked claim envelope is Levels~1--10.
 
   \item \textbf{Multi-module schema agreement} (Section~\ref{sec:multimodule}):
     a static verification that independently compiled Wasm modules agree on
     shared memory layout --- the principal contribution, addressing a class of
     bugs that no existing tool can detect.
 
-  \item \textbf{Tropical cost-tracking and epistemic safety}
+  \item \textbf{Draft tropical cost-tracking and epistemic safety extensions}
     (Levels~11--12, Section~\ref{sec:levels}): two novel extensions beyond
-    traditional type safety. Level~11 proves access patterns have bounded
-    cost via a tropical semiring. Level~12 applies epistemic modal logic to
-    prevent reads of stale shared state across module boundaries.
+    traditional type safety. Level~11 models bounded access cost via a
+    tropical semiring. Level~12 applies epistemic modal logic to stale-state
+    reasoning across module boundaries. In the current repository, both
+    remain draft research extensions rather than checked release artefacts.
 
   \item \textbf{A formalisation in Idris~2 with QTT}
-    (Section~\ref{sec:formal}): dependent types that prove safety properties
-    at compile time, with proof erasure yielding identical runtime code to
-    hand-written Wasm.
+    (Section~\ref{sec:formal}): a checked L1--10 core with dependent types
+    that prove safety properties at compile time, plus draft L11--12 files
+    that outline the next research steps. The checked core erases to the
+    same runtime code shape as hand-written Wasm.
 \end{enumerate}
 
 % ==========================================================================
@@ -871,7 +874,8 @@ the field's current version:
 
 \subsection{Soundness Sketch}
 
-We conjecture the following soundness property:
+We conjecture the following soundness property for a future typed-wasm
+artifact that checks all 12 levels:
 
 We sketch progress and preservation arguments informally. A full
 mechanised proof against a Wasm operational semantics remains future work,
@@ -897,12 +901,14 @@ invariant. Cost annotations compose via the tropical semiring, preserving
 the cost bound. Synchronisation updates the knowledge map monotonically,
 preserving the freshness invariant.
 
-The Idris~2 formalisation checks these properties via the totality
-checker: every function in the ABI layer is declared \texttt{total}, and
-the type checker rejects any case split that does not cover all
-constructors. This is not a mechanised proof of progress/preservation in
-the traditional sense, but it provides comparable assurance for the
-properties encoded in the dependent types.
+For the checked L1--10 core, the Idris~2 formalisation checks these
+properties via the totality checker: every function in the shipped ABI
+layer is declared \texttt{total}, and the type checker rejects any case
+split that does not cover all constructors. This is not a mechanised
+proof of progress/preservation in the traditional sense, but it provides
+strong evidence for the properties encoded in the dependent types. The
+L11--L12 files are not yet part of the checked package, so their claims
+remain research targets rather than release-grade evidence.
 
 \begin{conjecture}[typed-wasm Soundness]
 If a typed-wasm program type-checks at all 12 levels, then the compiled
@@ -920,30 +926,31 @@ Wasm program:
 \end{conjecture}
 
 A full mechanised proof is future work. The current Idris~2 formalisation
-provides dependent-type-level evidence for properties~(a)--(h), verified
-by the totality checker, but does not yet connect to a formal Wasm
-operational semantics.
+provides checked dependent-type-level evidence for properties~(a)--(f) in
+the shipped L1--10 core, but does not yet connect to a formal Wasm
+operational semantics. Properties~(g)--(h) are currently part of the
+draft L11--L12 research story, not the checked release envelope.
 
 \subsection{Tropical and Epistemic Foundations}
 
 Level~11 rests on the tropical semiring $(\mathbb{N} \cup \{\infty\},
-\min, +, \infty, 0)$. The Idris~2 formalisation proves the semiring laws:
-commutativity of $\oplus$ (\texttt{tropAddComm}), the identity of
-$\infty$ for $\oplus$ (\texttt{tropAddIdentity}), and the identity of $0$
-for $\otimes$ (\texttt{tropMulIdentity}). Access paths compose via
-$\otimes$; the type checker requires a \texttt{CostBounded} witness
-proving the total path cost is within a declared bound.
+\min, +, \infty, 0)$. The repository contains a draft Idris~2 file for
+this level, including candidate lemmas such as commutativity of $\oplus$
+(\texttt{tropAddComm}), the identity of $\infty$ for $\oplus$
+(\texttt{tropAddIdentity}), and the identity of $0$ for $\otimes$
+(\texttt{tropMulIdentity}). Access paths are intended to compose via
+$\otimes$, with a \texttt{CostBounded} witness capturing the total path
+cost. This draft is not yet part of the checked package.
 
 Level~12 rests on epistemic modal logic, specifically the knowledge
 operator $K_i$~(``agent~$i$ knows''). Each field in shared memory carries
 a monotonic version counter. A module's knowledge is \emph{fresh} when its
 observed version equals the field's current version, and \emph{stale}
-otherwise. The Idris~2 formalisation proves three key properties:
-(1)~a writer always has fresh knowledge of what it wrote
-(\texttt{writerKnowsFresh}), (2)~staleness is decidable without axioms
-(\texttt{freshOrStale}), and (3)~synchronisation restores freshness
-(\texttt{syncRestoresFresh}). All proofs use Nat ordering directly with
-zero \texttt{believe\_me}.
+otherwise. The repository likewise contains a draft Idris~2 file for
+freshness lemmas such as \texttt{writerKnowsFresh},
+\texttt{freshOrStale}, and \texttt{syncRestoresFresh}. These files are
+useful research scaffolds, but they are not yet packaged or claimable as
+release-grade proof artefacts.
 
 % ==========================================================================
 \section{Implementation Architecture}
@@ -992,44 +999,30 @@ typed-wasm.
 \label{sec:evaluation}
 % ==========================================================================
 
-We evaluate typed-wasm along three axes: (1)~the compile-time overhead of
-type checking region access, (2)~the runtime cost of our approach, and
-(3)~a qualitative comparison with alternative safety mechanisms.
+We evaluate typed-wasm along three axes: (1)~the benchmark surface that
+currently exists in the repository, (2)~the runtime cost goal of the
+checked core, and (3)~a qualitative comparison with alternative safety
+mechanisms.
 
-\subsection{Type Checking Overhead}
+\subsection{Current Benchmark Surface}
 
-Table~\ref{tab:benchmarks} measures the wall-clock time for type checking
-the four example programs shipped with the prototype.  Each program was
-checked 100 times; we report the median.  All measurements were taken on
-Fedora~43 (kernel~6.19, AMD Ryzen~7 5700U, 16\,GB RAM) using Zig~0.15.2.
+The current repository does \emph{not} yet ship a full end-to-end
+toolchain benchmark for all four example programs. Its benchmark surface
+is narrower: a parser benchmark over the checked core's
+\texttt{04-ecs-game.twasm} example. In a local rerun of the shipped
+\texttt{benchmarks/parser-bench.mjs}, 200 successful parses completed in
+244.63\,ms total, or 1.223\,ms per parse on average.
 
-\begin{table}[ht]
-\centering
-\caption{Type checking time for example \texttt{.twasm} programs.}
-\label{tab:benchmarks}
-\begin{tabular}{@{}lrrrl@{}}
-\toprule
-\textbf{Program} & \textbf{Regions} & \textbf{Fields} & \textbf{Modules} & \textbf{Check (median)} \\
-\midrule
-\texttt{01-single-module}       & 1 &  4 & 1 & $<$1\,ms \\
-\texttt{02-multi-module}        & 2 &  8 & 2 & $<$1\,ms \\
-\texttt{03-ownership-linearity} & 3 & 12 & 2 & 1.2\,ms \\
-\texttt{04-ecs-game}            & 5 & 22 & 3 & 2.4\,ms \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Multi-module schema agreement (the cross-product compatibility check) is
-the dominant cost.  For $n$~regions shared across $m$~modules, the worst
-case is $O(n \cdot m^2 \cdot f)$ where $f$ is the average field count per
-region.  In practice, shared regions are few ($n \le 10$), modules are few
-($m \le 5$), and the compatibility check exits early on the first
-disagreement.  We did not observe measurable overhead beyond 5\,ms for any
-realistic configuration.
+This is useful evidence that the parser surface is responsive on the
+largest shipped example, but it should not be read as a full type-checker,
+code-generator, or end-to-end toolchain benchmark. Multi-module schema
+agreement and the ABI proof layer therefore remain qualitatively analysed
+rather than quantitatively benchmarked in the current artifact.
 
 \subsection{Runtime Cost}
 
-typed-wasm produces \textbf{zero runtime overhead} by design.  All type
+For the checked L1--10 core, typed-wasm targets \textbf{zero runtime
+overhead} by design. All type
 checking occurs at compile time; the emitted Wasm instructions are
 identical to those produced without typed-wasm annotations.  This is
 achieved through Idris~2 proof erasure
@@ -1038,8 +1031,9 @@ annotation is erased before code generation.
 
 Concretely, the Zig FFI layer emits raw \texttt{i32.load}, \texttt{f64.store},
 etc.\@ with computed offsets.  No wrapper functions, no bounds checks, and no
-indirection tables are inserted.  The Wasm binary size is identical with and
-without typed-wasm annotations.
+indirection tables are inserted in the checked core path. Binary-size and
+whole-pipeline overhead claims for the draft L11--L12 extensions would
+require additional measurements that the repository does not yet provide.
 
 \subsection{Comparison with Existing Approaches}
 
@@ -1083,9 +1077,10 @@ Key observations:
     boundaries rather than typing shared access --- introducing runtime
     overhead proportional to data size.
 
-  \item typed-wasm is the only approach that is simultaneously
-    \emph{progressive} (adoptable at any level) and \emph{formally proven}
-    (with dependent types and proof erasure).
+  \item typed-wasm is the only approach in this comparison that is
+    simultaneously \emph{progressive} (adoptable at multiple levels) and
+    \emph{formally proven for its checked core} (with dependent types and
+    proof erasure).
 
   \item MSWasm and typed-wasm are complementary: MSWasm provides spatial
     safety (segment bounds), typed-wasm provides semantic safety (field
@@ -1094,12 +1089,14 @@ Key observations:
 
 \subsection{ECHIDNA Property Testing}
 
-We additionally validated proof soundness using the ECHIDNA prover oracle
-harness (Section~\ref{sec:implementation}).  Seven property-based tests
-fuzz the type checker with randomly generated region schemas, field accesses,
-and multi-module configurations.  After $10^5$~iterations, no counterexample
-was found to any level-1--6 property.  Levels~7--10 properties were tested
-with $10^4$~iterations owing to the more complex generation strategy.
+We additionally exercised the parser and schema-level invariants using the
+repository's offline ECHIDNA harness (Section~\ref{sec:implementation}).
+The current harness checks four properties: parse determinism,
+well-formed parse rate, schema reflexivity at the parser-AST level, and
+effect declaration consistency. In the current shipped configuration, 100
+offline iterations completed without a counterexample. This is useful
+supporting evidence for the checked parser surface, but it is not a
+substitute for mechanised soundness or full toolchain fuzzing.
 
 % ==========================================================================
 \section{Related Work}
@@ -1219,18 +1216,19 @@ them.
 
 typed-wasm addresses this by recognising that Wasm memory access has the
 same structure as database queries --- projections against a declared
-schema. By applying a 12-level progressive type safety framework to
-memory regions, typed-wasm provides:
+schema. By applying a progressive type safety framework to memory
+regions, typed-wasm provides a checked L1--10 core plus draft L11--L12
+research extensions:
 
 \begin{enumerate}
   \item \textbf{Region schemas} that declare memory layout with field
     names, types, alignment, and invariants.
   \item \textbf{Multi-module schema agreement} that statically verifies
     layout compatibility across independently compiled modules.
-  \item \textbf{12 levels of progressive type safety} from instruction
-    validity through linearity, tropical cost-tracking, and epistemic
-    safety, with formal proofs in Idris~2 and zero runtime overhead
-    through proof erasure.
+  \item \textbf{A checked 10-level core} from instruction validity
+    through linearity, with formal proofs in Idris~2 and zero runtime
+    overhead through proof erasure, plus draft L11--L12 extensions for
+    tropical cost-tracking and epistemic safety.
   \item \textbf{A practical architecture} integrating Idris~2, Zig,
     ReScript, and the TypedQLiser ecosystem.
 \end{enumerate}
@@ -1256,26 +1254,26 @@ Full mechanical verification against a formal Wasm operational semantics
 
 \begin{table}[ht]
 \centering
-\caption{Level achievement status (v1.0).}
+\caption{Level achievement status (checked v1.0 core plus draft L11--L12 extensions).}
 \label{tab:levelstatus}
 \begin{tabular}{@{}rlllll@{}}
 \toprule
 \textbf{Lv} & \textbf{Name} & \textbf{Proof} & \textbf{Runtime} & \textbf{Tests} & \textbf{Status} \\
 \midrule
-1  & Instruction     & Region.idr       & Parser      & $10^5$ & E2E \\
-2  & Region-binding  & TypedAccess.idr  & Schema      & $10^5$ & E2E \\
-3  & Type-compat.    & TypedAccess.idr  & Load/store  & $10^5$ & E2E \\
-4  & Null safety     & Pointer.idr      & Ptr kinds   & $10^5$ & E2E \\
-5  & Bounds-proof    & Levels.idr       & Bounds chk  & $10^5$ & E2E \\
-6  & Result-type     & TypedAccess.idr  & Type flow   & $10^5$ & E2E \\
+1  & Instruction     & Region.idr       & Parser      & Parser + E2E & E2E \\
+2  & Region-binding  & TypedAccess.idr  & Schema      & Parser + E2E & E2E \\
+3  & Type-compat.    & TypedAccess.idr  & Load/store  & Parser + E2E & E2E \\
+4  & Null safety     & Pointer.idr      & Ptr kinds   & Parser + E2E & E2E \\
+5  & Bounds-proof    & Levels.idr       & Bounds chk  & Parser + E2E & E2E \\
+6  & Result-type     & TypedAccess.idr  & Type flow   & Parser + E2E & E2E \\
 \midrule
-7  & Aliasing        & Pointer.idr      & Erased      & $10^4$ & Proven [sfap] \\
-8  & Effects         & Effects.idr      & Erased      & $10^4$ & Proven [sfap] \\
-9  & Lifetime        & Lifetime.idr     & Erased      & $10^4$ & Proven [sfap] \\
-10 & Linearity       & Linear.idr       & Erased      & $10^4$ & Proven [sfap] \\
+7  & Aliasing        & Pointer.idr      & Erased      & Proof + examples & Proven [sfap] \\
+8  & Effects         & Effects.idr      & Erased      & Proof + examples & Proven [sfap] \\
+9  & Lifetime        & Lifetime.idr     & Erased      & Proof + examples & Proven [sfap] \\
+10 & Linearity       & Linear.idr       & Erased      & Proof + examples & Proven [sfap] \\
 \midrule
-11 & Tropical cost   & Tropical.idr     & ---         & ---    & Formalised [sfap] \\
-12 & Epistemic       & Epistemic.idr    & ---         & ---    & Formalised [sfap] \\
+11 & Tropical cost   & Tropical.idr     & ---         & ---    & Draft only; not in package \\
+12 & Epistemic       & Epistemic.idr    & ---         & ---    & Draft only; not in package \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1292,16 +1290,19 @@ then erased before code generation via QTT.  The emitted Wasm instructions
 are identical to hand-written code --- zero runtime overhead.  This is by
 design: the proofs catch bugs at compile time and are not needed at runtime.
 
-\textbf{``Formalised'' (L11--12).}
-Levels~11 and 12 have Idris~2 type definitions and proof structures with
-zero \texttt{believe\_me}, but no Zig FFI implementation.  They are
-machine-checked mathematical definitions awaiting toolchain integration.
+\textbf{``Draft'' (L11--12).}
+Levels~11 and 12 currently have Idris~2 draft files and proof structures
+with zero \texttt{believe\_me}, but they are not part of the checked
+package and are not yet integrated into the toolchain. They should be
+treated as research extensions rather than shipped proof artefacts.
 
 \textbf{Proof inventory.}
 All 11 Idris~2 ABI files (Region, TypedAccess, Levels, Pointer, Effects,
 Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic) contain zero
 instances of \texttt{believe\_me}, \texttt{postulate}, or
-\texttt{assert\_total}.
+\texttt{assert\_total}. The checked release envelope, however, currently
+consists only of the shipped L1--10 package; Tropical and Epistemic are
+draft files outside that envelope.
 
 % ==========================================================================
 % Bibliography
