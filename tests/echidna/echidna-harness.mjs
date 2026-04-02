@@ -15,6 +15,7 @@
 // Run: node tests/echidna/echidna-harness.mjs [--iterations N] [--echidna URL]
 
 import { parseModule } from "../../src/parser/Parser.mjs";
+import fc from "fast-check";
 
 // ============================================================================
 // Random Program Generator
@@ -298,6 +299,27 @@ for (let i = 0; i < Math.min(iterations, 50); i++) {
     });
   }
 }
+
+console.log("\nProperty 5: fast-check fuzz oracle");
+fc.assert(
+  fc.property(fc.integer({ min: 0, max: 1000000 }), (seed) => {
+    const rng1 = new RNG(seed);
+    const rng2 = new RNG(seed);
+    const prog1 = genProgram(rng1);
+    const prog2 = genProgram(rng2);
+
+    if (prog1 !== prog2) {
+      throw new Error(`Program generator diverged for seed ${seed}`);
+    }
+
+    const r1 = parseModule(prog1);
+    const r2 = parseModule(prog2);
+    if (r1.TAG !== r2.TAG) {
+      throw new Error(`Parser result diverged for seed ${seed}`);
+    }
+  }),
+  { numRuns: Math.min(iterations, 100) },
+);
 
 // ============================================================================
 // ECHIDNA Submission (when running)
