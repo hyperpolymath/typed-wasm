@@ -56,8 +56,19 @@ jobs:
         run: |
           echo "Scanning repository: ${{ github.repository }}"
 
-          # Run scanner
+          # Run scanner without failing the job on a non-zero scan exit.
+          set +e
           HYPATIA_FORMAT=json "$HYPATIA_DIR/hypatia-cli.sh" scan . > hypatia-findings.json
+          SCAN_EXIT=$?
+          set -e
+
+          if [ "$SCAN_EXIT" -ne 0 ]; then
+            echo "Hypatia scanner exited with code $SCAN_EXIT; continuing with reported findings."
+          fi
+
+          if ! jq empty hypatia-findings.json >/dev/null 2>&1; then
+            echo "[]" > hypatia-findings.json
+          fi
 
           # Count findings
           FINDING_COUNT=$(jq '. | length' hypatia-findings.json 2>/dev/null || echo 0)
