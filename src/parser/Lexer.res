@@ -235,7 +235,6 @@ let rec skipWhitespaceAndComments = (l: lexerState): unit => {
             switch peek(l) {
             | Some("\n") =>
               let _ = advance(l)
-              ()
             | Some(_) =>
               let _ = advance(l)
               skipLine()
@@ -257,7 +256,6 @@ let rec skipWhitespaceAndComments = (l: lexerState): unit => {
               switch peek(l) {
               | Some("/") =>
                 let _ = advance(l)
-                ()
               | _ => skipBlock()
               }
             | Some(_) =>
@@ -278,7 +276,7 @@ let rec skipWhitespaceAndComments = (l: lexerState): unit => {
 
 /// Check if a single-char string is alphabetic or underscore.
 let isAlpha = (ch: string): bool => {
-  (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_"
+  (ch >= "a" && ch <= "z") || ch >= "A" && ch <= "Z" || ch == "_"
 }
 
 /// Check if a single-char string is a digit.
@@ -297,7 +295,7 @@ let readIdentOrKeyword = (l: lexerState): token => {
   while !isAtEnd(l) && isAlphaNumeric(Option.getOr(peek(l), " ")) {
     let _ = advance(l)
   }
-  let text = String.slice(l.source, ~start=start, ~end=l.pos)
+  let text = String.slice(l.source, ~start, ~end=l.pos)
 
   // Check for region.xxx compound tokens
   if text == "region" && !isAtEnd(l) && peek(l) == Some(".") {
@@ -425,10 +423,10 @@ let readNumber = (l: lexerState): token => {
     while !isAtEnd(l) && isDigit(Option.getOr(peek(l), " ")) {
       let _ = advance(l)
     }
-    let text = String.slice(l.source, ~start=start, ~end=l.pos)
+    let text = String.slice(l.source, ~start, ~end=l.pos)
     FloatLiteral(Float.fromString(text)->Option.getOr(0.0))
   } else {
-    let text = String.slice(l.source, ~start=start, ~end=l.pos)
+    let text = String.slice(l.source, ~start, ~end=l.pos)
     IntLiteral(Int.fromString(text)->Option.getOr(0))
   }
 }
@@ -440,7 +438,7 @@ let readString = (l: lexerState): token => {
   while !isAtEnd(l) && peek(l) != Some("\"") {
     let _ = advance(l)
   }
-  let text = String.slice(l.source, ~start=start, ~end=l.pos)
+  let text = String.slice(l.source, ~start, ~end=l.pos)
   if !isAtEnd(l) {
     let _ = advance(l) // consume closing "
   }
@@ -571,6 +569,7 @@ let nextToken = (l: lexerState): located<token> => {
             let _ = advance(l) // u
             if !isAtEnd(l) && peek(l) == Some("t") {
               let _ = advance(l) // t
+
               // Check next char is not alphanumeric (so &mutable doesn't match)
               if isAtEnd(l) || !isAlphaNumeric(Option.getOr(peek(l), " ")) {
                 AmpMut

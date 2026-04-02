@@ -51,12 +51,12 @@ let current = (p: parserState): Lexer.located<Lexer.token> => {
 
 /// Peek at the current token value.
 let peek = (p: parserState): Lexer.token => {
-  (current(p)).value
+  current(p).value
 }
 
 /// Get current location.
 let loc = (p: parserState): Lexer.loc => {
-  (current(p)).loc
+  current(p).loc
 }
 
 /// Advance to the next token.
@@ -130,12 +130,20 @@ let expectRAngle = (p: parserState): result<unit> => {
     // >> was lexed as a single token; consume it and inject a > back
     // by replacing the current token in the token array
     let currentToken = current(p)
-    let _ = Array.setUnsafe(p.tokens, p.pos, {Lexer.value: RAngle, loc: {line: currentToken.loc.line, col: currentToken.loc.col + 1}})
+    let _ = Array.setUnsafe(
+      p.tokens,
+      p.pos,
+      {Lexer.value: RAngle, loc: {line: currentToken.loc.line, col: currentToken.loc.col + 1}},
+    )
     Ok()
   | GtEq =>
     // >= was lexed as a single token; split into > and =
     let currentToken = current(p)
-    let _ = Array.setUnsafe(p.tokens, p.pos, {Lexer.value: Eq, loc: {line: currentToken.loc.line, col: currentToken.loc.col + 1}})
+    let _ = Array.setUnsafe(
+      p.tokens,
+      p.pos,
+      {Lexer.value: Eq, loc: {line: currentToken.loc.line, col: currentToken.loc.col + 1}},
+    )
     Ok()
   | _ => Error({message: "Expected >", loc: loc(p)})
   }
@@ -296,7 +304,11 @@ let rec parseFieldType = (p: parserState): result<Ast.located<Ast.fieldType>> =>
         switch parseExpr(p) {
         | Ok(sizeExpr) =>
           switch expect(p, RBracket) {
-          | Ok() => Ok({node: ArrayFieldType({node: Primitive(prim), loc: startLoc}, sizeExpr), loc: startLoc})
+          | Ok() =>
+            Ok({
+              node: ArrayFieldType({node: Primitive(prim), loc: startLoc}, sizeExpr),
+              loc: startLoc,
+            })
           | Error(e) => Error(e)
           }
         | Error(e) => Error(e)
@@ -309,13 +321,18 @@ let rec parseFieldType = (p: parserState): result<Ast.located<Ast.fieldType>> =>
       switch keywordToIdent(peek(p)) {
       | Some(name) =>
         advance(p)
+
         // Check for array suffix: RegionName[N]
         if peek(p) == LBracket {
           advance(p)
           switch parseExpr(p) {
           | Ok(sizeExpr) =>
             switch expect(p, RBracket) {
-            | Ok() => Ok({node: ArrayFieldType({node: RegionRef(name), loc: startLoc}, sizeExpr), loc: startLoc})
+            | Ok() =>
+              Ok({
+                node: ArrayFieldType({node: RegionRef(name), loc: startLoc}, sizeExpr),
+                loc: startLoc,
+              })
             | Error(e) => Error(e)
             }
           | Error(e) => Error(e)
@@ -323,8 +340,7 @@ let rec parseFieldType = (p: parserState): result<Ast.located<Ast.fieldType>> =>
         } else {
           Ok({node: RegionRef(name), loc: startLoc})
         }
-      | None =>
-        Error({message: "Expected field type", loc: startLoc})
+      | None => Error({message: "Expected field type", loc: startLoc})
       }
     }
   }
@@ -523,7 +539,7 @@ and binOpPrecedence = (tok: Lexer.token): option<(Ast.binOp, int)> => {
 and parseExprPrec = (p: parserState, minPrec: int): result<Ast.located<Ast.expr>> => {
   switch parsePrimary(p) {
   | Ok(left) =>
-    let rec loop = (left) => {
+    let rec loop = left => {
       switch binOpPrecedence(peek(p)) {
       | Some((op, prec)) if prec >= minPrec =>
         advance(p)
@@ -733,7 +749,8 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
           }
         }
         switch parseInits() {
-        | Ok() => let _ = expect(p, RBrace)
+        | Ok() =>
+          let _ = expect(p, RBrace)
         | Error(e) => ignore(Error(e))
         }
       }
@@ -782,7 +799,7 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
           switch expectIdent(p) {
           | Ok(regionName) =>
             let _ = expectRAngle(p)
-            Some({node: RegionRef(regionName), loc: tyLoc}: Ast.located<Ast.fieldType>)
+            Some(({node: RegionRef(regionName), loc: tyLoc}: Ast.located<Ast.fieldType>))
           | Error(_) => None
           }
         | Ampersand =>
@@ -794,7 +811,7 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
             switch expectIdent(p) {
             | Ok(regionName) =>
               let _ = expectRAngle(p)
-              Some({node: RegionRef(regionName), loc: tyLoc}: Ast.located<Ast.fieldType>)
+              Some(({node: RegionRef(regionName), loc: tyLoc}: Ast.located<Ast.fieldType>))
             | Error(_) => None
             }
           } else {
@@ -813,7 +830,7 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
             switch expectIdent(p) {
             | Ok(regionName) =>
               let _ = expectRAngle(p)
-              Some({node: RegionRef(regionName), loc: tyLoc}: Ast.located<Ast.fieldType>)
+              Some(({node: RegionRef(regionName), loc: tyLoc}: Ast.located<Ast.fieldType>))
             | Error(_) => None
             }
           } else {
@@ -837,7 +854,10 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
         switch parseExpr(p) {
         | Ok(init) =>
           let _ = expect(p, Semicolon)
-          Ok({node: LetStmt({isMutable: isMut, name, typeAnnotation: typeAnn, initializer: init}), loc: startLoc})
+          Ok({
+            node: LetStmt({isMutable: isMut, name, typeAnnotation: typeAnn, initializer: init}),
+            loc: startLoc,
+          })
         | Error(e) => Error(e)
         }
       | Error(e) => Error(e)
@@ -868,7 +888,10 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
             } else {
               None
             }
-            Ok({node: IfStmt({condition: cond, thenBranch: thenBody, elseBranch: elseBody}), loc: startLoc})
+            Ok({
+              node: IfStmt({condition: cond, thenBranch: thenBody, elseBranch: elseBody}),
+              loc: startLoc,
+            })
           | Error(e) => Error(e)
           }
         | Error(e) => Error(e)
@@ -975,11 +998,21 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
           let _ = expect(p, Colon)
           let proofStepLoc = loc(p)
           let tactic = switch peek(p) {
-          | TacticBoundsCheck => advance(p); BoundsCheck
-          | TacticLinearity => advance(p); Linearity
-          | TacticLifetime => advance(p); Lifetime
-          | TacticAliasFreedom => advance(p); AliasFreedom
-          | TacticEffectPurity => advance(p); EffectPurity
+          | TacticBoundsCheck =>
+            advance(p)
+            BoundsCheck
+          | TacticLinearity =>
+            advance(p)
+            Linearity
+          | TacticLifetime =>
+            advance(p)
+            Lifetime
+          | TacticAliasFreedom =>
+            advance(p)
+            AliasFreedom
+          | TacticEffectPurity =>
+            advance(p)
+            EffectPurity
           | TacticInduction =>
             advance(p)
             let _ = expect(p, LParen)
@@ -1036,7 +1069,10 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
           // Encode assignment as a let statement on the same name (mutable reassignment)
           switch expr.node {
           | Identifier(name) =>
-            Ok({node: LetStmt({isMutable: true, name, typeAnnotation: None, initializer: value}), loc: startLoc})
+            Ok({
+              node: LetStmt({isMutable: true, name, typeAnnotation: None, initializer: value}),
+              loc: startLoc,
+            })
           | _ =>
             // For non-identifier assignments, encode as expression statement
             Ok({node: ExprStmt({node: BinOp(expr, Eq, value), loc: startLoc}), loc: startLoc})
@@ -1090,7 +1126,10 @@ let parseFieldDecl = (p: parserState): result<Ast.located<Ast.fieldDecl>> => {
           // Simple: just parse expression as constraint for now
           switch parseExpr(p) {
           | Ok(expr) =>
-            let _ = Array.push(constraints, {node: PredicateConstraint("constraint", [expr]), loc: startLoc})
+            let _ = Array.push(
+              constraints,
+              {node: PredicateConstraint("constraint", [expr]), loc: startLoc},
+            )
           | Error(_) => ()
           }
         }
@@ -1154,7 +1193,10 @@ let parseRegionDecl = (p: parserState): result<Ast.located<Ast.declaration>> => 
                 switch parseExpr(p) {
                 | Ok(prop) =>
                   let _ = expect(p, Semicolon)
-                  let _ = Array.push(invariants, {node: {name: invName, proposition: prop}, loc: startLoc})
+                  let _ = Array.push(
+                    invariants,
+                    {node: {name: invName, proposition: prop}, loc: startLoc},
+                  )
                   parseInvariants()
                 | Error(e) => Error(e)
                 }
@@ -1222,10 +1264,18 @@ let parseEffects = (p: parserState): result<array<Ast.located<Ast.effect>>> => {
     if peek(p) != RBrace {
       let startLoc = loc(p)
       let eff = switch peek(p) {
-      | EffRead => advance(p); Ok(ReadEffect)
-      | EffWrite => advance(p); Ok(WriteEffect)
-      | EffAlloc => advance(p); Ok(AllocEffect)
-      | EffFree => advance(p); Ok(FreeEffect)
+      | EffRead =>
+        advance(p)
+        Ok(ReadEffect)
+      | EffWrite =>
+        advance(p)
+        Ok(WriteEffect)
+      | EffAlloc =>
+        advance(p)
+        Ok(AllocEffect)
+      | EffFree =>
+        advance(p)
+        Ok(FreeEffect)
       | EffReadRegion =>
         advance(p)
         let _ = expect(p, LParen)
@@ -1287,9 +1337,15 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
           switch peek(p) {
           | Ampersand | AmpMut | Own =>
             let mode = switch peek(p) {
-            | AmpMut => advance(p); MutableBorrow
-            | Ampersand => advance(p); SharedBorrow
-            | Own => advance(p); Owning
+            | AmpMut =>
+              advance(p)
+              MutableBorrow
+            | Ampersand =>
+              advance(p)
+              SharedBorrow
+            | Own =>
+              advance(p)
+              Owning
             | _ => SharedBorrow
             }
             let _ = expect(p, Region)
@@ -1297,10 +1353,16 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
             switch expectIdent(p) {
             | Ok(regionName) =>
               let _ = expectRAngle(p)
-              let _ = Array.push(params, {
-                node: {name: paramName, paramType: {node: RegionHandleParam(mode, regionName), loc: paramLoc}},
-                loc: paramLoc,
-              })
+              let _ = Array.push(
+                params,
+                {
+                  node: {
+                    name: paramName,
+                    paramType: {node: RegionHandleParam(mode, regionName), loc: paramLoc},
+                  },
+                  loc: paramLoc,
+                },
+              )
               if peek(p) == Comma {
                 advance(p)
               }
@@ -1310,10 +1372,13 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
           | _ =>
             switch parseFieldType(p) {
             | Ok(ty) =>
-              let _ = Array.push(params, {
-                node: {name: paramName, paramType: {node: FieldParam(ty.node), loc: paramLoc}},
-                loc: paramLoc,
-              })
+              let _ = Array.push(
+                params,
+                {
+                  node: {name: paramName, paramType: {node: FieldParam(ty.node), loc: paramLoc}},
+                  loc: paramLoc,
+                },
+              )
               if peek(p) == Comma {
                 advance(p)
               }
@@ -1346,7 +1411,7 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
           switch expectIdent(p) {
           | Ok(regionName) =>
             let _ = expectRAngle(p)
-            Some({node: RegionRef(regionName), loc: retLoc}: Ast.located<Ast.fieldType>)
+            Some(({node: RegionRef(regionName), loc: retLoc}: Ast.located<Ast.fieldType>))
           | Error(_) => None
           }
         // &region<X> or &mut region<X> — borrowed handle return
@@ -1357,7 +1422,7 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
           switch expectIdent(p) {
           | Ok(regionName) =>
             let _ = expectRAngle(p)
-            Some({node: RegionRef(regionName), loc: retLoc}: Ast.located<Ast.fieldType>)
+            Some(({node: RegionRef(regionName), loc: retLoc}: Ast.located<Ast.fieldType>))
           | Error(_) => None
           }
         | AmpMut =>
@@ -1367,7 +1432,7 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
           switch expectIdent(p) {
           | Ok(regionName) =>
             let _ = expectRAngle(p)
-            Some({node: RegionRef(regionName), loc: retLoc}: Ast.located<Ast.fieldType>)
+            Some(({node: RegionRef(regionName), loc: retLoc}: Ast.located<Ast.fieldType>))
           | Error(_) => None
           }
         // Regular field type
@@ -1447,7 +1512,8 @@ let parseImportRegion = (p: parserState): result<Ast.located<Ast.declaration>> =
           }
         }
         switch parseFields() {
-        | Ok() => let _ = expect(p, RBrace)
+        | Ok() =>
+          let _ = expect(p, RBrace)
         | Error(e) => ignore(Error(e))
         }
       }
@@ -1621,11 +1687,21 @@ let parseInvariantDecl = (p: parserState): result<Ast.located<Ast.declaration>> 
         let _ = expect(p, Colon)
         // Parse tactic
         switch peek(p) {
-        | TacticBoundsCheck => advance(p); tactic := Some(BoundsCheck)
-        | TacticLinearity => advance(p); tactic := Some(Linearity)
-        | TacticLifetime => advance(p); tactic := Some(Lifetime)
-        | TacticAliasFreedom => advance(p); tactic := Some(AliasFreedom)
-        | TacticEffectPurity => advance(p); tactic := Some(EffectPurity)
+        | TacticBoundsCheck =>
+          advance(p)
+          tactic := Some(BoundsCheck)
+        | TacticLinearity =>
+          advance(p)
+          tactic := Some(Linearity)
+        | TacticLifetime =>
+          advance(p)
+          tactic := Some(Lifetime)
+        | TacticAliasFreedom =>
+          advance(p)
+          tactic := Some(AliasFreedom)
+        | TacticEffectPurity =>
+          advance(p)
+          tactic := Some(EffectPurity)
         | _ => ()
         }
         let _ = expect(p, Semicolon)
@@ -1664,7 +1740,11 @@ let parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>> =>
   | Fn => parseFunctionDecl(p)
   | Memory => parseMemoryDecl(p)
   | Invariant => parseInvariantDecl(p)
-  | _ => Error({message: "Expected declaration (region, import, export, fn, memory, invariant)", loc: loc(p)})
+  | _ =>
+    Error({
+      message: "Expected declaration (region, import, export, fn, memory, invariant)",
+      loc: loc(p),
+    })
   }
 }
 

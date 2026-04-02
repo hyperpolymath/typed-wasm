@@ -1,34 +1,34 @@
-= {{PROJECT_NAME}} - Citation Guide
+= typed-wasm Citation Guide
 :toc:
 
 == BibTeX
 
 [source,bibtex]
 ----
-@software{{{PROJECT_NAME}}_{{CURRENT_YEAR}},
-  author = {{{AUTHOR_LAST}}, {{AUTHOR_FIRST}}},
-  title = {{{PROJECT_NAME}}},
-  year = {{{CURRENT_YEAR}}},
-  url = {https://github.com/{{OWNER}}/{{PROJECT_NAME}}},
+@software{typed_wasm_2026,
+  author = {Jewell, Jonathan D.A.},
+  title = {typed-wasm},
+  year = {2026},
+  url = {https://github.com/hyperpolymath/typed-wasm},
   license = {PMPL-1.0-or-later}
 }
 ----
 
 == Harvard Style
 
-{{AUTHOR_LAST}}, {{AUTHOR_INITIALS}} ({{CURRENT_YEAR}}) _{{PROJECT_NAME}}_ [Computer software]. Available at: https://github.com/{{OWNER}}/{{PROJECT_NAME}}
+Jewell, J.D.A. (2026) _typed-wasm_ [Computer software]. Available at: https://github.com/hyperpolymath/typed-wasm
 
 == OSCOLA
 
-{{AUTHOR}}, '{{PROJECT_NAME}}' ({{CURRENT_YEAR}}) <https://github.com/{{OWNER}}/{{PROJECT_NAME}}>
+Jonathan D.A. Jewell, 'typed-wasm' (2026) <https://github.com/hyperpolymath/typed-wasm>
 
 == MLA
 
-{{AUTHOR_LAST}}, {{AUTHOR_FIRST}} "{{PROJECT_NAME}}." {{CURRENT_YEAR}}, github.com/{{OWNER}}/{{PROJECT_NAME}}.
+Jewell, Jonathan D.A. _typed-wasm_. 2026, github.com/hyperpolymath/typed-wasm.
 
 == APA 7
 
-{{AUTHOR_LAST}}, {{AUTHOR_INITIALS}} ({{CURRENT_YEAR}}). _{{PROJECT_NAME}}_ [Computer software]. GitHub. https://github.com/{{OWNER}}/{{PROJECT_NAME}}
+Jewell, J. D. A. (2026). _typed-wasm_ [Computer software]. GitHub. https://github.com/hyperpolymath/typed-wasm
 
 == See Also
 

@@ -36,8 +36,8 @@ jobs:
 
       - name: Clone Hypatia
         run: |
-          if [ ! -d "$HOME/hypatia" ]; then
-            git clone https://github.com/hyperpolymath/hypatia.git "$HOME/hypatia"
+          if [ ! -d "$HYPATIA_DIR" ]; then
+            git clone https://github.com/hyperpolymath/hypatia.git "$HYPATIA_DIR"
           fi
 
       - name: Build Hypatia scanner (if needed)

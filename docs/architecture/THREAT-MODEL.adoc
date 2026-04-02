@@ -1,162 +1,154 @@
 = Threat Model
-<!-- SPDX-License-Identifier: PMPL-1.0-or-later -->
-<!-- Copyright (c) {{CURRENT_YEAR}} {{AUTHOR}} ({{OWNER}}) <{{AUTHOR_EMAIL}}> -->
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 
-# Threat Model: {{PROJECT_NAME}}
+== Document Info
 
-## Document Info
+|===
+| Field | Value
 
-| Field         | Value                          |
-|---------------|--------------------------------|
-| Project       | {{PROJECT_NAME}}               |
-| Version       | 1.0                            |
-| Last Reviewed | {{DATE}}                       |
-| Author        | {{AUTHOR}}                     |
-| Methodology   | STRIDE                         |
+| Project
+| `typed-wasm`
 
-## Scope
+| Version
+| `0.1.0`
 
-### In Scope
+| Last Reviewed
+| `2026-03-30`
 
-- Application source code and build pipeline
-- CI/CD workflows (GitHub Actions)
-- Container images and runtime environment
-- Secrets and credential management
-- Dependencies (direct and transitive)
-- Deployment artifacts (binaries, containers, SBOM)
+| Author
+| `Jonathan D.A. Jewell`
 
-### Out of Scope
+| Methodology
+| `STRIDE`
+|===
 
-- Physical security of hosting infrastructure
-- GitHub/GitLab platform-level vulnerabilities
-- End-user device security
-- Social engineering attacks against maintainers (handled by org policy)
+== Scope
 
-## System Overview
+=== In Scope
 
-Brief description of {{PROJECT_NAME}} and its architecture.
+* ReScript parser sources and tests.
+* Idris2 ABI package and checked proof core.
+* Zig FFI runtime in `ffi/zig`.
+* Example inputs, aspect tests, and benchmark surfaces.
+* Public claim surfaces in `README.adoc`, `LEVEL-STATUS.md`, and paper drafts.
 
-> See [STATE-VISUALIZER.adoc](../STATE-VISUALIZER.adoc) for the full architecture diagram and completion dashboard.
+=== Out of Scope
 
-## Assets
+* Container, devcontainer, Nix, and Guix packaging surfaces removed from the repo.
+* Hosted service operations; this repo does not currently ship a maintained network service.
+* Physical security and forge-platform internals.
 
-| Asset                | Classification | Owner       | Notes                                      |
-|----------------------|----------------|-------------|--------------------------------------------|
-| Source code           | Internal       | Maintainers | Public repos are still internal-integrity  |
-| Signing keys          | Restricted     | Release lead | Signing keys (e.g., Ed25519), GPG keys     |
-| CI/CD secrets         | Restricted     | Maintainers | GITHUB_TOKEN, deploy tokens, PATs          |
-| User/contributor data | Confidential   | Org          | Emails, contributor identity                |
-| Build artifacts       | Internal       | CI pipeline  | Binaries, WASM bundles                     |
-| Container images      | Internal       | CI pipeline  | Chainguard-based, signed via image signing tool |
-| SBOM / provenance     | Public         | CI pipeline  | SLSA attestations                          |
-| Dependencies          | Public         | Lockfile     | Cargo.lock, deno.lock, gleam.toml          |
-| Infrastructure config | Confidential   | Maintainers | Containerfiles, compose files, orchestration config |
+== System Overview
 
-## Trust Boundaries
+`typed-wasm` is a research repository combining a ReScript parser, an Idris2
+ABI/proof layer, and a Zig FFI runtime. The main security concern is claim
+integrity and artifact integrity: the code, proofs, tests, and papers must all
+describe the same system.
 
-| Boundary                    | From (Lower Trust)        | To (Higher Trust)          |
-|-----------------------------|---------------------------|----------------------------|
-| Pull request submission      | External contributor       | Repository codebase        |
-| CI/CD workflow execution     | Workflow definition        | Runner with secrets access |
-| Container build boundary     | Build stage                | Runtime stage              |
-| External API calls           | Third-party service        | Application internals      |
-| User input (CLI/Web)         | End user                   | Application logic          |
-| Dependency resolution        | Package registry           | Build environment          |
-| Forge mirroring              | GitHub                     | GitLab / Bitbucket         |
+See link:../STATE-VISUALIZER.adoc[STATE-VISUALIZER.adoc] for the current repo
+topology.
 
-## Threat Actors
+== Assets
 
-| Actor                    | Motivation                    | Capability |
-|--------------------------|-------------------------------|------------|
-| Script kiddie            | Vandalism, clout              | Low        |
-| Disgruntled contributor  | Sabotage, backdoor insertion  | Medium     |
-| Supply chain attacker    | Wide-impact compromise        | High       |
-| Nation state             | Espionage, disruption         | Very High  |
-| Automated bot            | Credential stuffing, spam PRs | Low-Medium |
+|===
+| Asset | Classification | Notes
 
-## STRIDE Analysis
+| Source code
+| Internal integrity
+| Parser, proof, and runtime code must remain aligned.
 
-### Spoofing
+| Checked proof artifacts
+| High integrity
+| The L1-L10 checked core is part of the public claim envelope.
 
-| Threat                          | Affected Asset    | Likelihood | Impact | Risk   | Mitigation                                    |
-|---------------------------------|-------------------|------------|--------|--------|------------------------------------------------|
-| Unsigned commits impersonate maintainer | Source code  | Medium     | High   | High   | Require GPG-signed commits; vigilant code review |
-| Forged bot actions (automated agents) | CI/CD pipeline  | Low        | High   | Medium | Bot tokens scoped minimally; audit bot activity |
-| Spoofed package registry identity | Dependencies    | Low        | High   | Medium | Pin dependencies by hash; verify provenance    |
+| Draft proof artifacts
+| Research-only
+| L11-L12 drafts must not be overclaimed.
 
-### Tampering
+| Example corpus and tests
+| Medium integrity
+| Drives parser and claim-envelope validation.
 
-| Threat                          | Affected Asset    | Likelihood | Impact | Risk   | Mitigation                                    |
-|---------------------------------|-------------------|------------|--------|--------|------------------------------------------------|
-| Malicious pull request          | Source code        | Medium     | High   | High   | Branch protection; required reviews; CodeQL    |
-| Dependency poisoning (typosquat) | Dependencies     | Medium     | High   | High   | Lockfiles; secret-scanner; security scans      |
-| Tampered container base image   | Container images   | Low        | High   | Medium | Chainguard images; image signing verification  |
-| Workflow file modification      | CI/CD pipeline     | Low        | High   | Medium | CODEOWNERS on .github/; workflow-linter        |
+| Release and paper metadata
+| High integrity
+| Must not outrun what is actually checked.
+|===
 
-### Repudiation
+== Trust Boundaries
 
-| Threat                          | Affected Asset    | Likelihood | Impact | Risk   | Mitigation                                    |
-|---------------------------------|-------------------|------------|--------|--------|------------------------------------------------|
-| Unlogged deployment             | Build artifacts    | Medium     | Medium | Medium | SLSA provenance; deployment audit trail        |
-| Denied merge of vulnerable code | Source code        | Low        | Medium | Low    | Git history is immutable; signed commits       |
-| Secret rotation without record  | CI/CD secrets      | Low        | Low    | Low    | Secret rotation logged in STATE.a2ml           |
+|===
+| Boundary | Lower-trust side | Higher-trust side
 
-### Information Disclosure
+| Example and user inputs
+| `.twasm` source text
+| Parser AST and derived schema information
 
-| Threat                          | Affected Asset    | Likelihood | Impact | Risk   | Mitigation                                    |
-|---------------------------------|-------------------|------------|--------|--------|------------------------------------------------|
-| Secrets leaked in git history   | CI/CD secrets      | Medium     | High   | High   | TruffleHog in CI; secret-scanner workflow      |
-| Verbose error messages in prod  | Application logic  | Medium     | Medium | Medium | Sanitize outputs; structured logging           |
-| SBOM reveals internal structure | Infrastructure     | Low        | Low    | Low    | Accepted risk; SBOM is intentionally public    |
+| FFI boundary
+| External host callers
+| Zig runtime and Idris ABI assumptions
 
-### Denial of Service
+| Paper and README claims
+| Human prose
+| Checked artifacts and executable evidence
 
-| Threat                          | Affected Asset    | Likelihood | Impact | Risk   | Mitigation                                    |
-|---------------------------------|-------------------|------------|--------|--------|------------------------------------------------|
-| CI resource exhaustion (fork bomb in PR) | CI/CD pipeline | Medium | Medium | Medium | Concurrency limits; timeout on workflows       |
-| Spam issues/PRs flooding triage | Maintainer time    | Medium     | Low    | Low    | GitHub rate limits; bot auto-close stale        |
-| Large binary commits bloating repo | Source code      | Low        | Medium | Low    | .gitattributes LFS policy; pre-commit hooks    |
+| Dependency/toolchain boundary
+| Package registries and build tools
+| Local checked outputs
+|===
 
-### Elevation of Privilege
+== Main Threats
 
-| Threat                          | Affected Asset    | Likelihood | Impact | Risk   | Mitigation                                    |
-|---------------------------------|-------------------|------------|--------|--------|------------------------------------------------|
-| Workflow injection via PR title/body | CI/CD pipeline | Medium   | High   | High   | Never interpolate PR fields in `run:`; use env vars |
-| GITHUB_TOKEN over-scoped         | CI/CD secrets     | Medium     | High   | High   | `permissions: read-all` default; per-job scoping |
-| Container escape                 | Runtime environment | Low      | High   | Medium | Hardened container runtime; read-only rootfs; no-new-privileges |
-| Compromised action dependency    | CI/CD pipeline     | Medium     | High   | High   | SHA-pin all actions; never use `@latest` tags  |
+=== Spoofing
 
-## Mitigations in Place
+* Forged maintainer or bot actions could smuggle false changes into public
+  claims or workflows.
 
-- **SLSA Provenance**: Build attestations via slsa-github-generator
-- **Secret Scanning**: TruffleHog + secret-scanner workflow on every push
-- **Static Analysis**: CodeQL on supported languages
-- **Supply Chain**: OpenSSF Scorecard (scorecard.yml + scorecard-enforcer.yml)
-- **Container Signing**: Ed25519 signatures on all published images (optional: use your signing tool)
-- **Container Runtime**: Hardened container runtime with formal verification (optional)
-- **Dependency Pinning**: All GitHub Actions SHA-pinned; lockfiles committed
-- **Workflow Validation**: workflow-linter.yml checks all workflow changes
-- **Security Scanning**: Neurosymbolic scanning (hypatia-scan.yml, optional)
-- **Bot Governance**: Bot orchestration with confidence thresholds (optional)
-- **Edge Security**: Gateway with policy enforcement (optional, where applicable)
-- **SBOM**: Generated and published with releases
+=== Tampering
 
-## Residual Risks
+* Parser, proof, and paper drift can create false claims of verification.
+* Example inputs or benchmark scripts can be quietly altered to make evidence
+  look stronger than it is.
 
-| Risk                                          | Accepted Because                                  | Review Trigger          |
-|-----------------------------------------------|---------------------------------------------------|-------------------------|
-| Zero-day in GitHub Actions runner              | Platform responsibility; no feasible mitigation    | GitHub advisory          |
-| Maintainer account compromise                  | Mitigated by 2FA requirement; residual remains     | Any suspicious activity  |
-| Transitive dependency vulnerability (0-day)    | Lockfiles limit blast radius; scanning catches known CVEs | CVE database update |
-| SBOM exposes internal component names          | Transparency is a design goal                      | Policy change            |
+=== Repudiation
 
-## Review Schedule
+* If audit notes and release metadata are not kept current, it becomes hard to
+  justify why a claim was made at a given time.
 
-This threat model should be reviewed:
+=== Information Disclosure
 
-- **Quarterly** as a standing item
-- **When architecture changes** (new services, new trust boundaries, new deployment targets)
-- **Before major releases** (v1.0, v2.0, etc.)
-- **After any security incident** affecting this project or its dependencies
+* Repository metadata or workflows could leak secrets if future automation is
+  added carelessly.
 
-Reviewer should update the "Last Reviewed" date and version in Document Info above.
+=== Denial of Service
+
+* Pathological example inputs or CI churn can waste maintainer time and mask
+  real regressions.
+
+=== Elevation of Privilege
+
+* Future workflow or release automation could gain broader permissions than the
+  repo actually needs.
+
+== Mitigations In Place
+
+* Checked claim envelope explicitly limited to the L1-L10 core.
+* Aspect testing for README/manifest/roadmap coherence.
+* Parser tests, end-to-end smoke tests, and benchmark surface present.
+* Template release and packaging scaffolds removed rather than left as false evidence.
+* Workflow pinning and audit gating present at the standards level.
+
+== Residual Risks
+
+* L11-L12 drafts remain in the tree and can still tempt overclaiming if the
+  paper surface is not kept disciplined.
+* ReScript warnings remain unresolved and should be treated as real technical debt.
+* Venue-facing papers still need a dedicated theorem/benchmark parity review.
+
+== Review Trigger
+
+Review this threat model:
+
+* before any `beta`, `stable`, or venue-facing claim
+* after any change to the proof envelope
+* after adding new release, packaging, or automation surfaces

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 
-= The 10 Levels of Type Safety for WebAssembly Memory
+= Progressive Type Safety Levels for WebAssembly Memory
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 :toc: preamble
 :icons: font
 :sectnums:
 
-This document adapts TypeLL's 10-level type safety framework from database
+This document adapts TypeLL's progressive type safety framework from database
 query languages to WebAssembly linear memory. Each level addresses a specific
 class of memory safety failure that WASM's built-in type system does not prevent.
 
@@ -44,6 +44,9 @@ time.
 
 ----
 +---------------------------------------------+
+|  Level 12: Epistemic Safety                 |  <- Frontier
+|  Level 11: Tropical Cost-Tracking           |  <- Frontier
++---------------------------------------------+
 |  Level 10: Linearity Safety                 |  <- Research
 |  Level  9: Lifetime Safety                  |  <- Research
 |  Level  8: Effect-Tracking Safety           |  <- Research
@@ -60,13 +63,44 @@ time.
 +---------------------------------------------+
 ----
 
-**Levels 1-6** have direct analogues in typed assembly languages (TAL),
-Typed LLVM, and WebAssembly's own validation. What is new is expressing
-them through a query-like surface syntax with TypeLL's proof framework.
+**Levels 1-6** (Established) have direct analogues in typed assembly
+languages (TAL), Typed LLVM, and WebAssembly's own validation. What is
+new is expressing them through a query-like surface syntax with TypeLL's
+proof framework.
 
-**Levels 7-10** go beyond existing WASM proposals (GC, reference types,
-typed function references) by bringing ownership, effects, lifetimes, and
-linearity to the _memory_ level rather than the _reference_ level.
+**Levels 7-10** (Research) go beyond existing WASM proposals (GC,
+reference types, typed function references) by bringing ownership,
+effects, lifetimes, and linearity to the _memory_ level rather than the
+_reference_ level.
+
+**Levels 11-12** (Frontier) are unique to typed-wasm:
+
+* **Level 11 — Tropical Cost-Tracking**: Memory access operations carry
+  semiring costs (min-plus for latency, max-plus for throughput). The
+  type checker proves that any access path through shared memory has
+  bounded total cost. Uses the tropical semiring algebra formalised in
+  007's `TropicalSemiring.idr`. This is the "how expensive is this
+  access pattern?" question answered at compile time.
+
+* **Level 12 — Epistemic Safety**: Tracks which module _knows_ what about
+  shared memory state. Module A writes field X; Module B's knowledge of
+  X is stale until an explicit synchronisation point. The type system
+  prevents acting on stale knowledge — a "read" is only valid if the
+  reader's knowledge is current. This is epistemic modal logic (K_i φ)
+  applied to shared mutable state. No existing system does this.
+
+NOTE: Refinement types (value predicates, `where` constraints) are
+already part of Level 5 (bounds-proof) and the grammar's
+`field_constraints` / `invariant_decl` — they are not a separate level
+but a mechanism that strengthens levels 5, 11, and 12. Session types
+(protocol-ordered access) are already part of Level 10 (linearity)
+via `CompletedProtocol` in `Linear.idr` — ordered resource usage is
+a special case of linear resource tracking.
+
+**Levels 13+** are reserved for future research (probabilistic safety,
+differential privacy, information flow, gradual typing). The framework
+is designed to be open-ended — each level adds a new proof obligation
+without invalidating lower levels.
 
 == Progression at a Glance
 

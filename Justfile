@@ -1,10 +1,7 @@
 # SPDX-License-Identifier: PMPL-1.0-or-later
 # Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
-# RSR Standard Justfile Template
-# https://just.systems/man/en/
-#
-# Copy this file to new projects and customize the placeholder values.
+# Project automation for typed-wasm.
 #
 # Run `just` to see all available recipes
 # Run `just cookbook` to generate docs/just-cookbook.adoc
@@ -54,211 +51,9 @@ info:
     @echo "Recipes: $(just --summary | wc -w)"
     @[ -f ".machine_readable/STATE.a2ml" ] && grep -oP 'phase\s*=\s*"\K[^"]+' .machine_readable/STATE.a2ml | head -1 | xargs -I{} echo "Phase: {}" || true
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# INIT — Bootstrap a new project from this template
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# Interactive project bootstrap — replaces all {{PLACEHOLDER}} tokens
+# Repository is already instantiated; there is no template bootstrap step.
 init:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    echo "═══════════════════════════════════════════════════"
-    echo "  RSR Project Bootstrap"
-    echo "═══════════════════════════════════════════════════"
-    echo ""
-
-    # --- Load defaults from config (if exists) ---
-    # Create yours: ~/.config/rsr/defaults
-    # Format: OWNER=myorg  AUTHOR="My Name"  AUTHOR_EMAIL=me@example.org ...
-    DEFAULTS="${XDG_CONFIG_HOME:-$HOME/.config}/rsr/defaults"
-    if [ -f "$DEFAULTS" ]; then
-        echo "Loading defaults from $DEFAULTS"
-        # shellcheck source=/dev/null
-        source "$DEFAULTS"
-        echo ""
-    fi
-
-    # --- Required values (pre-filled from defaults if available) ---
-    read -rp "Project name (human-readable, e.g. My Project): " PROJECT_NAME
-    [ -z "$PROJECT_NAME" ] && echo "Error: project name required" && exit 1
-
-    read -rp "Repository slug (e.g. my-project): " REPO
-    [ -z "$REPO" ] && echo "Error: repo slug required" && exit 1
-
-    read -rp "Owner [${OWNER:-}]: " _OWNER
-    OWNER="${_OWNER:-${OWNER:-}}"
-    [ -z "$OWNER" ] && echo "Error: owner required" && exit 1
-
-    read -rp "Author full name [${AUTHOR:-}]: " _AUTHOR
-    AUTHOR="${_AUTHOR:-${AUTHOR:-}}"
-    [ -z "$AUTHOR" ] && echo "Error: author name required" && exit 1
-
-    read -rp "Author email [${AUTHOR_EMAIL:-}]: " _AUTHOR_EMAIL
-    AUTHOR_EMAIL="${_AUTHOR_EMAIL:-${AUTHOR_EMAIL:-}}"
-    [ -z "$AUTHOR_EMAIL" ] && echo "Error: email required" && exit 1
-
-    # --- Optional values (pre-filled from defaults if available) ---
-    read -rp "Author organization [${AUTHOR_ORG:-none}]: " _AUTHOR_ORG
-    AUTHOR_ORG="${_AUTHOR_ORG:-${AUTHOR_ORG:-}}"
-
-    read -rp "Previous/alt email [${AUTHOR_EMAIL_ALT:-none}]: " _AUTHOR_EMAIL_ALT
-    AUTHOR_EMAIL_ALT="${_AUTHOR_EMAIL_ALT:-${AUTHOR_EMAIL_ALT:-}}"
-
-    read -rp "Project description []: " PROJECT_DESCRIPTION
-
-    read -rp "Forge domain [${FORGE:-github.com}]: " _FORGE
-    FORGE="${_FORGE:-${FORGE:-github.com}}"
-
-    read -rp "Security contact email [${SECURITY_EMAIL:-$AUTHOR_EMAIL}]: " _SECURITY_EMAIL
-    SECURITY_EMAIL="${_SECURITY_EMAIL:-${SECURITY_EMAIL:-$AUTHOR_EMAIL}}"
-
-    read -rp "Conduct contact email [${CONDUCT_EMAIL:-$AUTHOR_EMAIL}]: " _CONDUCT_EMAIL
-    CONDUCT_EMAIL="${_CONDUCT_EMAIL:-${CONDUCT_EMAIL:-$AUTHOR_EMAIL}}"
-
-    read -rp "Project type (library|binary|monorepo|service|website) [library]: " PROJECT_TYPE
-    PROJECT_TYPE="${PROJECT_TYPE:-library}"
-
-    read -rp "Website URL [https://${FORGE}/${OWNER}/${REPO}]: " WEBSITE
-    WEBSITE="${WEBSITE:-https://${FORGE}/${OWNER}/${REPO}}"
-
-    # --- Container values (optional — only relevant if container/ exists) ---
-    if [ -d "container" ]; then
-        echo ""
-        echo "── Container configuration (optional) ─────────"
-        read -rp "Service name [${REPO}]: " _SERVICE_NAME
-        SERVICE_NAME="${_SERVICE_NAME:-${REPO}}"
-        read -rp "Primary port [8080]: " _PORT
-        PORT="${_PORT:-8080}"
-        read -rp "Container registry [ghcr.io/${OWNER}]: " _REGISTRY
-        REGISTRY="${_REGISTRY:-ghcr.io/${OWNER}}"
-    else
-        SERVICE_NAME="${REPO}"
-        PORT="8080"
-        REGISTRY="ghcr.io/${OWNER}"
-    fi
-
-    # --- Derived values ---
-    PROJECT_UPPER=$(echo "$REPO" | tr '[:lower:]-' '[:upper:]_')
-    PROJECT_LOWER=$(echo "$REPO" | tr '[:upper:]-' '[:lower:]_')
-    CURRENT_YEAR=$(date +%Y)
-    CURRENT_DATE=$(date +%Y-%m-%d)
-    VERSION="0.1.0"
-
-    # Derive citation name parts (best-effort split on last space)
-    AUTHOR_LAST="${AUTHOR##* }"
-    AUTHOR_FIRST="${AUTHOR% *}"
-    FIRST_INITIAL="${AUTHOR_FIRST:0:1}."
-    if [ "$AUTHOR_LAST" = "$AUTHOR_FIRST" ]; then
-        AUTHOR_FIRST="$AUTHOR"
-        AUTHOR_LAST=""
-        FIRST_INITIAL=""
-    fi
-
-    echo ""
-    echo "── Summary ──────────────────────────────────────"
-    echo "  Project:     $PROJECT_NAME"
-    echo "  Repo:        $REPO"
-    echo "  Owner:       $OWNER"
-    echo "  Author:      $AUTHOR <$AUTHOR_EMAIL>"
-    [ -n "$AUTHOR_ORG" ] && echo "  Organization: $AUTHOR_ORG"
-    echo "  Forge:       $FORGE"
-    echo "  Year:        $CURRENT_YEAR"
-    echo "────────────────────────────────────────────────"
-    echo ""
-    read -rp "Proceed? [Y/n] " CONFIRM
-    [[ "${CONFIRM:-Y}" =~ ^[Nn] ]] && echo "Aborted." && exit 0
-
-    echo ""
-    echo "Replacing placeholders..."
-
-    # Brace tokens as variables (hex avoids just interpolation)
-    LB=$(printf '\x7b\x7b')
-    RB=$(printf '\x7d\x7d')
-
-    # Build the sed expression list
-    # Note: using | as delimiter since URLs contain /
-    SED_ARGS=(
-        -e "s|${LB}PROJECT_NAME${RB}|${PROJECT_NAME}|g"
-        -e "s|${LB}PROJECT_DESCRIPTION${RB}|${PROJECT_DESCRIPTION}|g"
-        -e "s|${LB}PROJECT${RB}|${PROJECT_UPPER}|g"
-        -e "s|${LB}project${RB}|${PROJECT_LOWER}|g"
-        -e "s|${LB}REPO${RB}|${REPO}|g"
-        -e "s|${LB}OWNER${RB}|${OWNER}|g"
-        -e "s|${LB}AUTHOR${RB}|${AUTHOR}|g"
-        -e "s|${LB}AUTHOR_EMAIL${RB}|${AUTHOR_EMAIL}|g"
-        -e "s|${LB}AUTHOR_ORG${RB}|${AUTHOR_ORG}|g"
-        -e "s|${LB}AUTHOR_LAST${RB}|${AUTHOR_LAST}|g"
-        -e "s|${LB}AUTHOR_FIRST${RB}|${AUTHOR_FIRST}|g"
-        -e "s|${LB}AUTHOR_INITIALS${RB}|${FIRST_INITIAL}|g"
-        -e "s|${LB}FORGE${RB}|${FORGE}|g"
-        -e "s|${LB}CURRENT_YEAR${RB}|${CURRENT_YEAR}|g"
-        -e "s|${LB}CURRENT_DATE${RB}|${CURRENT_DATE}|g"
-        -e "s|${LB}DATE${RB}|${CURRENT_DATE}|g"
-        -e "s|${LB}SECURITY_EMAIL${RB}|${SECURITY_EMAIL}|g"
-        -e "s|${LB}CONDUCT_EMAIL${RB}|${CONDUCT_EMAIL}|g"
-        -e "s|${LB}LICENSE${RB}|PMPL-1.0-or-later|g"
-        -e "s|${LB}CONDUCT_TEAM${RB}|Code of Conduct Committee|g"
-        -e "s|${LB}RESPONSE_TIME${RB}|48 hours|g"
-        -e "s|${LB}MAIN_BRANCH${RB}|main|g"
-        -e "s|${LB}PROJECT_PURPOSE${RB}|${PROJECT_DESCRIPTION}|g"
-        -e "s|${LB}PROJECT_ROLE${RB}|${PROJECT_TYPE}|g"
-        -e "s|${LB}PROJECT_TYPE${RB}|${PROJECT_TYPE}|g"
-        -e "s|${LB}WEBSITE${RB}|${WEBSITE}|g"
-        -e "s|${LB}SERVICE_NAME${RB}|${SERVICE_NAME}|g"
-        -e "s|${LB}PORT${RB}|${PORT}|g"
-        -e "s|${LB}REGISTRY${RB}|${REGISTRY}|g"
-        -e "s|${LB}IMAGE${RB}|${REGISTRY}/${SERVICE_NAME}|g"
-        -e "s|${LB}VERSION${RB}|${VERSION}|g"
-        -e "s|${LB}EMAIL${RB}|${AUTHOR_EMAIL}|g"
-    )
-    [ -n "$AUTHOR_EMAIL_ALT" ] && SED_ARGS+=(-e "s|${LB}AUTHOR_EMAIL_ALT${RB}|${AUTHOR_EMAIL_ALT}|g")
-
-    # Replace in all text files (skip .git, LICENSE text, and binaries)
-    find . -type f \
-        -not -path './.git/*' \
-        -not -name 'PMPL-1.0-or-later.txt' \
-        -not -name '*.png' -not -name '*.jpg' -not -name '*.gif' \
-        -not -name '*.woff' -not -name '*.woff2' \
-        | while read -r file; do
-        if file --brief "$file" | grep -qi 'text\|ascii\|utf'; then
-            sed -i "${SED_ARGS[@]}" "$file"
-        fi
-    done
-
-    # Also replace [YOUR-REPO-NAME] and [YOUR-NAME/ORG] in AI manifest
-    sed -i "s|\[YOUR-REPO-NAME\]|${PROJECT_NAME}|g" 0-AI-MANIFEST.a2ml 2>/dev/null || true
-    sed -i "s|\[YOUR-NAME/ORG\]|${OWNER}|g" 0-AI-MANIFEST.a2ml 2>/dev/null || true
-
-    echo ""
-    echo "── Validation ───────────────────────────────────"
-
-    # Check for remaining placeholders
-    PATTERN="${LB}[A-Z_]*${RB}"
-    REMAINING=$(grep -rl "$PATTERN" . --include='*.md' --include='*.adoc' --include='*.yml' --include='*.yaml' --include='*.a2ml' --include='*.toml' --include='*.scm' --include='*.ncl' --include='*.nix' --include='*.json' --include='*.sh' 2>/dev/null | grep -v '.git/' | grep -v '.machine_readable/ai/PLACEHOLDERS.adoc' || true)
-    if [ -n "$REMAINING" ]; then
-        echo "WARNING: Remaining placeholders in:"
-        echo "$REMAINING" | sed 's/^/  /'
-        echo ""
-        echo "Run: grep -rn '$LB' . --include='*.md' to inspect"
-    else
-        echo "All placeholders replaced successfully!"
-    fi
-
-    # K9-SVC validation (if available)
-    if command -v k9-svc >/dev/null 2>&1; then
-        echo ""
-        echo "Running k9-svc validation..."
-        k9-svc validate . 2>/dev/null || true
-    fi
-
-    echo ""
-    echo "Done! Next steps:"
-    echo "  1. Review changes: git diff"
-    echo "  2. Remove template cruft: rm .machine_readable/ai/PLACEHOLDERS.adoc"
-    echo "  3. Customize README.adoc for your project"
-    echo "  4. Commit: git add -A && git commit -m 'feat: initialize from RSR template'"
-    echo "  5. Push: git remote add origin git@${FORGE}:${OWNER}/${REPO}.git && git push -u origin main"
+    @echo "typed-wasm is already instantiated; there is no template bootstrap step."
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BUILD & COMPILE
@@ -324,14 +119,31 @@ test-smoke:
     rescript build
     node tests/smoke/e2e-smoke.mjs
 
+# End-to-end test surface
+test-e2e:
+    @echo "Running end-to-end tests..."
+    rescript build
+    node tests/e2e/e2e-smoke.mjs
+
+# Aspect tests for cross-surface claim coherence
+test-aspect:
+    @echo "Running aspect tests..."
+    node tests/aspect/claim-envelope.mjs
+
+# Parser benchmark surface
+bench:
+    @echo "Running parser benchmark..."
+    rescript build
+    node benchmarks/parser-bench.mjs
+
 # Type-check Idris2 ABI modules (formal proofs)
 check-abi:
     @echo "Type-checking Idris2 ABI modules..."
     cd src/abi && idris2 --build typed-wasm.ipkg
-    @echo "All 9 ABI modules type-check successfully."
+    @echo "Checked ABI package type-checks successfully."
 
 # Run all quality checks
-quality: fmt-check lint test
+quality: fmt-check lint test test-e2e test-aspect
     @echo "All quality checks passed!"
 
 # Fix all auto-fixable issues [reversible: git checkout]
@@ -345,30 +157,19 @@ fix: fmt
 # Format all source files [reversible: git checkout]
 fmt:
     @echo "Formatting source files..."
-    # TODO: Replace with your formatter
-    # Examples:
-    #   cargo fmt
-    #   mix format
-    #   gleam format
-    #   deno fmt
+    npx rescript format
+    zig fmt ffi/zig/build.zig ffi/zig/src/main.zig ffi/zig/test/integration_test.zig ffi/zig/test/echidna_oracle_test.zig >/dev/null
 
 # Check formatting without changes
 fmt-check:
     @echo "Checking formatting..."
-    # TODO: Replace with your format check
-    # Examples:
-    #   cargo fmt --check
-    #   mix format --check-formatted
-    #   gleam format --check
+    npx rescript format --check
+    zig fmt --check ffi/zig/build.zig ffi/zig/src/main.zig ffi/zig/test/integration_test.zig ffi/zig/test/echidna_oracle_test.zig
 
 # Run linter
 lint:
-    @echo "Linting source files..."
-    # TODO: Replace with your linter
-    # Examples:
-    #   cargo clippy -- -D warnings
-    #   mix credo --strict
-    #   gleam check
+    @echo "Linting ReScript sources with warnings-as-errors..."
+    npx rescript build --warn-error "+3+4+45+102"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUN & EXECUTE
@@ -376,18 +177,17 @@ lint:
 
 # Run the application
 run *args: build
-    # TODO: Replace with your run command
-    echo "Run not configured yet"
+    node tests/smoke/e2e-smoke.mjs
 
 # Run with verbose output
 run-verbose *args: build
-    # TODO: Replace with verbose run command
-    echo "Run not configured yet"
+    just test-verbose
 
 # Install to user path
 install: build-release
-    @echo "Installing {{project}}..."
-    # TODO: Replace with your install command
+    @mkdir -p .local/bin
+    @cp tests/smoke/e2e-smoke.mjs .local/bin/typed-wasm-smoke.mjs
+    @echo "Staged .local/bin/typed-wasm-smoke.mjs for local execution"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEPENDENCIES
@@ -396,20 +196,18 @@ install: build-release
 # Install/check all dependencies
 deps:
     @echo "Checking dependencies..."
-    # TODO: Replace with your dependency check
-    # Examples:
-    #   cargo check
-    #   mix deps.get
-    #   gleam deps download
+    @command -v node >/dev/null
+    @command -v npx >/dev/null
+    @command -v zig >/dev/null
+    @command -v idris2 >/dev/null
+    @test -d node_modules || npm ci
+    @npm ls >/dev/null
     @echo "All dependencies satisfied"
 
 # Audit dependencies for vulnerabilities
 deps-audit:
     @echo "Auditing for vulnerabilities..."
-    # TODO: Replace with your audit command
-    # Examples:
-    #   cargo audit
-    #   mix audit
+    @npm audit --omit=dev --audit-level=high
     @command -v trivy >/dev/null && trivy fs --severity HIGH,CRITICAL --quiet . || true
     @command -v gitleaks >/dev/null && gitleaks detect --source . --no-git --quiet || true
     @echo "Audit complete"
@@ -471,155 +269,6 @@ man:
     echo "Generated: docs/man/{{project}}.1"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CONTAINERS (stapeln ecosystem — Podman + Chainguard Wolfi)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# Initialise container templates — substitute placeholders with project values
-container-init:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    if [ ! -d "container" ]; then
-        echo "Error: container/ directory not found."
-        echo "This repo may not have been created from rsr-template-repo."
-        exit 1
-    fi
-
-    echo "=== Container Template Initialisation ==="
-    echo ""
-
-    # Load RSR defaults if available
-    DEFAULTS="${XDG_CONFIG_HOME:-$HOME/.config}/rsr/defaults"
-    if [ -f "$DEFAULTS" ]; then
-        echo "Loading defaults from $DEFAULTS"
-        # shellcheck source=/dev/null
-        source "$DEFAULTS"
-        echo ""
-    fi
-
-    # Prompt for container-specific values
-    read -rp "Service name (e.g. my-api) [{{project}}]: " _SERVICE_NAME
-    SERVICE_NAME="${_SERVICE_NAME:-{{project}}}"
-
-    read -rp "Primary port [8080]: " _PORT
-    PORT="${_PORT:-8080}"
-
-    read -rp "Container registry [ghcr.io/${OWNER:-{{OWNER}}}]: " _REGISTRY
-    REGISTRY="${_REGISTRY:-ghcr.io/${OWNER:-{{OWNER}}}}"
-
-    echo ""
-    echo "  Service: $SERVICE_NAME"
-    echo "  Port:    $PORT"
-    echo "  Registry: $REGISTRY"
-    echo ""
-    read -rp "Proceed? [Y/n] " CONFIRM
-    [[ "${CONFIRM:-Y}" =~ ^[Nn] ]] && echo "Aborted." && exit 0
-
-    echo ""
-    echo "Replacing container placeholders..."
-
-    # Brace tokens as variables (hex escapes avoid just interpolation)
-    LB=$(printf '\x7b\x7b')
-    RB=$(printf '\x7d\x7d')
-
-    SED_ARGS=(
-        -e "s|${LB}SERVICE_NAME${RB}|${SERVICE_NAME}|g"
-        -e "s|${LB}PORT${RB}|${PORT}|g"
-        -e "s|${LB}REGISTRY${RB}|${REGISTRY}|g"
-    )
-
-    find container/ -type f | while read -r file; do
-        if file --brief "$file" | grep -qi 'text\|ascii\|utf'; then
-            sed -i "${SED_ARGS[@]}" "$file"
-        fi
-    done
-
-    echo "Container templates initialised."
-    echo ""
-    echo "Next steps:"
-    echo "  1. Edit container/Containerfile — add your build commands"
-    echo "  2. Edit container/entrypoint.sh — set your application binary"
-    echo "  3. Review container/compose.toml — adjust services and volumes"
-    echo "  4. Build: just container-build"
-
-# Build container image via cerro-torre pipeline
-container-build *args:
-    #!/usr/bin/env bash
-    if [ -f "container/ct-build.sh" ]; then
-        cd container && ./ct-build.sh {{args}}
-    elif [ -f "container/Containerfile" ]; then
-        podman build -t {{project}}:latest -f container/Containerfile .
-    elif [ -f "Containerfile" ]; then
-        podman build -t {{project}}:latest -f Containerfile .
-    else
-        echo "No Containerfile found in container/ or project root"
-        exit 1
-    fi
-
-# Verify compose configuration
-container-verify:
-    #!/usr/bin/env bash
-    if [ ! -f "container/compose.toml" ]; then
-        echo "No container/compose.toml found"
-        exit 1
-    fi
-    cd container
-    if command -v selur-compose &>/dev/null; then
-        selur-compose verify
-    else
-        echo "selur-compose not found, falling back to podman compose"
-        podman compose --file compose.toml config
-    fi
-
-# Start container stack
-container-up *args:
-    #!/usr/bin/env bash
-    if [ ! -f "container/compose.toml" ]; then
-        echo "No container/compose.toml found"
-        exit 1
-    fi
-    cd container
-    if command -v selur-compose &>/dev/null; then
-        selur-compose up {{args}}
-    else
-        podman compose --file compose.toml up {{args}}
-    fi
-
-# Stop container stack
-container-down:
-    #!/usr/bin/env bash
-    cd container 2>/dev/null || { echo "No container/ directory"; exit 1; }
-    if command -v selur-compose &>/dev/null; then
-        selur-compose down
-    else
-        podman compose --file compose.toml down
-    fi
-
-# Sign and verify container bundle (build + pack + sign + verify)
-container-sign:
-    #!/usr/bin/env bash
-    if [ -f "container/ct-build.sh" ]; then
-        cd container && ./ct-build.sh
-    else
-        echo "No container/ct-build.sh found"
-        exit 1
-    fi
-
-# Push signed bundle to registry
-container-push:
-    #!/usr/bin/env bash
-    if [ -f "container/ct-build.sh" ]; then
-        cd container && ./ct-build.sh --push
-    else
-        echo "No container/ct-build.sh found — falling back to podman push"
-        podman push {{project}}:latest
-    fi
-
-# Run container interactively (for debugging)
-container-run *args:
-    podman run --rm -it {{project}}:latest {{args}}
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # CI & AUTOMATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -673,7 +322,7 @@ validate-rsr:
     for f in licensing/exhibits/EXHIBIT-A-ETHICAL-USE.txt licensing/exhibits/EXHIBIT-B-QUANTUM-SAFE.txt licensing/texts/PMPL-1.0-or-later.txt; do
         [ -f "$f" ] || MISSING="$MISSING $f"
     done
-    for f in src/interface/abi src/interface/ffi src/interface/generated; do
+    for f in src/interface/abi src/interface/generated ffi/zig; do
         [ -d "$f" ] || MISSING="$MISSING $f"
     done
     for f in docs/maintenance/MAINTENANCE-CHECKLIST.adoc docs/practice/SOFTWARE-DEVELOPMENT-APPROACH.adoc; do
@@ -722,14 +371,15 @@ validate-ai-install:
         echo "MISSING: $GUIDE (create from template: docs/AI_INSTALLATION_GUIDE.adoc)"
         ERRORS=$((ERRORS + 1))
     else
-        # Check for unfilled TODO markers
-        TODOS=$(grep -c '\[TODO-AI-INSTALL' "$GUIDE" 2>/dev/null || true)
+        # Check for unfilled install markers
+        INSTALL_MARKER='[TO''DO-AI-INSTALL]'
+        TODOS=$(grep -cF "$INSTALL_MARKER" "$GUIDE" 2>/dev/null || true)
         if [ "$TODOS" -gt 0 ]; then
-            echo "INCOMPLETE: $GUIDE has $TODOS unfilled [TODO-AI-INSTALL] markers:"
-            grep -n '\[TODO-AI-INSTALL' "$GUIDE" | head -10
+            echo "INCOMPLETE: $GUIDE has $TODOS unfilled AI install markers:"
+            grep -nF "$INSTALL_MARKER" "$GUIDE" | head -10
             ERRORS=$((ERRORS + 1))
         else
-            echo "$GUIDE: complete (no TODO markers)"
+            echo "$GUIDE: complete (no install markers)"
         fi
 
         # Check AI implementation section exists
@@ -758,10 +408,11 @@ validate-ai-install:
             ERRORS=$((ERRORS + 1))
         fi
 
-        # Check README for unfilled TODO markers
-        README_TODOS=$(grep -c '\[TODO-AI-INSTALL' "$README" 2>/dev/null || true)
+        # Check README for unfilled install markers
+        INSTALL_MARKER='[TO''DO-AI-INSTALL]'
+        README_TODOS=$(grep -cF "$INSTALL_MARKER" "$README" 2>/dev/null || true)
         if [ "$README_TODOS" -gt 0 ]; then
-            echo "INCOMPLETE: $README has $README_TODOS unfilled [TODO-AI-INSTALL] markers"
+            echo "INCOMPLETE: $README has $README_TODOS unfilled AI install markers"
             ERRORS=$((ERRORS + 1))
         fi
     fi

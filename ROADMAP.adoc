@@ -5,9 +5,10 @@
 
 == Current State
 
-typed-wasm applies TypeLL's 10-level type safety to WebAssembly linear memory.
-Pre-alpha / research stage. Core insight: WASM linear memory is a schemaless
-database; typed-wasm adds region schemas and typed access operations.
+typed-wasm applies a checked TypeLL-derived 10-level core to WebAssembly linear
+memory. Pre-alpha / research stage. Core insight: WASM linear memory is a
+schemaless database; typed-wasm adds region schemas and typed access
+operations.
 
 Killer feature: multi-module shared memory type safety across language boundaries
 (e.g. Rust Module A shares WASM memory with ReScript Module B -- neither source
@@ -15,19 +16,25 @@ type system covers the boundary; typed-wasm does).
 
 Key capabilities delivered:
 
-* Idris2 ABI proofs (src/abi/) -- region schemas, typed access, 10-level verification
+* Idris2 ABI proofs (src/abi/) -- checked L1-L10 region, access, and proof core
 * Zig FFI (ffi/zig/) -- C-ABI bridge for runtime region management, typed load/store
 * `.twasm` grammar (spec/grammar.ebnf) -- EBNF surface syntax
-* 10-level spec (spec/10-levels-for-wasm.adoc) -- DB-to-WASM level mapping
-* Example `.twasm` files demonstrating all features
-* arXiv-ready whitepaper (docs/WHITEPAPER.md + docs/arxiv/typed-wasm.tex)
-* No dangerous patterns (believe_me, assert_total, unsafeCoerce)
+* 10-level spec (spec/10-levels-for-wasm.adoc) -- checked DB-to-WASM core mapping
+* Example `.twasm` files for the checked core, plus draft higher-level examples
+* Whitepaper drafts (docs/WHITEPAPER.md + docs/arxiv/typed-wasm.tex) under audit
+* No unsound escape hatches in the checked Idris2 core (`believe_me`, `assert_total`)
+
+Known audit constraints:
+
+* L11-L12 draft files are not part of `typed-wasm.ipkg` and currently fail standalone type-checking
+* Release/build/container metadata still contains template residue
+* Benchmark and venue-facing paper claims require evidence cleanup before submission
 
 == v0.1.0 -- Formal Foundations (Complete)
 
 * [x] Idris2 ABI: region schema proofs
 * [x] Idris2 ABI: typed access proofs
-* [x] Idris2 ABI: 10-level verification hierarchy
+* [x] Idris2 ABI: checked 10-level verification hierarchy
 * [x] Zig FFI: runtime region management
 * [x] Zig FFI: typed load/store operations
 * [x] `.twasm` EBNF grammar
@@ -41,13 +48,14 @@ Key capabilities delivered:
 * [x] Random `.twasm` program generation (tests/echidna/echidna-harness.mjs)
 * [x] Prover oracle testing (ffi/zig/test/echidna_oracle_test.zig — 7 properties)
 
-== v0.3.0 -- arXiv Paper (Complete — 2026-03-29)
+== v0.3.0 -- Submission Drafts (In revision)
 
 * [x] Formalise whitepaper for arXiv submission (docs/arxiv/typed-wasm.tex — ACM sigplan format)
 * [x] BibTeX bibliography (docs/arxiv/typed-wasm.bib — 15 references)
-* [x] Benchmark multi-module type checking overhead (Section 8, Table 5)
+* [ ] Benchmark multi-module type checking overhead with reproducible artefacts
 * [x] Comparison with existing WASM safety approaches (Section 8, Table 6)
-* [ ] Submit to arXiv (cs.PL) — requires manual upload
+* [ ] Reconcile all paper claims with the checked L1-L10 evidence envelope
+* [ ] Submit to arXiv / HAL only after claim and benchmark audit passes
 
 == v0.4.0 -- Ecosystem Integration (Partially Complete)
 
@@ -61,6 +69,8 @@ Key capabilities delivered:
 * [ ] End-to-end pipeline: `.twasm` source -> verified WASM module
 * [ ] Multi-language binding generation from typed region schemas
 * [ ] CI/CD with proof validation
+* [ ] De-template release/build/container surfaces
+* [ ] Real benchmark and aspect-test evidence
 
 == Future
 

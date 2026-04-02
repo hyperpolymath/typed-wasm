@@ -1,26 +1,33 @@
 # SPDX-License-Identifier: PMPL-1.0-or-later
-# Copyright (c) {{CURRENT_YEAR}} {{AUTHOR}} ({{OWNER}}) <{{AUTHOR_EMAIL}}>
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
 # ECOSYSTEM.a2ml — Project ecosystem position
 # Relationships, dependencies, integration points.
 
 [metadata]
 version = "0.1.0"
-last-updated = "{{CURRENT_DATE}}"
+last-updated = "2026-03-30"
 
 [project]
-name = "{{PROJECT_NAME}}"
-purpose = "{{PROJECT_PURPOSE}}"
-role = "{{PROJECT_ROLE}}"  # e.g. ffi-infrastructure, cli-tool, library, service
+name = "typed-wasm"
+purpose = "Apply TypeLL-style progressive type safety to WebAssembly linear memory with a checked L1-L10 core and audited research extensions."
+role = "library"
 
 [position-in-ecosystem]
 tier = "infrastructure"  # 1 | 2 | infrastructure
 
 [related-projects]
-# relationship types: sibling-standard, dependency, dependent, inspiration, potential-consumer
-# - { name = "language-bridges", relationship = "sibling-standard" }
-# - { name = "hypatia", relationship = "potential-consumer" }
+projects = [
+  { name = "typell", relationship = "dependency" },
+  { name = "typedqliser", relationship = "inspiration" },
+  { name = "vql-ut", relationship = "sibling-standard" },
+  { name = "echidna", relationship = "dependency" },
+]
 
 [integration-points]
-# External systems this project connects to
-# - { system = "gitbot-fleet", direction = "outbound", protocol = "repository_dispatch" }
+systems = [
+  { system = "Idris2 proof build", direction = "inbound", protocol = "idris2 --build" },
+  { system = "ReScript parser toolchain", direction = "inbound", protocol = "rescript build" },
+  { system = "Zig FFI and oracle tests", direction = "inbound", protocol = "zig build" },
+  { system = "ECHIDNA property testing", direction = "inbound", protocol = "node harness + oracle tests" },
+]
