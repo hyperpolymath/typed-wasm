@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# e2e.yml — End-to-end validation for typed-wasm.
+#
+# Runs on every PR and push to main. Three jobs:
+#   structural — fast structural checks (no compiler required)
+#   smoke      — Node.js smoke test (ReScript parser + example files)
+#   build-e2e  — Full Idris2 + Zig build then E2E
+name: E2E Validation
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Job 1: Structural checks (no toolchain needed — fast gate)
+  # --------------------------------------------------------------------------
+  structural:
+    name: Structural E2E (no-build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Run structural E2E checks
+        run: E2E_BUILD=0 bash tests/e2e.sh
+
+  # --------------------------------------------------------------------------
+  # Job 2: Smoke test — Node.js parser validation
+  # --------------------------------------------------------------------------
+  smoke:
+    name: Smoke test (Node.js ReScript parser)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run smoke test
+        run: node tests/e2e/e2e-smoke.mjs
+
+  # --------------------------------------------------------------------------
+  # Job 3: Full Idris2 + Zig build then E2E
+  # --------------------------------------------------------------------------
+  build-e2e:
+    name: Build + E2E (Idris2 + Zig)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # ---- Idris2 ----
+      - name: Install Idris2
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgmp-dev
+          # Install Idris2 from binary release
+          IDRIS2_VERSION="0.7.0"
+          curl -fsSL \
+            "https://github.com/idris-lang/Idris2/releases/download/v${IDRIS2_VERSION}/idris2-${IDRIS2_VERSION}-ubuntu-20.04.tar.gz" \
+            -o /tmp/idris2.tar.gz || true
+          if [ -f /tmp/idris2.tar.gz ]; then
+            tar -xzf /tmp/idris2.tar.gz -C /usr/local --strip-components=1
+          fi
+
+      # ---- Zig ----
+      - name: Install Zig
+        run: |
+          ZIG_VERSION="0.12.0"
+          curl -fsSL \
+            "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+            -o /tmp/zig.tar.xz
+          tar -xJf /tmp/zig.tar.xz -C /opt
+          ln -s "/opt/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig
+
+      # ---- Node (for smoke test within E2E script) ----
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ---- Full E2E ----
+      - name: Run full E2E (with build checks)
+        run: E2E_BUILD=1 bash tests/e2e.sh

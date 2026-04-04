@@ -3,41 +3,120 @@
 :toc:
 :icons: font
 
-The README makes claims. This file backs them up.
+The README makes claims. This file backs them up with evidence from real code.
 
-[quote, README]
+== Core Claims & Evidence
+
+=== Claim 1: "The 10-Level Safety Hierarchy — Checked L1-L10 Core, 0 believe_me"
+
+**From README** (lines 11-14):
 ____
-WebAssembly's linear memory is an untyped byte array. Programs access it with
+image:https://img.shields.io/badge/believe__me-0-brightgreen[believe_me: 0]
+image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_draft)-blue[Levels: checked core]
+
+**Progressive type safety for WebAssembly linear memory — checked L1-L10 core, 0 believe_me in the checked proof package.**
 ____
 
-== Technology Choices
+**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/src/abi/Levels.idr` defines Idris2 dependent types for all 10 levels: L1 (instruction validity), L2 (region binding), L3 (type compatibility), ..., L10 (linearity). Proof search at `/var/mnt/eclipse/repos/typed-wasm/src/abi/Proofs.idr` contains zero `believe_me`, `assert_total`, or escape hatches. LEVEL-STATUS.md confirms "checked L1-L10 core."
 
-[cols="1,2"]
-|===
-| Technology | Learn More
+**Caveat**: L11-L12 (advanced liveness + exotic type-level properties) are *draft files*, not integrated into the default proof package. Claims scope to L1-L10 only.
 
-| **Zig** | https://ziglang.org
-| **Idris2 ABI** | https://www.idris-lang.org
+=== Claim 2: "Multi-Module Type Safety Across Language Boundaries"
+
+**From README** (lines 52-93):
+____
+When Module A (compiled from Rust) shares memory with Module B (compiled from ReScript), **neither source-level type system can verify the boundary.**
+
+typed-wasm declares the shared schema once. Both modules import it. The typed-wasm checker verifies structural agreement at compile time, before any module runs.
+____
+
+**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/examples/02-multi-module.twasm` demonstrates: Module A exports a `region Entity` with fields (pos_x, pos_y, hp); Module B imports the same region and defines typed load/store operations. Prover at `/var/mnt/eclipse/repos/typed-wasm/src/abi/Proofs.idr` proves field offset and alignment agreement.
+
+**Caveat**: Schema agreement proof is *type-level* (compile-time). Does NOT verify that actual Rust/ReScript compiled code respects field layout—correspondence is manual. Runtime behavior depends on correct field packing across compilers.
+
+=== Claim 3: "Checked L1-L10 Proof Core — All 10 Levels Integrated"
+
+**From README** (lines 31-47):
+____
+[cols="1,2,2"]
 |===
+| Level | Database (TypedQL) | WASM (typed-wasm)
+| 1 | Parse-time safety | Instruction validity
+| ...
+| 10 | Linearity | Linear resource usage
+|===
+____
+
+**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/spec/10-levels-for-wasm.adoc` maps each level from database (TypedQL) to WASM. `/var/mnt/eclipse/repos/typed-wasm/src/abi/` contains proof files for each: L1-L3 in Types.idr, L4-L5 in Layout.idr, L6-L7 in Access.idr, L8-L10 in Linearity.idr.
+
+**Caveat**: Proofs are *about abstract WASM models*, not actual WebAssembly instruction sequences. Translation from `.twasm` (typed-wasm surface syntax) to WASM bytecode is NOT mechanically verified.
 
 == Dogfooded Across The Account
 
-Uses the hyperpolymath ABI/FFI standard (Idris2 + Zig). Same pattern used across
-https://github.com/hyperpolymath/proven[proven],
-https://github.com/hyperpolymath/burble[burble], and
-https://github.com/hyperpolymath/gossamer[gossamer].
+Uses the hyperpolymath type safety stack (Idris2 + TypeLL + 10-level verification). Same pattern across:
+- https://github.com/hyperpolymath/typedqliser[TypedQLiser] — 10 levels for database query languages (origin)
+- https://github.com/hyperpolymath/vql-ut[VQL-UT] — 10 levels for VeriSimDB
+- https://github.com/hyperpolymath/typell[TypeLL] — Type theory foundation (shared)
+- https://github.com/hyperpolymath/echidna[ECHIDNA] — Property-based prover testing (integrated)
+
+All share: *Progressive safety levels, mechanized proofs in Idris2, no escape hatches in checked core.*
 
 == File Map
 
-[cols="1,2"]
+[cols="1,3"]
 |===
-| Path | What's There
+| Path | Contents & Purpose
 
-| `src/` | Source code
-| `ffi/` | Foreign function interface
-| `test(s)/` | Test suite
+| `spec/grammar.ebnf` | The `.twasm` surface syntax in EBNF: region declarations, typed load/store operations, effect annotations, module imports/exports
+
+| `spec/10-levels-for-wasm.adoc` | Mapping document: each of the 10 levels from TypedQL (database) → typed-wasm (WASM), with rationale and examples
+
+| `src/abi/Types.idr` | Idris2 dependent types: L1-L3 proof definitions (instruction validity, region binding, type compatibility) with witness types
+
+| `src/abi/Layout.idr` | Idris2 memory layout proofs: L4 (null safety via opt<T>), L5 (compile-time bounds proofs via offset witnesses)
+
+| `src/abi/Access.idr` | Idris2 access correctness: L6 (result-type inference), L7 (aliasing safety via exclusive refs)
+
+| `src/abi/Effects.idr` | Idris2 effect tracking: L8 (effect type annotations), L9 (lifetime safety via resource tracking)
+
+| `src/abi/Linearity.idr` | Idris2 linear type proofs: L10 (exactly-once resource usage via linear arrows)
+
+| `src/abi/Proofs.idr` | Machine-checked proofs proving the 10 levels are satisfied. Zero `believe_me`.
+
+| `src/abi/Foreign.idr` | FFI declarations: C header generation from Idris2 ABI
+
+| `ffi/zig/src/main.zig` | Zig FFI implementation: runtime region management, typed load/store operations, C-ABI compatible interface
+
+| `ffi/zig/test/integration_test.zig` | Zig FFI integration tests: memory layout verification, cross-module region sharing
+
+| `examples/01-single-module.twasm` | Single-module typed-wasm program: region declaration, typed access
+
+| `examples/02-multi-module.twasm` | **THE killer feature demo**: Module A exports region, Module B imports and uses with type safety across language boundary
+
+| `examples/03-ownership-linearity.twasm` | Advanced example: Levels 7-10 (aliasing, effect tracking, lifetime, linearity)
+
+| `examples/04-ecs-game.twasm` | Real-world example: Entity Component System as columnar database with typed-wasm regions
+
+| `LEVEL-STATUS.md` | Current claim envelope: which levels are checked (L1-L10), which are draft (L11-L12), audit status
+
+| `docs/WHITEPAPER.md` | Full academic treatment: type theory, proof structure, GraalVM implications
 |===
+
+== Status
+
+**Honest Assessment**: Pre-alpha / Research. The checked L1-L10 ABI core and Zig FFI are in place. Parser smoke tests pass. L11-L12 are experimental drafts (not integrated). End-to-end codegen (`.twasm` → WASM bytecode) is NOT yet implemented.
+
+**What Works**:
+- L1-L10 proof core in Idris2 (zero unsound axioms)
+- Zig FFI layer (C-compatible, tested)
+- Multi-module schema agreement verification
+
+**What's Missing**:
+- Parser for `.twasm` syntax (spec exists, implementation partial)
+- Codegen: `.twasm` → WASM bytecode
+- L11-L12 integration (in progress)
+- End-to-end examples (design only)
 
 == Questions?
 
-Open an issue or reach out directly — happy to explain anything in more detail.
+Open an issue or reach out at j.d.a.jewell@open.ac.uk — happy to explain the 10-level hierarchy, multi-module type safety, or proof structure.

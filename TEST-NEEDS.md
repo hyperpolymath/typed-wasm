@@ -1,5 +1,7 @@
 # TEST-NEEDS: typed-wasm
 
+## CRG Grade: C — ACHIEVED 2026-04-04
+
 ## Current State
 
 | Category | Count | Details |
@@ -8,12 +10,14 @@
 | **Unit tests** | 1 file | ParserTests.res (~82 assertions) |
 | **Integration tests** | 0 | None |
 | **E2E tests** | 1 | e2e-smoke.mjs (~43 assertions) |
+| **Property-based tests** | 1 | property_test.mjs (10 properties, ~40+ assertions) |
 | **Benchmarks** | 0 | None |
 | **ECHIDNA harness** | 1 | echidna-harness.mjs (7 assertions) |
 
 ## What's Missing
 
 ### P2P Tests
+- [x] **DONE 2026-04-04**: Property-based tests added (`tests/property/property_test.mjs`, 10 properties, ~40+ assertions)
 - [ ] No tests for Idris2 ABI type checking with Zig FFI
 - [ ] No tests for ReScript parser feeding into Idris2 type checker
 
