@@ -196,7 +196,7 @@ proven safe before compilation to raw WASM instructions.
 
 === Implementation
 
-The parser is written in ReScript (consistent with VQL-UT) and produces a
+The parser is written in ReScript (consistent with VCL-total) and produces a
 typed abstract syntax tree. Parse failure at this level produces a clear
 error with source location.
 
@@ -647,7 +647,7 @@ does NOT address:
 | Segments with bounds checking
 | typed-wasm adds schema-level types, not just bounds
 
-| TypedQL / VQL-UT
+| TypedQL / VCL-total
 | Type-safe database queries
 | typed-wasm applies the same principle to memory, not databases
 

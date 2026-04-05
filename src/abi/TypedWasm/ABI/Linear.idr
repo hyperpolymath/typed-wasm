@@ -180,7 +180,7 @@ data NoDoubleFree : Type where
 
 ||| A resource that can be used exactly N times (generalisation of linear).
 ||| Linear is the special case where N = 1.
-||| This corresponds to VQL-UT's CONSUME AFTER N USE clause.
+||| This corresponds to VCL-total's CONSUME AFTER N USE clause.
 public export
 data BoundedUse : (remaining : Nat) -> Type where
   ||| A resource with N remaining uses.

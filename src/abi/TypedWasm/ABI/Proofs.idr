@@ -7,7 +7,7 @@
 -- "proof certificate" that attests to all 10 levels of type safety
 -- for a typed-wasm program.
 --
--- The certificate is analogous to VQL-UT's proof certificates (JSON/CBOR
+-- The certificate is analogous to VCL-total's proof certificates (JSON/CBOR
 -- structures attached to query results) but operates at compile time.
 -- Once the certificate is constructed, all safety properties are guaranteed
 -- and the proofs are erased — the output is bare WASM instructions.
@@ -63,7 +63,7 @@ data LevelAttestation : Type where
 ||| that is applicable. Levels that are not applicable (e.g., linearity
 ||| for a function that doesn't allocate) are marked NotApplicable.
 |||
-||| VQL-UT analogy: this is the ProvedResult sigma pair.
+||| VCL-total analogy: this is the ProvedResult sigma pair.
 public export
 data ProofCertificate : Type where
   MkCertificate : (levels : List LevelAttestation)
@@ -78,7 +78,7 @@ data ProofCertificate : Type where
 ||| Proof that levels are checked progressively: you cannot skip levels.
 ||| Level N can only be checked if Level (N-1) is Proven or NotApplicable.
 |||
-||| This mirrors VQL-UT's slipstream mode: queries enter at L1 and exit
+||| This mirrors VCL-total's slipstream mode: queries enter at L1 and exit
 ||| as soon as remaining levels don't apply.
 public export
 data ProgressiveCheck : Type where

@@ -514,12 +514,12 @@ offset, schema ID, generation counter (for lifetime tracking), and
 ownership flag in a 64-bit value.
 
 **ReScript parser.** The surface syntax parser is written in ReScript,
-consistent with the VQL-UT parser in the TypedQL ecosystem. ReScript
+consistent with the VCL-total parser in the TypedQL ecosystem. ReScript
 compiles to JavaScript/Wasm via Deno.
 
 **TypedQLiser integration.** typed-wasm implements the `QueryLanguagePlugin`
 trait from TypedQLiser, making Wasm memory a target alongside SQL,
-GraphQL, and VQL. This enables end-to-end verification: a database query
+GraphQL, and VCL. This enables end-to-end verification: a database query
 is type-checked by TypedQLiser, and the memory region holding its results
 is type-checked by typed-wasm.
 

@@ -150,7 +150,7 @@ aspect coverage, and either complete or withdraw the higher-level claims.
 
 - https://github.com/hyperpolymath/typell[TypeLL] — Type theory foundation
 - https://github.com/hyperpolymath/typedqliser[TypedQLiser] — 10-level safety for query languages
-- https://github.com/hyperpolymath/vql-ut[VQL-UT] — 10-level safety for VeriSimDB
+- https://github.com/hyperpolymath/vql-ut[VCL-total] — 10-level safety for VeriSimDB
 - https://github.com/hyperpolymath/echidna[ECHIDNA] — Property-based prover testing
 
 == GraalVM Implications

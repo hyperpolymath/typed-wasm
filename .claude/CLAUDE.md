@@ -41,7 +41,7 @@ cd src/abi && idris2 --check Proofs.idr
 
 - **TypeLL**: Type theory foundation — typed-wasm implements TypeLL's levels for WASM
 - **TypedQLiser**: Could become a TypedQLiser plugin (WASM as a "query target")
-- **VQL-UT**: Sibling project — same levels, different domain (database vs memory)
+- **VCL-total**: Sibling project — same levels, different domain (database vs memory)
 - **ECHIDNA**: Property-based testing of proof soundness
 - **GraalVM/Truffle**: Potential future target for the same approach
 

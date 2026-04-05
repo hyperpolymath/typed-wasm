@@ -55,7 +55,7 @@ ____
 
 Uses the hyperpolymath type safety stack (Idris2 + TypeLL + 10-level verification). Same pattern across:
 - https://github.com/hyperpolymath/typedqliser[TypedQLiser] — 10 levels for database query languages (origin)
-- https://github.com/hyperpolymath/vql-ut[VQL-UT] — 10 levels for VeriSimDB
+- https://github.com/hyperpolymath/vql-ut[VCL-total] — 10 levels for VeriSimDB
 - https://github.com/hyperpolymath/typell[TypeLL] — Type theory foundation (shared)
 - https://github.com/hyperpolymath/echidna[ECHIDNA] — Property-based prover testing (integrated)
 

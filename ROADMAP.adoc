@@ -60,7 +60,7 @@ Known audit constraints:
 == v0.4.0 -- Ecosystem Integration (Partially Complete)
 
 * [x] TypedQLiser plugin (WASM as a "query target") — typedqliser/src/plugins/wasm.rs (541 lines)
-* [ ] VQL-UT sibling integration (same levels, different domain)
+* [ ] VCL-total sibling integration (same levels, different domain)
 * [ ] GraalVM/Truffle target (multi-language shared state type safety)
 
 == v1.0.0 -- Stable Release

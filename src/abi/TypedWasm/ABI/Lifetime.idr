@@ -8,7 +8,7 @@
 -- reference after its lifetime has ended (use-after-free) is a compile-time
 -- error, not a runtime crash.
 --
--- The database analogy: this is temporal safety. Just as VQL-UT's
+-- The database analogy: this is temporal safety. Just as VCL-total's
 -- FRESH WITHIN clause ensures data is temporally valid, typed-wasm's
 -- lifetimes ensure references are spatially valid — the memory they
 -- point to is still allocated.
