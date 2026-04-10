@@ -72,8 +72,75 @@ Known audit constraints:
 * [ ] De-template release/build/container surfaces
 * [ ] Real benchmark and aspect-test evidence
 
+== Language Identity & Linguist Classification
+
+typed-wasm is *a type discipline over WebAssembly*, not a separate bytecode
+format. The `.twasm` surface syntax elaborates to standard WASM modules after
+the L1--L10 checks fire. This shapes how the project should be classified by
+external tooling (GitHub Linguist, tree-sitter, LSP clients, editor plugins).
+
+=== Current classification (v0.1.x)
+
+* `.gitattributes` maps `*.twasm` to `linguist-language=WebAssembly` via an
+  override. Rationale: Linguist has no "Typed WebAssembly" entry, and without
+  the override Linguist runs content heuristics on files that start with `//`
+  comments -- producing nondeterministic misclassification (C, C++, JavaScript,
+  or plain Text). The override guarantees `.twasm` files are counted as
+  WebAssembly in the GitHub language bar and keeps the repo's external
+  fingerprint stable.
+* Trade-off: this *under-claims* the typed-ness. A reader browsing GitHub sees
+  "WebAssembly" and has no cue that the files encode a 10-level type
+  discipline. That is acceptable for a pre-alpha research repo; it is not
+  acceptable at v1.0.0.
+
+=== Path to distinct Linguist language (v1.0+)
+
+Submitting "Typed WebAssembly" as a first-class Linguist language requires
+several preconditions that we do not yet meet:
+
+* [ ] Stable `.twasm` grammar beyond EBNF. Linguist accepts TextMate grammars
+  (`.tmLanguage.json`) or references to published tree-sitter grammars. Neither
+  exists yet. Blocker: port `spec/grammar.ebnf` to one of these formats.
+* [ ] `tree-sitter-twasm` repository with a published grammar and sample
+  corpus. Required for editor tooling and also the cleanest input to a
+  Linguist submission.
+* [ ] Evidence of adoption. Linguist's contribution policy requires a language
+  be in "actual use" -- historically interpreted as a few hundred public repos
+  with non-trivial content. A research repo with six example files will not
+  clear this bar; seeding the estate to manufacture adoption is also not
+  acceptable and will be noticed.
+* [ ] A settled answer on whether "Typed WebAssembly" should be a top-level
+  language or nested under WebAssembly as a `group`. Nesting is the honest
+  choice -- typed-wasm is a conservative extension and its artefacts remain
+  valid WASM -- and it preserves the existing language bar semantics.
+* [ ] PR against `github-linguist/linguist` adding the language entry, sample
+  files, and grammar reference. Expect multiple review cycles.
+
+Tracking: this is tied to the v1.0.0 "Complete `.twasm` parser" milestone. The
+parser, the tree-sitter grammar, and the Linguist submission are the same
+piece of work viewed from three angles.
+
+=== Adjacent language-tooling work (same precondition chain)
+
+* [ ] `tree-sitter-twasm` -- grammar, parser, published NPM package
+* [ ] LSP server (`twasm-lsp`) -- diagnostics surfacing L1--L10 checks as
+  editor squiggles rather than batch compiler errors
+* [ ] TextMate / VS Code syntax-highlight extension built from the tree-sitter
+  grammar
+* [ ] Editor plugins: Helix, Zed, Neovim, Emacs (all derive from the
+  tree-sitter grammar once it exists)
+* [ ] Browser-side `.twasm` validation tooling (requires a parser implementation
+  reachable from JS/WASM)
+
+These items are currently scattered under "Future" and v1.0.0; the common
+blocker is the grammar port, which should be scheduled before any of them.
+
 == Future
 
 * GraalVM compile-time guarantees replacing runtime InteropLibrary dispatch
-* Browser-side `.twasm` validation tooling
-* Language server protocol support for `.twasm` files
+* Browser-side `.twasm` validation tooling (see Language Identity section;
+  depends on tree-sitter-twasm)
+* Language server protocol support for `.twasm` files (see Language Identity
+  section; depends on tree-sitter-twasm)
+* Linguist upstream submission (see Language Identity section; depends on
+  grammar port and adoption evidence)

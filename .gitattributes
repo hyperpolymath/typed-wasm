@@ -19,6 +19,15 @@
 *.a2ml  text eol=lf linguist-language=TOML
 *.ncl   text eol=lf
 *.nix   text eol=lf
+*.zig   text eol=lf
+*.idr   text eol=lf linguist-language=Idris
+*.idr2  text eol=lf linguist-language=Idris
+*.ipkg  text eol=lf linguist-language=Idris
+
+# .twasm is typed-wasm's surface syntax. Upstream Linguist has no
+# "Typed WebAssembly" entry, so for now we claim WebAssembly to keep
+# the language bar honest. See ROADMAP "Language Identity" section.
+*.twasm text eol=lf linguist-language=WebAssembly
 
 # Docs
 *.md    text eol=lf diff=markdown
