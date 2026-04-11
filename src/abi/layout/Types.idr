@@ -47,10 +47,21 @@ data WasmPrimitive
   | WasmFuncRef         -- Function reference
 
 -- | A WasmGC heap type.  References are always typed in WasmGC.
+--
+-- Recursive types (WHT_Var / WHT_Rec) use de Bruijn indices:
+--   WHT_Var 0  — refers to the immediately enclosing WHT_Rec binder
+--   WHT_Var 1  — refers to the second-enclosing WHT_Rec binder, etc.
+--   WHT_Rec body — introduces μ; every WHT_Var 0 in `body` refers to this node
+--
+-- Example: List elem =
+--   WHT_Rec (WHT_Struct [("head", WVT_Ref elem), ("tail", WVT_RefNull (WHT_Var 0))])
+-- which is the WasmGC type  μX. (struct (field (ref elem)) (field (ref null X)))
 data WasmHeapType
-  = WHT_Array WasmValType              -- (array <valtype>)
-  | WHT_Struct (List (String, WasmValType))  -- (struct (field ...))
+  = WHT_Array WasmValType                       -- (array <valtype>)
+  | WHT_Struct (List (String, WasmValType))      -- (struct (field ...))
   | WHT_Func (List WasmValType) (List WasmValType)  -- (func (param ...) (result ...))
+  | WHT_Var Nat                                  -- bound type variable (de Bruijn index)
+  | WHT_Rec WasmHeapType                         -- μ-binder: (rec <heaptype>)
 
 -- | A WasmGC value type — either a primitive or a typed reference.
 data WasmValType
@@ -144,6 +155,7 @@ DecEq a => DecEq b => DecEq (a, b) where
 
 mutual
   DecEq WasmHeapType where
+    -- ── Same-constructor cases ───────────────────────────────────────────────
     decEq (WHT_Array a) (WHT_Array b) with (decEq a b)
       _ | Yes Refl = Yes Refl
       _ | No  neq  = No (\case Refl => neq Refl)
@@ -155,12 +167,37 @@ mutual
       _ | Yes Refl with (decEq rs1 rs2)
         _ | Yes Refl = Yes Refl
         _ | No  neq  = No (\case Refl => neq Refl)
+    decEq (WHT_Var m) (WHT_Var n) with (decEq m n)
+      _ | Yes Refl = Yes Refl
+      _ | No  neq  = No (\case Refl => neq Refl)
+    decEq (WHT_Rec h1) (WHT_Rec h2) with (decEq h1 h2)
+      -- Structurally recursive: h1/h2 are strict subterms of WHT_Rec h1/h2.
+      _ | Yes Refl = Yes Refl
+      _ | No  neq  = No (\case Refl => neq Refl)
+    -- ── Cross-constructor cases (all impossible) ─────────────────────────────
+    -- Original three constructors vs. each other
     decEq (WHT_Array _)  (WHT_Struct _) = No (\case Refl impossible)
     decEq (WHT_Array _)  (WHT_Func _ _) = No (\case Refl impossible)
     decEq (WHT_Struct _) (WHT_Array _)  = No (\case Refl impossible)
     decEq (WHT_Struct _) (WHT_Func _ _) = No (\case Refl impossible)
     decEq (WHT_Func _ _) (WHT_Array _)  = No (\case Refl impossible)
     decEq (WHT_Func _ _) (WHT_Struct _) = No (\case Refl impossible)
+    -- WHT_Var vs. everything else
+    decEq (WHT_Var _)    (WHT_Array _)  = No (\case Refl impossible)
+    decEq (WHT_Var _)    (WHT_Struct _) = No (\case Refl impossible)
+    decEq (WHT_Var _)    (WHT_Func _ _) = No (\case Refl impossible)
+    decEq (WHT_Var _)    (WHT_Rec _)    = No (\case Refl impossible)
+    decEq (WHT_Array _)  (WHT_Var _)    = No (\case Refl impossible)
+    decEq (WHT_Struct _) (WHT_Var _)    = No (\case Refl impossible)
+    decEq (WHT_Func _ _) (WHT_Var _)    = No (\case Refl impossible)
+    decEq (WHT_Rec _)    (WHT_Var _)    = No (\case Refl impossible)
+    -- WHT_Rec vs. remaining constructors (Var already covered above)
+    decEq (WHT_Rec _)    (WHT_Array _)  = No (\case Refl impossible)
+    decEq (WHT_Rec _)    (WHT_Struct _) = No (\case Refl impossible)
+    decEq (WHT_Rec _)    (WHT_Func _ _) = No (\case Refl impossible)
+    decEq (WHT_Array _)  (WHT_Rec _)    = No (\case Refl impossible)
+    decEq (WHT_Struct _) (WHT_Rec _)    = No (\case Refl impossible)
+    decEq (WHT_Func _ _) (WHT_Rec _)    = No (\case Refl impossible)
 
   DecEq WasmValType where
     decEq (WVT_Prim p1) (WVT_Prim p2) with (decEq p1 p2)
@@ -224,3 +261,31 @@ primNotRef _ _ Refl impossible
 ||| Primitives are not nullable references either.
 primNotRefNull : (p : WasmPrimitive) -> (h : WasmHeapType) -> WVT_Prim p = WVT_RefNull h -> Void
 primNotRefNull _ _ Refl impossible
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Recursive type distinctness
+-- ─────────────────────────────────────────────────────────────────────────────
+
+||| A recursive binder is never a plain array type.
+recNotArray : (h : WasmHeapType) -> (v : WasmValType) -> WHT_Rec h = WHT_Array v -> Void
+recNotArray _ _ Refl impossible
+
+||| A recursive binder is never a struct type.
+recNotStruct : (h : WasmHeapType) -> (fs : List (String, WasmValType)) -> WHT_Rec h = WHT_Struct fs -> Void
+recNotStruct _ _ Refl impossible
+
+||| A bound variable is never a struct type.
+varNotStruct : (n : Nat) -> (fs : List (String, WasmValType)) -> WHT_Var n = WHT_Struct fs -> Void
+varNotStruct _ _ Refl impossible
+
+||| A bound variable is never a recursive binder.
+varNotRec : (n : Nat) -> (h : WasmHeapType) -> WHT_Var n = WHT_Rec h -> Void
+varNotRec _ _ Refl impossible
+
+||| WHT_Var is injective: equal indices give equal variables.
+varInjective : (m n : Nat) -> WHT_Var m = WHT_Var n -> m = n
+varInjective _ _ Refl = Refl
+
+||| WHT_Rec is injective: equal bodies give equal recursive types.
+recInjective : (h1 h2 : WasmHeapType) -> WHT_Rec h1 = WHT_Rec h2 -> h1 = h2
+recInjective _ _ Refl = Refl

@@ -30,41 +30,53 @@ import Layout.Types
 -- List T
 -- ─────────────────────────────────────────────────────────────────────────────
 --
--- Encoding: (ref (struct (field T-or-null) (field (ref null self))))
--- i.e. a linked-list node where:
---   field 0 "head": (ref T) — the element (non-nullable)
---   field 1 "tail": (ref null List) — the rest, nullable (null = empty list)
+-- WasmGC type (isorecursive, de Bruijn):
+--   μX. (struct (field "head" (ref elem)) (field "tail" (ref null X)))
+-- Written with the WHT_Var/WHT_Rec constructors from Layout.Types:
+--   WHT_Rec (WHT_Struct [("head", WVT_Ref elem), ("tail", WVT_RefNull (WHT_Var 0))])
 --
--- Note: this encoding uses WasmGC recursive types.  The `self` reference
--- is represented here by an empty struct placeholder until WasmGC recursive
--- types are modelled in this Idris2 framework.
+-- WHT_Var 0 refers to the immediately enclosing WHT_Rec binder — the list node
+-- struct itself.  This is the correct WasmGC encoding; no placeholder required.
+--
+-- Layout:
+--   field "head" : (ref elem)       — the element (non-nullable; null is not an elem)
+--   field "tail" : (ref null self)  — the rest; null = end of list
 
-||| The element slot in a List node.
-||| For a List of elements of heap type `elem`, the head field holds a (ref elem).
+||| The head field: holds one element of the list.
 listHeadField : WasmHeapType -> (String, WasmValType)
 listHeadField elem = ("head", WVT_Ref elem)
 
-||| The tail slot in a List node — nullable because the empty list is null.
-||| The tail heap type is a placeholder empty struct; in real WasmGC this would
-||| be a recursive self-reference to the list struct type.
+||| The tail field: a nullable self-reference.
+||| WHT_Var 0 is the de Bruijn index for the enclosing WHT_Rec binder.
+||| Under `WHT_Rec body`, every `WHT_Var 0` in `body` refers to the list node itself.
 listTailField : (String, WasmValType)
-listTailField = ("tail", WVT_RefNull (WHT_Struct []))
--- Note: replace the placeholder WHT_Struct [] with the actual recursive type
--- when WasmGC recursive references are modelled.
+listTailField = ("tail", WVT_RefNull (WHT_Var 0))
 
 ||| The agreed WasmGC heap type for `List elem`.
+||| This is the μ-binder: the self-reference in `listTailField` resolves to this node.
 listHeapType : WasmHeapType -> WasmHeapType
-listHeapType elem = WHT_Struct [listHeadField elem, listTailField]
+listHeapType elem = WHT_Rec (WHT_Struct [listHeadField elem, listTailField])
 
 ||| The agreed WasmGC value type for `List elem` — a non-nullable struct reference.
 ||| Empty lists are represented as the null tail of a containing node, not as
-||| a nullable `List` reference itself.  This matches Ephapax's linear list design.
+||| a nullable `List` reference.  This matches Ephapax's linear list design.
 listLayout : WasmHeapType -> WasmValType
 listLayout elem = WVT_Ref (listHeapType elem)
 
 ||| List values are non-nullable references.
 listLayoutNonNull : (elem : WasmHeapType) -> IsNonNull (listLayout elem)
 listLayoutNonNull _ = RefIsNonNull
+
+||| The tail field's self-reference is exactly WHT_Var 0.
+||| Proof that `listTailField` encodes the correct recursive back-reference.
+listTailIsVar0 : listTailField = ("tail", WVT_RefNull (WHT_Var 0))
+listTailIsVar0 = Refl
+
+||| The list heap type is wrapped in exactly one WHT_Rec binder.
+||| This witnesses that `listHeapType` is a proper isorecursive type, not a plain struct.
+listHeapTypeIsRec : (elem : WasmHeapType)
+    -> listHeapType elem = WHT_Rec (WHT_Struct [listHeadField elem, listTailField])
+listHeapTypeIsRec _ = Refl
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Tuple (pairs and n-tuples)

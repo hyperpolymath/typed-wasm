@@ -29,7 +29,7 @@ maturity = "experimental"  # experimental | alpha | beta | production | lts
 [route-to-mvp]
 milestones = [
   { name = "Checked L1-L10 ABI core", completion = 100 },
-  { name = "Cross-language layout proofs (layout/ subtree)", completion = 80 },
+  { name = "Cross-language layout proofs (layout/ subtree)", completion = 100 },
   { name = "Parser, Zig FFI, and smoke-test surface", completion = 80 },
   { name = "De-template release/build metadata", completion = 15 },
   { name = "Evidence-backed benchmarks and aspect coverage", completion = 10 },
@@ -41,14 +41,10 @@ issues = [
   "Release and container scaffolding still contains template residue outside the checked core.",
   "The L11-L12 research modules are not part of the checked package and currently fail standalone type-checking.",
   "Venue-facing paper and benchmark claims still outrun the evidence present in-repo.",
-  "layout/Types.idr: WHT_Struct DecEq requires List (String, WasmValType) DecEq — needs DecEq String to resolve.",
-  "layout/Stdlib.idr: listTailField uses placeholder recursive type; needs WasmGC recursive type modelling.",
 ]
 
 [critical-next-actions]
 actions = [
-  "Resolve List (String, WasmValType) DecEq in Types.idr (add DecEq String + DecEq (a,b) instances or restrict to simpler equality).",
-  "Model WasmGC recursive types properly in Layout.Types to fix List self-reference placeholder.",
   "Remove template residue from release, container, and packaging surfaces.",
   "Keep all public claims bounded to the checked L1-L10 core until the higher levels compile and are integrated.",
   "Add real benchmark, aspect, and end-to-end evidence before any stable or publication push.",
