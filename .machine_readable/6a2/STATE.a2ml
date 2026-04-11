@@ -8,6 +8,7 @@ project = "typed-wasm"
 version = "0.1.0"
 last-updated = "2026-04-11"
 status = "active"  # active | paused | archived
+session = "2026-04-11 — layout proofs complete, panic-attack clean, ECHIDNA wired"
 
 [project-context]
 name = "typed-wasm"
@@ -20,7 +21,7 @@ Two first-class roles (ADR-004):
      (both compile to WasmGC).  Provides formally verified type layout and ABI
      conventions so cross-language calls require no marshalling layer.
 """
-completion-percentage = 45
+completion-percentage = 55
 
 [position]
 phase = "implementation"   # design | implementation | testing | maintenance | archived
@@ -30,8 +31,12 @@ maturity = "experimental"  # experimental | alpha | beta | production | lts
 milestones = [
   { name = "Checked L1-L10 ABI core", completion = 100 },
   { name = "Cross-language layout proofs (layout/ subtree)", completion = 100 },
+  { name = "WasmGC recursive types (WHT_Var/WHT_Rec/WHT_Any)", completion = 100 },
+  { name = "ECHIDNA harness wired to solve.nesy-prover.dev", completion = 100 },
+  { name = "panic-attack baseline: 3 weak points, all classified", completion = 100 },
   { name = "Parser, Zig FFI, and smoke-test surface", completion = 80 },
   { name = "De-template release/build metadata", completion = 15 },
+  { name = "generated/abi/ C header pipeline", completion = 0 },
   { name = "Evidence-backed benchmarks and aspect coverage", completion = 10 },
   { name = "L11-L12 checked integration", completion = 0 },
 ]
@@ -41,6 +46,8 @@ issues = [
   "Release and container scaffolding still contains template residue outside the checked core.",
   "The L11-L12 research modules are not part of the checked package and currently fail standalone type-checking.",
   "Venue-facing paper and benchmark claims still outrun the evidence present in-repo.",
+  "generated/abi/ C header pipeline not yet implemented (milestone at 0%).",
+  "HostType F32 = Double in TypedAccess.idr — Idris2 lacks Float32; documented limitation.",
 ]
 
 [critical-next-actions]
@@ -48,14 +55,16 @@ actions = [
   "Remove template residue from release, container, and packaging surfaces.",
   "Keep all public claims bounded to the checked L1-L10 core until the higher levels compile and are integrated.",
   "Add real benchmark, aspect, and end-to-end evidence before any stable or publication push.",
+  "Implement generated/abi/ C header generation from Idris2 ABI definitions.",
+  "L11-modal-box: integration test with TypeLL L10 context; QTT semantics review before graduation.",
 ]
 
 [maintenance-status]
-last-run-utc = "2026-03-30T00:00:00Z"
+last-run-utc = "2026-04-11T00:00:00Z"
 last-report = "docs/reports/audit/2026-03-30-typed-wasm-audit.adoc"
-last-result = "fail"  # unknown | pass | warn | fail
-open-warnings = 0
-open-failures = 4
+last-result = "warn"  # unknown | pass | warn | fail
+open-warnings = 1   # panic-attack manifest false-positive (unfixable tool bug)
+open-failures = 0
 
 [ecosystem]
 part-of = ["TypeLL ecosystem", "typed query safety lineage", "WebAssembly research toolchain"]
