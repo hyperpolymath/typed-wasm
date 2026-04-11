@@ -11,6 +11,24 @@
 #   ./setup.sh
 #
 # Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath)
+#
+# panic-attack classification:
+#
+#   io_operations (3 hits): This is a bootstrap/setup script — IO is its
+#   entire purpose.  The three IO operations are:
+#     1. Subprocess: just/curl/pkg-manager invocations to install prerequisites.
+#        Classification: setup-subprocess-install.
+#     2. File write: INSTALL-SECURITY-REPORT.adoc security snapshot.
+#        Classification: setup-report-write.
+#     3. Subprocess: `just setup` / `just doctor` handoff.
+#        Classification: setup-subprocess-handoff.
+#
+#   high-vulnerability (curl|bash pattern): The `curl ... | bash` fallback in
+#   install_just() only executes when `just` is absent from ALL detected package
+#   managers and runs in an already-trusted local shell session (not a remote
+#   execution context).  Primary path always goes through the OS package manager
+#   (dnf, apt, pacman, brew, etc.); curl|bash is last resort only.
+#   Classification: bootstrap-curl-bash-last-resort.
 
 set -eu
 

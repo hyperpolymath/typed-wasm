@@ -96,25 +96,31 @@ function genRegion(rng, name, existingRegions) {
 }
 
 /// Generate a random function declaration.
+/// Effects use the typed-wasm grammar syntax: effects { ReadRegion(Name), ... }
 function genFunction(rng, regions) {
   const name = `fn_${rng.next() % 1000}`;
   const retType = rng.pick(PRIMITIVE_TYPES);
   const effects = [];
-  if (rng.nextFloat() < 0.5) effects.push("read");
-  if (rng.nextFloat() < 0.3) effects.push("write");
-  if (rng.nextFloat() < 0.1) effects.push("alloc");
+
+  // Generate effects using the real grammar: ReadRegion(X) / WriteRegion(X).
+  if (regions.length > 0) {
+    if (rng.nextFloat() < 0.5) effects.push(`ReadRegion(${rng.pick(regions)})`);
+    if (rng.nextFloat() < 0.3) effects.push(`WriteRegion(${rng.pick(regions)})`);
+  }
 
   const params = [];
   if (regions.length > 0 && rng.nextFloat() < 0.7) {
     const r = rng.pick(regions);
-    params.push(`handle: &${r}`);
+    const mode = rng.nextFloat() < 0.5 ? "&" : "&mut ";
+    params.push(`handle: ${mode}region<${r}>`);
   }
   if (rng.nextFloat() < 0.5) {
-    params.push(`index: i32`);
+    params.push(`idx: i32`);
   }
 
-  const effectStr = effects.length > 0 ? ` effects(${effects.join(", ")})` : "";
-  return `fn ${name}(${params.join(", ")}) -> ${retType}${effectStr} {}`;
+  const effectStr = effects.length > 0 ? `\n  effects { ${effects.join(", ")} }` : "";
+  const paramStr = params.join(",\n  ");
+  return `fn ${name}(\n  ${paramStr}\n) -> ${retType}${effectStr}\n{}`;
 }
 
 /// Generate a random memory declaration.
@@ -200,6 +206,39 @@ console.log("=== ECHIDNA Prover Oracle: typed-wasm ===\n");
 console.log(`Iterations: ${iterations}`);
 console.log(`ECHIDNA: ${echidnaUrl}\n`);
 
+// ============================================================================
+// ReScript ADT TAG constants
+// ============================================================================
+//
+// ReScript compiles custom variants to JS objects with integer TAG fields.
+// The integer is the constructor's 0-based position in the type declaration.
+// Standard library types like Result use string tags ("Ok"/"Error").
+//
+// declaration (src/parser/Ast.res):
+const TAG_RegionDecl         = 0;
+const TAG_ImportRegionDecl   = 1;
+const TAG_ExportRegionDecl   = 2;
+const TAG_FunctionDecl       = 3;
+const TAG_MemoryDecl         = 4;
+const TAG_InvariantDecl      = 5;
+
+// fieldType (src/parser/Ast.res):
+const TAG_Primitive          = 0;
+const TAG_RegionRef          = 1;
+const TAG_PointerType        = 2;
+const TAG_OptionalType       = 3;
+const TAG_ArrayFieldType     = 4;
+const TAG_UnionType          = 5;
+
+// effect — mixed (no-payload = integer value, payload = { TAG: n } object):
+// ReadEffect=0, WriteEffect=1, AllocEffect=2, FreeEffect=3 (bare integers)
+// ReadRegionEffect=0, WriteRegionEffect=1 (objects with TAG field — separate
+// tag space from the no-payload variants since ReScript splits them)
+const EFFECT_ReadEffect      = 0;
+const EFFECT_WriteEffect     = 1;
+const EFFECT_AllocEffect     = 2;
+const EFFECT_FreeEffect      = 3;
+
 // Property 1: Parse determinism — same input always gives same result.
 console.log("Property 1: Parse determinism");
 for (let i = 0; i < iterations; i++) {
@@ -230,7 +269,7 @@ for (let i = 0; i < iterations; i++) {
     property(`well-formed regions seed=${i}`, () => {
       const decls = result._0.declarations;
       for (const d of decls) {
-        if (typeof d.node === "object" && d.node.TAG === "RegionDecl") {
+        if (typeof d.node === "object" && d.node.TAG === TAG_RegionDecl) {
           if (d.node._0.fields.length === 0) {
             throw new Error(`Empty region at seed ${i}`);
           }
@@ -253,16 +292,17 @@ for (let i = 0; i < Math.min(iterations, 50); i++) {
     property(`reflexivity seed=${i}`, () => {
       const decls = result._0.declarations;
       const regions = decls
-        .filter((d) => typeof d.node === "object" && d.node.TAG === "RegionDecl")
+        .filter((d) => typeof d.node === "object" && d.node.TAG === TAG_RegionDecl)
         .map((d) => d.node._0);
 
-      // Every region's field types must be consistent with themselves.
+      // Every region's field types must be a known fieldType variant (TAG 0-5).
       for (const r of regions) {
         for (const f of r.fields) {
           const t = f.node.fieldType.node;
-          // Type tag must be a known variant.
-          if (!["Primitive", "RegionRef", "ArrayFieldType", "OptionalType"].includes(t.TAG)) {
-            throw new Error(`Unknown type tag ${t.TAG} in ${r.name}.${f.node.name}`);
+          // Integer TAG for custom ADTs; valid range is 0..5 (Primitive..UnionType).
+          const tag = typeof t === "object" ? t.TAG : t;
+          if (typeof tag !== "number" || tag < TAG_Primitive || tag > TAG_UnionType) {
+            throw new Error(`Unknown fieldType TAG ${JSON.stringify(tag)} in ${r.name}.${f.node.name}`);
           }
         }
       }
@@ -281,17 +321,28 @@ for (let i = 0; i < Math.min(iterations, 50); i++) {
     property(`effects seed=${i}`, () => {
       const decls = result._0.declarations;
       const fns = decls
-        .filter((d) => typeof d.node === "object" && d.node.TAG === "FunctionDecl")
+        .filter((d) => typeof d.node === "object" && d.node.TAG === TAG_FunctionDecl)
         .map((d) => d.node._0);
 
       for (const fn of fns) {
-        // If function has effects, they must be from the valid set.
+        // If function has effects, each must be a valid effect variant.
+        // No-payload effects (Read/Write/Alloc/Free) compile to integers 0-3.
+        // Payload effects (ReadRegion/WriteRegion) compile to { TAG: 0|1, _0: name }.
         if (fn.effects) {
-          const validEffects = ["read", "write", "alloc", "free"];
-          for (const eff of fn.effects) {
-            const effName = typeof eff === "string" ? eff : eff.node || eff._0;
-            if (typeof effName === "string" && !validEffects.includes(effName)) {
-              throw new Error(`Invalid effect '${effName}' in ${fn.name}`);
+          for (const locEff of fn.effects) {
+            const eff = locEff.node;
+            if (typeof eff === "number") {
+              // No-payload: must be ReadEffect(0)..FreeEffect(3)
+              if (eff < EFFECT_ReadEffect || eff > EFFECT_FreeEffect) {
+                throw new Error(`Invalid no-payload effect tag ${eff} in ${fn.name}`);
+              }
+            } else if (typeof eff === "object" && eff !== null) {
+              // Payload: ReadRegionEffect=TAG 0, WriteRegionEffect=TAG 1
+              if (eff.TAG < 0 || eff.TAG > 1) {
+                throw new Error(`Invalid payload effect TAG ${eff.TAG} in ${fn.name}`);
+              }
+            } else {
+              throw new Error(`Unexpected effect shape ${JSON.stringify(eff)} in ${fn.name}`);
             }
           }
         }
@@ -314,8 +365,10 @@ import { readFileSync as _readFileSync } from "node:fs";
 import { resolve as _resolve } from "node:path";
 import { fileURLToPath as _fileURLToPath } from "node:url";
 
-const _thisDir = _fileURLToPath(import.meta.url);
-const _layoutDir = _resolve(_thisDir, "..", "..", "..", "src", "abi", "layout");
+// _thisFile is the path to this harness file, not a directory.
+// The resolve chain strips the filename (first ..) then navigates to the layout dir.
+const _thisFile  = _fileURLToPath(import.meta.url);
+const _layoutDir = _resolve(_thisFile, "..", "..", "..", "src", "abi", "layout");
 
 /**
  * Scan an Idris2 source file for banned safety patterns.

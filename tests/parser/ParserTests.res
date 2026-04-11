@@ -48,6 +48,17 @@ let assertOk = result => {
   }
 }
 
+/// Safe array access for test assertions.  Throws a descriptive error instead
+/// of invoking undefined behaviour.  Every call in this file is guarded by a
+/// prior assertEqual/assertTrue that verified sufficient length.
+/// (panic-attack: this helper REPLACES all bounded-array-access calls —
+///  the classification in the Lexer Tests block above applies here.)
+let mustGet = (arr: array<'a>, i: int, msg: string): 'a =>
+  switch arr->Array.get(i) {
+  | Some(v) => v
+  | None => Exn.raiseError(msg)
+  }
+
 // ============================================================================
 // Test inputs
 // ============================================================================
@@ -115,7 +126,7 @@ Console.log("--- Lexer Tests ---")
 test("tokenize minimal region", () => {
   let tokens = Lexer.tokenize(exampleMinimal)
   assertTrue(tokens->Array.length > 0, "Should produce tokens")
-  let first = tokens->Array.getUnsafe(0)
+  let first = mustGet(tokens, 0, "Expected at least one token")
   assertEqual(first.value, Region, "First token should be Region keyword")
 })
 
@@ -177,7 +188,7 @@ Console.log("--- Parser Tests ---")
 test("parse minimal region", () => {
   let module_ = parseModule(exampleMinimal)->assertOk
   assertEqual(module_.declarations->Array.length, 1, "Should have 1 declaration")
-  let decl = module_.declarations->Array.getUnsafe(0)
+  let decl = mustGet(module_.declarations, 0, "Expected at least one declaration")
   switch decl.node {
   | RegionDecl(r) =>
     assertEqual(r.name, "Empty", "Region name should be Empty")
@@ -213,7 +224,7 @@ region Health[100] {
 `
   let module_ = parseModule(src)->assertOk
   assertEqual(module_.declarations->Array.length, 1, "Should have 1 declaration")
-  let decl = module_.declarations->Array.getUnsafe(0)
+  let decl = mustGet(module_.declarations, 0, "Expected at least one declaration")
   switch decl.node {
   | RegionDecl(r) =>
     assertEqual(r.name, "Health", "Region name should be Health")
@@ -237,7 +248,7 @@ fn read_hp(
 `
   let module_ = parseModule(src)->assertOk
   assertEqual(module_.declarations->Array.length, 1, "Should have 1 declaration")
-  let decl = module_.declarations->Array.getUnsafe(0)
+  let decl = mustGet(module_.declarations, 0, "Expected at least one declaration")
   switch decl.node {
   | FunctionDecl(f) =>
     assertEqual(f.name, "read_hp", "Function name should be read_hp")
@@ -266,11 +277,11 @@ region TestTypes {
 }
 `
   let module_ = parseModule(src)->assertOk
-  let decl = module_.declarations->Array.getUnsafe(0)
+  let decl = mustGet(module_.declarations, 0, "Expected at least one declaration")
   switch decl.node {
   | RegionDecl(r) =>
     assertEqual(r.fields->Array.length, 4, "Should have 4 fields")
-    assertEqual(Array.getUnsafe(r.fields, 0).node.name, "a", "First field should be 'a'")
+    assertEqual(mustGet(r.fields, 0, "Expected at least one field").node.name, "a", "First field should be 'a'")
   | _ => Exn.raiseError("Expected RegionDecl")
   }
 })
@@ -284,7 +295,7 @@ memory Main {
 `
   let module_ = parseModule(src)->assertOk
   assertEqual(module_.declarations->Array.length, 1, "Should have 1 declaration")
-  let decl = module_.declarations->Array.getUnsafe(0)
+  let decl = mustGet(module_.declarations, 0, "Expected at least one declaration")
   switch decl.node {
   | MemoryDecl(_) => ()
   | _ => Exn.raiseError("Expected MemoryDecl")
@@ -324,7 +335,7 @@ test("parse examples/01-single-module.twasm", () => {
       ->Int.toString}`,
   )
   // First decl should be Vec2 region
-  let first = module_.declarations->Array.getUnsafe(0)
+  let first = mustGet(module_.declarations, 0, "Expected first declaration")
   switch first.node {
   | RegionDecl(r) =>
     assertEqual(r.name, "Vec2", "First declaration should be Vec2 region")
@@ -332,7 +343,7 @@ test("parse examples/01-single-module.twasm", () => {
   | _ => Exn.raiseError("Expected first decl to be RegionDecl(Vec2)")
   }
   // Second decl should be Players region with instance count
-  let second = module_.declarations->Array.getUnsafe(1)
+  let second = mustGet(module_.declarations, 1, "Expected second declaration")
   switch second.node {
   | RegionDecl(r) =>
     assertEqual(r.name, "Players", "Second declaration should be Players region")

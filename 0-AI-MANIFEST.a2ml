@@ -1,64 +1,34 @@
-# STOP - CRITICAL READING REQUIRED
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# typed-wasm — Root AI Manifest
+# Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 
-**THIS FILE MUST BE READ FIRST BY ALL AI AGENTS**
+@abstract:
+Root AI manifest for typed-wasm.  Read this first before any session.
+typed-wasm adds TypeLL-derived type safety to WebAssembly linear memory:
+regions are tables, loads/stores are typed queries, schemas are compile-time-
+checked types.  Formal foundations in Idris2 dependent types; zero runtime
+overhead (proofs erased, output is bare WASM).
+@end
 
-## WHAT IS THIS?
+[meta]
+id = "typed-wasm-root-manifest"
+level = 0
 
-This is the AI manifest for **typed-wasm**. It declares:
-- Canonical file locations (where things MUST be, and nowhere else)
-- Critical invariants (rules that must NEVER be violated)
-- Repository structure and organization
+[canonical_locations]
+state      = ".machine_readable/STATE.a2ml"
+meta       = ".machine_readable/META.a2ml"
+ecosystem  = ".machine_readable/ECOSYSTEM.a2ml"
+grammar    = "spec/grammar.ebnf"
+abi_proofs = "src/abi/"
+zig_ffi    = "ffi/zig/"
+examples   = "examples/"
 
-## CANONICAL LOCATIONS (UNIVERSAL RULE)
-
-### Machine-Readable Metadata: `.machine_readable/` ONLY
-
-These files MUST exist in `.machine_readable/` directory ONLY:
-1. **STATE.a2ml** - Project state, progress, blockers
-2. **META.a2ml** - Architecture decisions, governance
-3. **ECOSYSTEM.a2ml** - Position in ecosystem, relationships
-
-**CRITICAL:** If ANY of these files exist in the root directory, this is an ERROR.
-
-### Key Directories
-
-| Directory | Purpose |
-|-----------|---------|
-| `spec/` | Grammar (EBNF) and level specifications — the core intellectual artifacts |
-| `src/abi/` | Idris2 ABI definitions — formal proofs of region type safety |
-| `ffi/zig/` | Zig FFI — C-ABI compatible memory operations |
-| `examples/` | `.twasm` example files for the checked L1-L10 core; higher-level drafts may also appear |
-| `docs/` | Whitepaper, motivation, comparison with related work |
-| `generated/abi/` | Auto-generated C headers from Idris2 ABI |
-| `bindings/` | Language-specific wrappers (future) |
-
-## CRITICAL INVARIANTS
-
-1. **NO believe_me, assert_total, unsafePerformIO** in Idris2 code
-2. **NO raw memory access** — all access through typed region operations
-3. **The checked core is L1-L10 and is progressive** — cannot skip levels
-4. **Do not overclaim L11-L12** — they remain draft research until they type-check and join the default proof build
-5. **Region schemas are immutable** — once declared, layout is fixed
-6. **Multi-module schemas must agree** — structural compatibility required
-7. **SPDX: PMPL-1.0-or-later** on all files
-8. **Author: Jonathan D.A. Jewell** <j.d.a.jewell@open.ac.uk>
-
-## PROJECT IDENTITY
-
-- **Name:** typed-wasm
-- **Tagline:** TypeLL-derived checked core for WebAssembly linear memory
-- **Core insight:** WASM linear memory is an untyped data store. Typed-wasm
-  treats it as a database: regions are tables, loads/stores are queries,
-  schemas are type-checked at compile time.
-- **Killer feature:** Multi-module shared memory type safety — when Rust,
-  ReScript, and C++ share WASM memory, typed-wasm verifies the boundary.
-- **Formal foundations:** Idris2 dependent types, QTT for linearity
-- **Zero runtime overhead:** Proofs are erased; output is bare WASM instructions
-
-## ECOSYSTEM POSITION
-
-- **TypeLL** — foundational type theory for the checked progressive core
-- **TypedQLiser** — applies levels to database query languages
-- **VQL-UT** — applies levels to VeriSimDB queries
-- **typed-wasm** — applies levels to WASM linear memory (THIS REPO)
-- **ECHIDNA** — property-based testing / prover oracle for typed-wasm proofs
+[invariants]
+no-partial-proofs    = "NO believe_me, assert_total, unsafePerformIO in Idris2 code"
+no-raw-memory        = "NO raw memory access — all access through typed region operations"
+progressive-core     = "Checked core L1-L10 is progressive — cannot skip levels"
+no-overclaim         = "Do not overclaim L11-L12 — draft research only, not in default build"
+immutable-schemas    = "Region schemas are immutable — once declared, layout is fixed"
+structural-compat    = "Multi-module schemas must agree — structural compatibility required"
+spdx                 = "SPDX PMPL-1.0-or-later on all files"
+author               = "Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>"

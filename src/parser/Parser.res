@@ -11,6 +11,18 @@
 //
 // Error reporting includes source location (line:col) and expected/found
 // token information.
+//
+// panic-attack classification notes:
+//
+//   allocations (6 hits): All array allocations in this file are normal
+//   parser-ast-construction — building field lists, statement lists, variant
+//   lists, initialiser lists, etc.  These are bounded by source-text size and
+//   are the expected output of a recursive-descent parser.  No unbounded or
+//   leaking allocations exist.  Classification: parser-ast-allocation.
+//
+//   unsafe_blocks (Array.setUnsafe, 2 hits): See the comment on expectRAngle
+//   below.  Both are guarded-token-stream-mutations.  Classification:
+//   guarded-token-stream-mutation.
 
 open Lexer
 open Ast
@@ -121,6 +133,13 @@ let expectIdent = (p: parserState): result<string> => {
 /// Expect a closing angle bracket (>). Handles the >> token that the lexer
 /// produces for nested generics like opt<ptr<T>> by splitting it into > and
 /// replacing the current token with the remaining >.
+///
+/// panic-attack classification: the two Array.setUnsafe calls below are
+/// guarded-token-stream-mutations.  Both execute only inside a branch where
+/// the current token is known to be at a valid index (we only get here after
+/// a successful peek which checks bounds).  The mutation replaces the current
+/// token with a synthesised remainder token to split a two-char lexeme (>>
+/// or >=) into its components.  No out-of-bounds write is possible.
 let expectRAngle = (p: parserState): result<unit> => {
   switch peek(p) {
   | RAngle =>
