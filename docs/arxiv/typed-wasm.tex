@@ -738,24 +738,31 @@ memory safety properties inherently depend on values: ``index~$i$ is
 within the bounds of array of size~$n$'' is a proposition over the value
 of~$i$.
 
-A region schema is a value-level record:
+A region schema is a flat list of named, typed fields:
 
-\begin{lstlisting}[language=Idris2,caption={Region schema as a dependently typed list.}]
-data Schema : List (String, FieldType) -> Type where
-  Nil  : Schema []
-  (::) : Field name ty -> Schema rest -> Schema ((name, ty) :: rest)
+\begin{lstlisting}[language=Idris2,caption={Region schema as a list of named fields.}]
+-- Schema is a list of fields; order determines memory layout.
+Schema : Type
+Schema = List Field
+
+data Field : Type where
+  MkField : (name : String) -> (ty : WasmType) -> Field
 \end{lstlisting}
 
-A typed access is indexed by the schema:
+A compile-time field-lookup proof witnesses that a named field exists
+in the schema (Level~2 region-binding safety):
 
-\begin{lstlisting}[language=Idris2,caption={Typed memory access indexed by schema.}]
-data TypedGet : Schema fields -> (name : String) -> FieldType -> Type where
-  GetHere  : TypedGet (MkField {name} {ty} :: rest) name ty
-  GetThere : TypedGet rest name ty -> TypedGet (f :: rest) name ty
+\begin{lstlisting}[language=Idris2,caption={Field-lookup proof for Level~2 region-binding.}]
+data FieldIn : String -> Schema -> Type where
+  FieldHere  : {auto prf : fieldName f = name}
+             -> FieldIn name (f :: rest)
+  FieldThere : FieldIn name rest -> FieldIn name (f :: rest)
 \end{lstlisting}
 
 The result type of \texttt{region.get \$r .name} is \emph{computed} from
-the schema, not declared by the programmer.
+the schema via \texttt{FieldIn} --- not declared by the programmer.
+Without a valid \texttt{FieldIn} proof, the access is rejected at compile
+time.
 
 \subsection{Quantitative Type Theory}
 
@@ -776,14 +783,23 @@ $\omega$ (unrestricted) & Any number of times & Normal values, shared references
 \end{tabular}
 \end{table}
 
-Level~10 is implemented by binding allocation handles with quantity~1:
+Level~10 is implemented by binding allocation handles with quantity~1.
+The allocation protocol produces a linear handle plus a liveness witness;
+freeing consumes both:
 
-\begin{lstlisting}[language=Idris2,caption={Linear resource handling via QTT quantity~1.}]
+\begin{lstlisting}[language=Idris2,caption={Linear resource protocol: alloc produces, free consumes.}]
+data AllocResult : (token : Nat) -> Type where
+  MkAllocResult : LinHandle token -> RegionLive token -> AllocResult token
+
+-- (1 _) enforces exactly-once use: zero = leak, two = double-free.
 freeRegion : (1 _ : LinHandle token) -> RegionLive token -> FreeResult
 \end{lstlisting}
 
 The \texttt{(1 \_)} annotation means the type checker rejects any program
 where the handle is used zero times (leak) or more than once (double-free).
+After \texttt{freeRegion} returns, the \texttt{RegionLive} token is also
+consumed, invalidating all \texttt{LiveRef} borrows for that lifetime ---
+composing Level~10 linearity with Level~9 lifetime safety.
 
 \subsection{Proof Erasure}
 

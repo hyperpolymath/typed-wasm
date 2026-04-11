@@ -76,7 +76,7 @@
   The Open University, Milton Keynes, UK\\
   \texttt{j.d.a.jewell@open.ac.uk}
 }
-\date{March 2026 --- Draft}
+\date{April 2026 --- Draft}
 
 \begin{document}
 
@@ -614,24 +614,32 @@ necessary because memory safety properties inherently depend on values:
 ``index~$i$ is within the bounds of array of size~$n$'' is a proposition
 over the value of~$i$.
 
-A region schema is a value-level record:
+A region schema is a flat list of named, typed fields:
 
 \begin{lstlisting}[language=Idris]
-data Schema : List (String, FieldType) -> Type where
-  Nil  : Schema []
-  (::) : Field name ty -> Schema rest -> Schema ((name, ty) :: rest)
+-- Schema is a list of named fields; order determines memory layout.
+Schema : Type
+Schema = List Field
+
+data Field : Type where
+  MkField : (name : String) -> (ty : WasmType) -> Field
 \end{lstlisting}
 
-A typed access is indexed by the schema:
+A compile-time field-lookup proof witnesses that a given field exists
+in a schema (Level~2 region-binding safety):
 
 \begin{lstlisting}[language=Idris]
-data TypedGet : Schema fields -> (name : String) -> FieldType -> Type where
-  GetHere  : TypedGet (MkField {name} {ty} :: rest) name ty
-  GetThere : TypedGet rest name ty -> TypedGet (f :: rest) name ty
+data FieldIn : String -> Schema -> Type where
+  FieldHere  : {auto prf : fieldName f = name}
+             -> FieldIn name (f :: rest)
+  FieldThere : FieldIn name rest -> FieldIn name (f :: rest)
 \end{lstlisting}
 
 The result type of \lstinline{region.get \$r .name} is \emph{computed}
-from the schema, not declared by the programmer.
+from the schema via \lstinline{FieldIn} --- not declared by the programmer.
+Constructing a \lstinline{FieldHere} or \lstinline{FieldThere} proof is
+how the type checker verifies that the named field actually exists;
+without it, the access is rejected at compile time.
 
 \subsection{Quantitative Type Theory}
 \label{sec:qtt}
@@ -654,15 +662,28 @@ $\omega$ (unrestricted) & Any number of times & Normal values, shared references
 \end{tabularx}
 \end{table}
 
-Level~10 is implemented by binding allocation handles with quantity~1:
+Level~10 is implemented by binding allocation handles with quantity~1.
+The allocation protocol produces a linear handle plus a liveness witness;
+freeing consumes both:
 
 \begin{lstlisting}[language=Idris]
+-- Allocation returns a linear handle (must free exactly once)
+-- and a liveness witness (for Level 9 lifetime tracking).
+data AllocResult : (token : Nat) -> Type where
+  MkAllocResult : LinHandle token -> RegionLive token -> AllocResult token
+
+-- Free consumes the handle (quantity 1 = exactly once).
+-- The (1 _) annotation rejects zero uses (leak) or two uses (double-free).
 freeRegion : (1 _ : LinHandle token) -> RegionLive token -> FreeResult
 \end{lstlisting}
 
 The \lstinline{(1 _)} annotation means the type checker rejects any
 program where the handle is used zero times (leak) or more than once
-(double-free).
+(double-free).  After \lstinline{freeRegion} returns, both the
+\lstinline{LinHandle} and \lstinline{RegionLive} for that token are
+consumed, so all \lstinline{LiveRef} borrows with that token's lifetime
+become dead --- composing Level~10 linearity with Level~9 lifetime
+safety.
 
 \subsection{Proof Erasure}
 \label{sec:erasure}

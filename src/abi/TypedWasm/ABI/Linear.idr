@@ -93,13 +93,16 @@ allocRegion sid off tok = MkAllocResult (MkLinHandle off sid) (MkRegionLive)
 
 ||| Free a region instance. Consumes the linear handle AND the
 ||| liveness witness. After this call:
-|||   - The LinHandle is consumed (no double-free possible)
+|||   - The LinHandle is consumed (no double-free possible — quantity 1)
 |||   - The RegionLive is consumed (no new borrows possible)
 |||   - All LiveRefs with lifetime (RegionLife token) become dead
 |||
 ||| This is the dual of allocRegion: alloc produces, free consumes.
+||| The (1 _) quantity annotation enforces at the type level that the
+||| handle is used exactly once: zero uses = leak (rejected), two uses =
+||| double-free (rejected).
 public export
-freeRegion : LinHandle token -> RegionLive token -> FreeResult
+freeRegion : (1 _ : LinHandle token) -> RegionLive token -> FreeResult
 freeRegion (MkLinHandle off _) _ = MkFreeResult off
 
 -- ============================================================================
