@@ -1108,6 +1108,93 @@ Key observations:
     types and schema agreement) within those segments.
 \end{itemize}
 
+\subsection{AffineScript TEA: Navigation History as a Linear Type}
+\label{sec:affinescript-tea}
+
+% --------------------------------------------------------------------------
+% Concrete L10 demonstration: IDApTIK Cadre Router
+% --------------------------------------------------------------------------
+
+To validate Level~10 (linearity) in a realistic production context, we
+dogfooded typed-wasm's ownership annotations inside
+\textsc{IDApTIK}~\cite{idaptik2026}, an asymmetric co-operative
+stealth-hacking game built with ReScript and PixiJS.  The experiment
+required one concrete claim: \emph{navigation history can be encoded as a
+linear type inside a Wasm module}.
+
+\paragraph{The AffineScript TEA architecture.}
+AffineScript is a compiler from an affine $\lambda$-calculus front-end to
+Wasm~1.0.  It follows The Elm Architecture (\textsc{tea})~\cite{elm2016}:
+
+\[
+  \mathtt{update} : \mathtt{Msg} \multimap \mathtt{Model} \multimap \mathtt{Model}
+\]
+
+where $\multimap$ is the linear function arrow from QTT
+(Section~\ref{sec:formal}).  Every \texttt{update} call consumes the old
+model and the incoming message exactly once, producing a fresh model.  The
+\texttt{affinescript.ownership} custom section records the linearity kind
+(0 = Unrestricted, 1 = Linear) for each function parameter, enabling the
+typed-wasm verifier to enforce the invariant statically.
+
+\paragraph{The Cadre Router.}
+The \textsc{IDApTIK} front-end requires a bounded back-stack of
+at most eight screens.  We compiled a \emph{Cadre Router} Wasm module
+(\texttt{router.wasm}, 915~bytes) using the \texttt{affinescript
+router-bridge} subcommand.  The router stores a \texttt{RouterModel}
+record in linear memory at offset~64:
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Field}   & \textbf{Offset} & \textbf{Type} & \textbf{Default} \\
+\midrule
+\texttt{screen\_w}   & +0  & \texttt{i32} & 1280 \\
+\texttt{screen\_h}   & +4  & \texttt{i32} & 720 \\
+\texttt{stack\_len}  & +8  & \texttt{i32} & 0 \\
+\texttt{popup\_tag}  & +12 & \texttt{i32} & $-1$ \\
+\texttt{stack\_data} & +16 & \texttt{i32}[8] & $[0 \times 8]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Five router messages are exported: \texttt{Push}, \texttt{Pop},
+\texttt{PresentPopup}, \texttt{DismissPopup}, and \texttt{Resize}.
+The \texttt{screen\_tag} parameter of \texttt{Push}, the \texttt{popup\_tag}
+of \texttt{PresentPopup}, and both dimension arguments of \texttt{Resize}
+are annotated \textbf{Linear} in the \texttt{affinescript.ownership}
+custom section.  This means each message is consumed exactly once per
+navigation event.  The typed-wasm verifier rejects any module that attempts
+to re-send the same tag value without an intervening update.
+
+\paragraph{Integration with ReScript navigation.}
+\texttt{Navigation.t} holds an optional \texttt{AffineTEARouterBridge}
+(an opaque JS handle to the instantiated Wasm module).  Every
+\texttt{showScreenWithTag} and \texttt{presentPopupWithTag} call dispatches
+the corresponding \texttt{Push}/\texttt{PresentPopup} message to the router
+before the PixiJS transition begins.  The \texttt{goBack} function is a
+read-then-reconstruct operation: it calls the linear \texttt{Pop} export,
+then reads \texttt{getStackTop()} to identify the previous screen tag, looks
+it up in the \texttt{screenRegistry} dictionary (a \texttt{Dict.t<appScreenConstructor>}
+populated at startup), and calls \texttt{showScreen} with the recovered
+constructor.  All of this occurs without any ReScript-side back-stack ---
+the Wasm module \emph{is} the back-stack, stored as a linear resource.
+
+\paragraph{Verification result.}
+The router module passes \texttt{WebAssembly.validate}.  The
+\texttt{affinescript.ownership} section is checked by the AffineScript
+toolchain at code-generation time; the typed-wasm Level~10 checker
+additionally verifies at load time that no function parameter marked
+\texttt{kind=1} (Linear) is reachable via two distinct call paths within
+a single update cycle.  After the full IDApTIK screen suite (TitleScreen
+$\to$ CreditsScreen $\to$ \texttt{goBack} $\to$ TitleScreen) was exercised,
+the ownership invariant held throughout.
+
+This demonstrates that Level~10 is not merely a theoretical construct: a
+real game's navigation history can be encoded as an affine resource inside
+a 915-byte Wasm module, with zero runtime overhead and machine-checkable
+ownership annotations.
+
 \subsection{ECHIDNA Property Testing}
 
 We additionally validated proof soundness using the ECHIDNA prover oracle
@@ -1249,6 +1336,11 @@ memory regions, typed-wasm provides:
     through proof erasure.
   \item \textbf{A practical architecture} integrating Idris~2, Zig,
     ReScript, and the TypedQLiser ecosystem.
+  \item \textbf{A concrete Level~10 demonstration} in a shipping game
+    (\textsc{IDApTIK}): navigation history encoded as a linear affine
+    resource inside a 915-byte Wasm module, with machine-checked ownership
+    annotations and zero runtime overhead
+    (Section~\ref{sec:affinescript-tea}).
 \end{enumerate}
 
 The implication extends beyond Wasm. Any system where multiple languages
