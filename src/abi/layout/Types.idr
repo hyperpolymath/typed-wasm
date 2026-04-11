@@ -120,9 +120,27 @@ DecEq WasmPrimitive where
   decEq WasmFuncRef WasmF32  = No (\case Refl impossible)
   decEq WasmFuncRef WasmF64  = No (\case Refl impossible)
 
+-- `WHT_Struct` fields are `List (String, WasmValType)`.
+-- `DecEq String` is in Prelude; `DecEq (List a)` is in Prelude given `DecEq a`.
+-- `DecEq (a, b)` is NOT in Prelude in all Idris2 versions, so we provide it here.
+-- This instance must be declared BEFORE the mutual block so it is in scope when
+-- `decEq xs ys` is resolved inside the `WHT_Struct` case.
+
+DecEq a => DecEq b => DecEq (a, b) where
+  decEq (x1, y1) (x2, y2) with (decEq x1 x2)
+    _ | No  neq  = No (\case Refl => neq Refl)
+    _ | Yes Refl with (decEq y1 y2)
+      _ | Yes Refl = Yes Refl
+      _ | No  neq  = No (\case Refl => neq Refl)
+
 -- Mutual DecEq for WasmHeapType and WasmValType.
 -- The two types are mutually recursive (WasmHeapType contains WasmValType and
 -- vice-versa), so both instances must be declared together.
+-- Resolution chain for WHT_Struct:
+--   DecEq WasmValType (mutual)
+--   → DecEq (String, WasmValType)   (pair instance above)
+--   → DecEq (List (String, WasmValType))  (Prelude)
+--   → decEq xs ys in WHT_Struct case ✓
 
 mutual
   DecEq WasmHeapType where
