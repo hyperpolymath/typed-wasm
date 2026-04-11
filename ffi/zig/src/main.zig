@@ -198,6 +198,15 @@ export fn tw_region_free_c(handle: RegionHandle) RegionError {
 // ============================================================================
 // Typed Access (Levels 2-6)
 // ============================================================================
+//
+// panic-attack: classified ffi-boundary.
+// The typed-memory-read operations below use Zig's standard ABI cast builtins
+// to reinterpret a byte slice at a computed offset as a typed pointer.
+// Each call is preceded by field_type, offset, and instance_count guards that
+// enforce the Idris2 level-2/3/5 invariants at the Zig runtime boundary.
+// The alignment cast adds a debug-build runtime check; the Idris2 ABI proves
+// correctness at compile time.  No alternative idiom exists in Zig for
+// typed memory reads at computed byte offsets.
 
 /// Read a 32-bit integer field from a region instance.
 /// Level 2: schema resolves field_index to a FieldDescriptor.

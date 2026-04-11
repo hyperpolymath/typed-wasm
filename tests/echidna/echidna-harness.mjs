@@ -191,13 +191,14 @@ const iterations = parseInt(process.argv.find((a, i) =>
   process.argv[i - 1] === "--iterations"
 ) || "100");
 
+// Default to the production ECHIDNA endpoint.  Override with --echidna <url>.
 const echidnaUrl = process.argv.find((a, i) =>
   process.argv[i - 1] === "--echidna"
-) || null;
+) ?? "https://solve.nesy-prover.dev";
 
 console.log("=== ECHIDNA Prover Oracle: typed-wasm ===\n");
 console.log(`Iterations: ${iterations}`);
-console.log(`ECHIDNA: ${echidnaUrl || "offline (standalone mode)"}\n`);
+console.log(`ECHIDNA: ${echidnaUrl}\n`);
 
 // Property 1: Parse determinism — same input always gives same result.
 console.log("Property 1: Parse determinism");
@@ -300,44 +301,177 @@ for (let i = 0; i < Math.min(iterations, 50); i++) {
 }
 
 // ============================================================================
-// ECHIDNA Submission (when running)
+// Layout Proof Static Checks
+// ============================================================================
+//
+// These checks verify the safety invariants of the Idris2 layout proofs by
+// scanning the source files for banned patterns.  They complement the
+// Idris2 typechecker (which enforces the same rules at compile time) and
+// provide ECHIDNA with proof-of-absence obligations that can be independently
+// verified.
+
+import { readFileSync as _readFileSync } from "node:fs";
+import { resolve as _resolve } from "node:path";
+import { fileURLToPath as _fileURLToPath } from "node:url";
+
+const _thisDir = _fileURLToPath(import.meta.url);
+const _layoutDir = _resolve(_thisDir, "..", "..", "..", "src", "abi", "layout");
+
+/**
+ * Scan an Idris2 source file for banned safety patterns.
+ * Returns { file, banned: [{pattern, line, col}], clean: bool }.
+ */
+function scanIdrisFile(filename) {
+  const path = _resolve(_layoutDir, filename);
+  let src;
+  try {
+    src = _readFileSync(path, "utf-8");
+  } catch {
+    return { file: filename, banned: [], clean: false, error: "file not found" };
+  }
+
+  // Patterns that must not appear in layout proofs.
+  const BANNED = [
+    /\bbelieve_me\b/,
+    /\bassert_total\b/,
+    /\bunsafeCoerce\b/,
+    /\bunsafePerformIO\b/,
+    /\bpartial\b/,   // %partial pragma
+  ];
+
+  const banned = [];
+  src.split("\n").forEach((line, i) => {
+    // Skip comment lines (the policy comment itself would match otherwise)
+    if (line.trimStart().startsWith("--")) return;
+    for (const pat of BANNED) {
+      if (pat.test(line)) {
+        banned.push({ pattern: pat.source, line: i + 1, text: line.trim() });
+      }
+    }
+  });
+
+  return { file: filename, banned, clean: banned.length === 0 };
+}
+
+/**
+ * Verify that the recursive-type constructors (WHT_Var, WHT_Rec) exist in
+ * Types.idr and that the list tail field uses WHT_Var 0 (not a placeholder).
+ */
+function checkRecursiveTypes() {
+  const path = _resolve(_layoutDir, "Types.idr");
+  let src;
+  try { src = _readFileSync(path, "utf-8"); } catch { return { ok: false, reason: "Types.idr not found" }; }
+
+  const hasVar = /\bWHT_Var\b/.test(src);
+  const hasRec = /\bWHT_Rec\b/.test(src);
+  const hasAny = /\bWHT_Any\b/.test(src);
+  if (!hasVar) return { ok: false, reason: "WHT_Var missing from Types.idr" };
+  if (!hasRec) return { ok: false, reason: "WHT_Rec missing from Types.idr" };
+  if (!hasAny) return { ok: false, reason: "WHT_Any missing from Types.idr" };
+  return { ok: true };
+}
+
+function checkListLayout() {
+  const path = _resolve(_layoutDir, "Stdlib.idr");
+  let src;
+  try { src = _readFileSync(path, "utf-8"); } catch { return { ok: false, reason: "Stdlib.idr not found" }; }
+
+  // Placeholder was WHT_Struct []; real type uses WHT_Var 0
+  if (/WHT_Struct\s*\[\s*\]/.test(src)) return { ok: false, reason: "placeholder WHT_Struct [] still present in Stdlib.idr" };
+  if (!/WHT_Var\s+0/.test(src))        return { ok: false, reason: "list tail WHT_Var 0 missing from Stdlib.idr" };
+  if (!/WHT_Rec/.test(src))            return { ok: false, reason: "WHT_Rec missing from Stdlib.idr" };
+  return { ok: true };
+}
+
+console.log("--- Layout Proof Static Checks ---");
+
+const layoutFiles = ["Types.idr", "ABI.idr", "Stdlib.idr"];
+const scanResults = layoutFiles.map(scanIdrisFile);
+const allClean = scanResults.every(r => r.clean);
+
+for (const r of scanResults) {
+  if (r.clean) {
+    console.log(`  ✓ ${r.file}: no banned patterns`);
+  } else if (r.error) {
+    console.log(`  ? ${r.file}: ${r.error}`);
+  } else {
+    for (const b of r.banned) {
+      console.log(`  ✗ ${r.file}:${b.line}: banned pattern '${b.pattern}': ${b.text}`);
+    }
+  }
+}
+
+const recCheck   = checkRecursiveTypes();
+const listCheck  = checkListLayout();
+
+console.log(recCheck.ok  ? "  ✓ Types.idr: WHT_Var, WHT_Rec, WHT_Any present"
+                         : `  ✗ recursive-types: ${recCheck.reason}`);
+console.log(listCheck.ok ? "  ✓ Stdlib.idr: List uses WHT_Var 0 (no placeholder)"
+                         : `  ✗ list-layout: ${listCheck.reason}`);
+
+// ============================================================================
+// ECHIDNA Submission
 // ============================================================================
 
-if (echidnaUrl) {
-  console.log(`\nSubmitting ${passed + failed} proof obligations to ECHIDNA...`);
+console.log(`\nSubmitting ${passed + failed + 5} proof obligations to ECHIDNA at ${echidnaUrl}...`);
 
-  try {
-    const response = await fetch(`${echidnaUrl}/api/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "typed-wasm-echidna-harness",
-        obligations: [
-          {
-            name: "parse-determinism",
-            status: failed === 0 ? "proved" : "failed",
-            iterations,
-            pass_rate: passed / (passed + failed),
-          },
-          {
-            name: "parse-success-rate",
-            status: "info",
-            successes: parseSuccesses,
-            failures: parseFailures,
-            rate: parseSuccesses / (parseSuccesses + parseFailures),
-          },
-        ],
-      }),
-    });
+try {
+  const response = await fetch(`${echidnaUrl}/api/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: "typed-wasm-echidna-harness",
+      obligations: [
+        // ── Parser property-based tests ────────────────────────────────────
+        {
+          name: "parse-determinism",
+          status: failed === 0 ? "proved" : "failed",
+          iterations,
+          pass_rate: passed / (passed + failed),
+        },
+        {
+          name: "parse-success-rate",
+          status: "info",
+          successes: parseSuccesses,
+          failures: parseFailures,
+          rate: parseSuccesses / (parseSuccesses + parseFailures),
+        },
+        // ── Layout proof static checks ──────────────────────────────────────
+        // These are absence-of-banned-pattern obligations.  The Idris2
+        // typechecker enforces the same at compile time; these provide an
+        // independent runtime-verifiable claim to ECHIDNA.
+        {
+          name: "layout-no-partial-proofs",
+          status: allClean ? "proved" : "failed",
+          detail: allClean
+            ? "No believe_me, assert_total, or coercions in src/abi/layout/*.idr"
+            : scanResults.flatMap(r => r.banned).map(b => `${b.pattern}@L${b.line}`).join(", "),
+        },
+        {
+          name: "layout-recursive-types-present",
+          status: recCheck.ok ? "proved" : "failed",
+          detail: recCheck.ok
+            ? "WHT_Var, WHT_Rec, WHT_Any all present in Layout.Types"
+            : recCheck.reason,
+        },
+        {
+          name: "layout-list-no-placeholder",
+          status: listCheck.ok ? "proved" : "failed",
+          detail: listCheck.ok
+            ? "List tail uses WHT_Var 0 under WHT_Rec — no WHT_Struct [] placeholder"
+            : listCheck.reason,
+        },
+      ],
+    }),
+  });
 
-    if (response.ok) {
-      console.log("  Submitted to ECHIDNA.");
-    } else {
-      console.log(`  ECHIDNA responded ${response.status} — results logged locally only.`);
-    }
-  } catch (e) {
-    console.log(`  Could not reach ECHIDNA at ${echidnaUrl}: ${e.message}`);
+  if (response.ok) {
+    console.log("  Submitted to ECHIDNA.");
+  } else {
+    console.log(`  ECHIDNA responded ${response.status} — results logged locally only.`);
   }
+} catch (e) {
+  console.log(`  Could not reach ECHIDNA at ${echidnaUrl}: ${e.message}`);
 }
 
 // ============================================================================

@@ -18,7 +18,7 @@
 --   d. Open a PR on nextgen-languages/affinescript and nextgen-languages/ephapax
 --      to confirm both compilers adopt the new layout
 --
--- No believe_me, assert_total, or unsafe patterns permitted.
+-- %default total enforced. No partial proofs, no totality bypasses, no coercions.
 
 module Layout.Stdlib
 

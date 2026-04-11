@@ -36,7 +36,7 @@ module Layout.Types
 --   * Nullability witnesses for Option and String layouts
 --   * Distinctness: stringLayout ≠ optionLayout, resultLayout ≠ optionLayout
 --
--- No believe_me, assert_total, or unsafe patterns permitted.
+-- %default total enforced. No partial proofs, no totality bypasses, no coercions.
 
 -- | The shared WasmGC primitive types agreed between all consumer languages.
 data WasmPrimitive

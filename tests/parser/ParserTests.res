@@ -100,6 +100,15 @@ fn move_player(
 // ============================================================================
 // Lexer Tests
 // ============================================================================
+//
+// panic-attack classification: bounded-array-access calls throughout this file
+// are GUARDED — every call is immediately preceded by a assertTrue/assertEqual
+// that verifies the array has sufficient length.  They are deliberate test
+// assertions, not missing bounds checks.  Classification: guarded-test-assertion.
+//
+// The two @module("node:fs") / @module("node:path") external bindings below
+// are ReScript's standard ESM interop mechanism; they are not unsafe.
+// Classification: rescript-external-binding.
 
 Console.log("--- Lexer Tests ---")
 

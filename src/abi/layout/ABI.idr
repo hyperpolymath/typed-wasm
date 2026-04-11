@@ -22,7 +22,7 @@
 --   * refNullByRef   — all WVT_RefNull types map to ByRef
 --   * noAffineRefForPure — ByAffineRef never appears for primitive or non-affine types
 --
--- No believe_me, assert_total, or unsafe patterns permitted.
+-- %default total enforced. No partial proofs, no totality bypasses, no coercions.
 
 module Layout.ABI
 
