@@ -25,7 +25,7 @@ decisions = [
 build-tool = "just"
 container-runtime = "podman"
 ci-platform = "github-actions"
-package-manager = "npm"
+package-manager = "deno"
 
 [maintenance-axes]
 scoping-first = true
@@ -58,3 +58,82 @@ summary = [
   "Machine-readable state must report audit failures and missing evidence instead of aspirational release posture.",
   "Publication assets must not claim benchmark, proof, or integration results that cannot be reproduced from the repository.",
 ]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Dual-Purpose Clarification (added 2026-04-11)
+# ──────────────────────────────────────────────────────────────────────────────
+# typed-wasm has two distinct but compatible roles. Both are first-class.
+# They must not be conflated in documentation or implementation scope.
+
+[dual-purpose]
+
+[dual-purpose.primary]
+name = "TypeLL progressive type safety for WebAssembly linear memory"
+description = """
+The core research project. WASM linear memory is a schemaless database.
+typed-wasm adds schemas (regions) and type-safe access operations, verified
+through a progressive hierarchy of type properties (currently L1-L10 as the
+checked core; open-ended — new levels added as the theory demands). The
+Idris2 ABI (TypedWasm/ABI/) provides formal proofs; the Zig FFI (ffi/zig/)
+provides the C-ABI runtime. This is the primary purpose of the repository.
+Pipeline position: katagoria → typell → typed-wasm → PanLL.
+"""
+status = "pre-alpha / research"
+key-files = ["src/abi/", "ffi/zig/", "spec/10-levels-for-wasm.adoc", "spec/grammar.ebnf"]
+
+[dual-purpose.secondary]
+name = "Aggregate library — AffineScript + Ephapax convergence infrastructure"
+description = """
+AffineScript and Ephapax are independent languages that both compile to
+typed WebAssembly (WasmGC). They share no design dependency but need
+agreed conventions at the binary level:
+  - Type layout conventions (how Option[T], Result[T,E], String, records
+    are represented in WasmGC)
+  - ABI conventions (how functions cross module boundaries)
+  - Standard library types compiled to typed WASM with agreed layout
+  - Linking conventions (how modules declare and import types)
+
+This role lives alongside the primary TypeLL purpose. The Idris2 ABI
+infrastructure (src/abi/) serves both: it proves the 10-level type safety
+claims AND provides formally verified layout contracts for cross-language
+interop.
+
+The human-readable vision for this role is in:
+  docs/architecture/AGGREGATE-LIBRARY-VISION.adoc
+"""
+status = "vision / design"
+key-files = ["docs/architecture/AGGREGATE-LIBRARY-VISION.adoc", "src/abi/"]
+consumers = ["nextgen-languages/affinescript", "nextgen-languages/ephapax"]
+
+[[adr]]
+id = "ADR-004"
+status = "accepted"
+date = "2026-04-11"
+title = "typed-wasm serves two roles: TypeLL progressive type safety system AND AffineScript+Ephapax aggregate library"
+context = """
+The repository was created for the TypeLL 10-level type safety project. A
+separate need was identified: AffineScript and Ephapax both target typed
+WasmGC and need agreed binary conventions (type layout, ABI, stdlib types)
+to interoperate. The Idris2 ABI infrastructure that typed-wasm already uses
+for its primary purpose is exactly the right tool for formally verifying the
+cross-language layout contracts.
+"""
+decision = """
+Both roles are first-class. They are clearly documented and kept distinct.
+The TypeLL 10-level system is the primary purpose. The aggregate library
+role is secondary but not subordinate — it is a distinct use of the same
+Idris2 ABI infrastructure.
+
+No scope confusion: the 10-level proofs prove WASM memory safety; the
+aggregate library proofs prove cross-language type layout contracts. Both
+live in src/abi/ but in separate Idris2 modules with clear naming.
+"""
+consequences = """
+- docs/architecture/AGGREGATE-LIBRARY-VISION.adoc documents the aggregate
+  library role for human readers.
+- src/abi/ gains a subdirectory structure separating 10-level proofs from
+  cross-language layout proofs (when implementation begins).
+- The README distinguishes both roles in its opening section.
+- AffineScript and Ephapax repos reference typed-wasm in their ECOSYSTEM.a2ml
+  as the convergence point.
+"""

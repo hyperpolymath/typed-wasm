@@ -1,0 +1,184 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= Typed WebAssembly: Aggregate Library Vision
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 3
+:icons: font
+
+== Purpose
+
+This repository provides the convergence infrastructure for languages that
+target typed WebAssembly (WasmGC). Its primary consumers are AffineScript
+and Ephapax — two independent languages that share no design dependency on
+each other but both compile to typed WASM.
+
+Neither language owns this repository. It is shared infrastructure at the
+binary level.
+
+== Why This Exists
+
+Standard WebAssembly erases types at the boundary. WasmGC preserves them:
+a struct defined in your source language is a struct in the WASM binary.
+
+This creates a genuine opportunity for cross-language interoperability — but
+only if the languages agree on:
+
+. How fundamental types are laid out in typed WASM
+. How functions are called across module boundaries (ABI conventions)
+. How modules declare and import types from each other (linking conventions)
+. What standard library types look like in binary form
+
+Without these agreements, each language is an island. With them, an
+AffineScript module and an Ephapax module can call each other without any
+FFI layer — because they agree on what a `String` or `Option[T]` looks like
+in the binary.
+
+== Architecture
+
+=== Idris2 ABI Definitions (`src/abi/`)
+
+The type layout contracts are specified in Idris2 with dependent type proofs.
+This gives formal verification of:
+
+* Memory layout correctness
+* Platform-specific ABI selection at compile time
+* Provable backward compatibility guarantees
+* Type-level invariants impossible to express in C or Zig
+
+=== Zig FFI Implementation (`ffi/zig/`)
+
+The C-compatible implementation of the ABI. Provides:
+
+* Native C ABI compatibility with no overhead
+* Cross-compilation support
+* Integration test suite verifying ABI compliance across platforms
+
+=== Generated C Headers (`generated/abi/`)
+
+Auto-generated from the Idris2 ABI definitions. The bridge between the
+formal specification and the runtime implementation.
+
+=== Standard Types (`stdlib/`)
+
+Pre-compiled WasmGC modules for:
+
+[cols="1,2", options="header"]
+|===
+| Type | WasmGC representation
+
+| `Option[T]`
+| `(ref null T)` — WasmGC native nullable reference
+
+| `Result[T, E]`
+| Tagged union struct: `(ref (struct (field i32) (field (ref any))))`
+
+| `String`
+| `(ref (array i8))`
+
+| `List[T]`
+| Linked cons cells or array-backed, per allocation policy
+
+| `Map[K, V]`
+| Hash array mapped trie (structural sharing, affine-safe)
+|===
+
+Both AffineScript and Ephapax can import these and know they have identical
+binary layout.
+
+== Type Layout Conventions
+
+[cols="1,2", options="header"]
+|===
+| Source type | WasmGC encoding
+
+| `Int`
+| `i32`
+
+| `Float`
+| `f64`
+
+| `Bool`
+| `i32` (0 = false, 1 = true)
+
+| `String`
+| `(ref (array i8))` — UTF-8 byte array
+
+| Record `{ a: T, b: U }`
+| `(ref (struct (field T) (field U)))` — fields in declaration order
+
+| Enum variant (tag only)
+| `(ref (struct (field i32)))` — tag is `i32`
+
+| Enum variant with payload
+| `(ref (struct (field i32) ...payload fields...))` — tag first, payload fields follow
+
+| Function `T -> U`
+| `(ref (func (param T) (result U)))`
+|===
+
+== ABI Conventions
+
+How functions cross module boundaries:
+
+* Primitive types (`i32`, `f64`) passed by value
+* Heap-allocated types passed as `(ref T)` — a typed WasmGC reference
+* Return values follow the same rules
+* Effect handlers passed as capability references (affine — transferred, not shared)
+* No raw pointer arithmetic at the ABI boundary
+
+== The Cross-Language Story
+
+An AffineScript module that exports:
+
+[source]
+----
+fn format_user(user: { name: String, age: Int }) -> String
+----
+
+...and an Ephapax module that imports it can call it safely because:
+
+. Both languages agree on how `{ name: String, age: Int }` is laid out
+. The type signature is in the binary (WasmGC)
+. The aggregate library stdlib `String` has identical layout in both
+
+This is the payoff. No FFI. No marshalling layer. One binary format, agreed
+conventions, working interop.
+
+== Design Conformance
+
+AffineScript and Ephapax are independent languages. Neither borrows design
+decisions from the other. Their convergence is purely at this binary level.
+
+* AffineScript: affine type discipline as permanent resting state (web-first)
+* Ephapax: dyadic linear/affine with shared toolchain (linear as the goal)
+
+Same mathematical ground (affine type theory), different directions, different
+purposes. This repository is where they meet — at the bytecode, not at the
+design.
+
+== Position in the Typing Pipeline
+
+----
+katagoria  →  typell  →  typed-wasm  →  PanLL
+(research)   (kernel)     (target)    (eNSAID env)
+----
+
+`typed-wasm` is downstream of `typell` (the TypeLL verification kernel).
+Type theory ideas originate in `katagoria`, are promoted to `typell` (an
+open-ended progressive kernel — not capped at 10 levels), and are applied
+here to WASM memory and to the cross-language binary conventions documented
+in this file.
+
+This aggregate library role is one of two first-class purposes.  The other
+is the TypeLL progressive type safety system for WasmGC linear memory.
+Both are documented in `.machine_readable/6a2/META.a2ml` (ADR-004).
+
+`katagoria` does not exist as a standalone repo yet; when it is created it
+will be the upstream of this pipeline.
+
+== Related Documents
+
+* `docs/architecture/THREAT-MODEL.adoc` — security model for cross-module calls
+* `.machine_readable/6a2/META.a2ml` — ADR-004: dual-role architecture decision
+* AffineScript repo: `docs/DESIGN-VISION.adoc`
+* Ephapax repo: `docs/specs/DYADIC-VISION.adoc`

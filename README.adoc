@@ -13,6 +13,39 @@ image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_draft)-bl
 
 **Progressive type safety for WebAssembly linear memory — checked L1-L10 core, 0 believe_me in the checked proof package.**
 
+== Two Roles (ADR-004)
+
+`typed-wasm` has two first-class purposes that share the same Idris2 ABI infrastructure:
+
+. **TypeLL type safety for WasmGC linear memory** — the primary research project.
+  WASM linear memory is a schemaless database; typed-wasm adds schemas (regions) and
+  type-safe access operations, verified through a progression of type properties.
+  Proofs live in `TypedWasm/ABI/` (the checked L1-L10 core).
+
+. **Aggregate library** — the convergence infrastructure for languages that compile to
+  typed WasmGC.  AffineScript and Ephapax are independent languages that both target
+  WasmGC; they need agreed binary conventions (type layout, ABI, stdlib types, linking).
+  The Idris2 ABI infrastructure that typed-wasm already uses for role 1 is exactly the
+  right tool for formally verifying the cross-language layout contracts.
+  These proofs live in `src/abi/layout/`.
+
+The two roles are documented separately:
+* `TypedWasm/ABI/` — TypeLL level proofs (primary role)
+* `src/abi/layout/` — cross-language layout contracts (aggregate library role)
+* `docs/architecture/AGGREGATE-LIBRARY-VISION.adoc` — human-readable design doc for role 2
+
+=== Pipeline Position
+
+----
+katagoria  →  typell  →  typed-wasm  →  PanLL
+(research)   (kernel)     (target)    (eNSAID env)
+----
+
+`typed-wasm` sits downstream of the TypeLL verification kernel.  Type theory ideas
+originate in `katagoria` (research), are promoted to `typell` (the open-ended
+progressive verification kernel), and are applied here to WASM memory and to the
+cross-language binary conventions for AffineScript and Ephapax.
+
 == The Idea
 
 WebAssembly's linear memory is an untyped byte array. Programs access it with
@@ -148,10 +181,12 @@ aspect coverage, and either complete or withdraw the higher-level claims.
 
 == Related Projects
 
-- https://github.com/hyperpolymath/typell[TypeLL] — Type theory foundation
-- https://github.com/hyperpolymath/typedqliser[TypedQLiser] — 10-level safety for query languages
-- https://github.com/hyperpolymath/vql-ut[VCL-total] — 10-level safety for VeriSimDB
+- https://github.com/hyperpolymath/typell[TypeLL] — Type theory foundation (open-ended progressive kernel; typed-wasm is one application)
+- https://github.com/hyperpolymath/typedqliser[TypedQLiser] — Progressive type safety for query languages
+- https://github.com/hyperpolymath/vql-ut[VCL-total] — Progressive type safety for VeriSimDB
 - https://github.com/hyperpolymath/echidna[ECHIDNA] — Property-based prover testing
+- https://github.com/hyperpolymath/affinescript[AffineScript] — Compiles to WasmGC; uses this repo as aggregate library
+- https://github.com/hyperpolymath/ephapax[Ephapax] — Compiles to WasmGC; uses this repo as aggregate library
 
 == GraalVM Implications
 

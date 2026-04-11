@@ -6,12 +6,20 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-03-30"
+last-updated = "2026-04-11"
 status = "active"  # active | paused | archived
 
 [project-context]
 name = "typed-wasm"
-purpose = "Typed region schemas and compile-time safety checks for WebAssembly linear memory, with a checked L1-L10 core and higher-level research extensions still under audit."
+purpose = """
+Two first-class roles (ADR-004):
+  1. TypeLL progressive type safety for WasmGC linear memory — region schemas,
+     type-safe access operations, currently a checked L1-L10 core; open-ended.
+     Pipeline: katagoria → typell → typed-wasm → PanLL.
+  2. Aggregate library — convergence infrastructure for AffineScript and Ephapax
+     (both compile to WasmGC).  Provides formally verified type layout and ABI
+     conventions so cross-language calls require no marshalling layer.
+"""
 completion-percentage = 45
 
 [position]
