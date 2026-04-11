@@ -56,12 +56,18 @@ data WasmPrimitive
 -- Example: List elem =
 --   WHT_Rec (WHT_Struct [("head", WVT_Ref elem), ("tail", WVT_RefNull (WHT_Var 0))])
 -- which is the WasmGC type  μX. (struct (field (ref elem)) (field (ref null X)))
+--
+-- WHT_Any is the WasmGC top reference type (`any` in the spec).  All struct,
+-- array, and i31 references are subtypes of `any`.  It is used as the payload
+-- type in `resultLayout` (a `Result T E` stores its payload as `(ref any)` and
+-- casts to the concrete T or E at the use site).
 data WasmHeapType
   = WHT_Array WasmValType                       -- (array <valtype>)
   | WHT_Struct (List (String, WasmValType))      -- (struct (field ...))
   | WHT_Func (List WasmValType) (List WasmValType)  -- (func (param ...) (result ...))
   | WHT_Var Nat                                  -- bound type variable (de Bruijn index)
   | WHT_Rec WasmHeapType                         -- μ-binder: (rec <heaptype>)
+  | WHT_Any                                      -- top reference type: (any)
 
 -- | A WasmGC value type — either a primitive or a typed reference.
 data WasmValType
@@ -92,9 +98,10 @@ optionLayout t = WVT_RefNull t
 ||| Field 1: payload as (ref any) — cast to concrete T or E at use site.
 resultLayout : WasmValType
 resultLayout =
-  WVT_Ref (WHT_Struct [("tag", WVT_Prim WasmI32), ("payload", WVT_Ref (WHT_Struct []))])
--- Note: placeholder payload uses an empty struct; a `WasmExtern` constructor
--- will replace it when WasmGC's `any`/`extern` reference types are modelled.
+  WVT_Ref (WHT_Struct [("tag", WVT_Prim WasmI32), ("payload", WVT_Ref WHT_Any)])
+-- Payload is (ref any): the concrete T or E is recovered by a checked downcast
+-- at the use site.  WHT_Any is the WasmGC top reference type — all structs and
+-- arrays are subtypes, so this is the canonical encoding for a sum-type payload.
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- DecEq instances
@@ -198,6 +205,18 @@ mutual
     decEq (WHT_Array _)  (WHT_Rec _)    = No (\case Refl impossible)
     decEq (WHT_Struct _) (WHT_Rec _)    = No (\case Refl impossible)
     decEq (WHT_Func _ _) (WHT_Rec _)    = No (\case Refl impossible)
+    -- WHT_Any — nullary constructor; equal only to itself
+    decEq WHT_Any         WHT_Any        = Yes Refl
+    decEq WHT_Any         (WHT_Array _)  = No (\case Refl impossible)
+    decEq WHT_Any         (WHT_Struct _) = No (\case Refl impossible)
+    decEq WHT_Any         (WHT_Func _ _) = No (\case Refl impossible)
+    decEq WHT_Any         (WHT_Var _)    = No (\case Refl impossible)
+    decEq WHT_Any         (WHT_Rec _)    = No (\case Refl impossible)
+    decEq (WHT_Array _)   WHT_Any        = No (\case Refl impossible)
+    decEq (WHT_Struct _)  WHT_Any        = No (\case Refl impossible)
+    decEq (WHT_Func _ _)  WHT_Any        = No (\case Refl impossible)
+    decEq (WHT_Var _)     WHT_Any        = No (\case Refl impossible)
+    decEq (WHT_Rec _)     WHT_Any        = No (\case Refl impossible)
 
   DecEq WasmValType where
     decEq (WVT_Prim p1) (WVT_Prim p2) with (decEq p1 p2)
@@ -289,3 +308,21 @@ varInjective _ _ Refl = Refl
 ||| WHT_Rec is injective: equal bodies give equal recursive types.
 recInjective : (h1 h2 : WasmHeapType) -> WHT_Rec h1 = WHT_Rec h2 -> h1 = h2
 recInjective _ _ Refl = Refl
+
+||| WHT_Any is not an array, struct, func, var, or recursive type.
+||| Prevents any code from treating the top type as a concrete layout.
+anyNotArray  : (v : WasmValType) -> WHT_Any = WHT_Array v -> Void
+anyNotArray  _ Refl impossible
+anyNotStruct : (fs : List (String, WasmValType)) -> WHT_Any = WHT_Struct fs -> Void
+anyNotStruct _ Refl impossible
+anyNotFunc   : (ps rs : List WasmValType) -> WHT_Any = WHT_Func ps rs -> Void
+anyNotFunc   _ _ Refl impossible
+anyNotVar    : (n : Nat) -> WHT_Any = WHT_Var n -> Void
+anyNotVar    _ Refl impossible
+anyNotRec    : (h : WasmHeapType) -> WHT_Any = WHT_Rec h -> Void
+anyNotRec    _ Refl impossible
+
+||| `resultLayout` payload uses (ref any): correct WasmGC encoding.
+resultPayloadIsAny
+    : resultLayout = WVT_Ref (WHT_Struct [("tag", WVT_Prim WasmI32), ("payload", WVT_Ref WHT_Any)])
+resultPayloadIsAny = Refl
