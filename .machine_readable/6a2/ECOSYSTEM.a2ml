@@ -6,11 +6,11 @@
 
 [metadata]
 version = "0.1.0"
-last-updated = "2026-03-30"
+last-updated = "2026-04-11"
 
 [project]
 name = "typed-wasm"
-purpose = "Apply TypeLL-style progressive type safety to WebAssembly linear memory with a checked L1-L10 core and audited research extensions."
+purpose = "Dual role (ADR-004): (1) TypeLL progressive type safety for WasmGC linear memory (current checked core: L1-L10; open-ended), (2) aggregate library providing formally verified binary layout and ABI conventions for AffineScript and Ephapax cross-language calls."
 role = "library"
 
 [position-in-ecosystem]
@@ -22,6 +22,10 @@ projects = [
   { name = "typedqliser", relationship = "inspiration" },
   { name = "vql-ut", relationship = "sibling-standard" },
   { name = "echidna", relationship = "dependency" },
+  { name = "nextgen-typing", relationship = "coordination-parent", notes = "Coordination monorepo for the full type theory pipeline. Canonical architecture doc lives there." },
+  { name = "katagoria", relationship = "research-upstream", notes = "Research origination space. Type theory level candidates originate there before promotion to typell and typed-wasm." },
+  { name = "nextgen-languages/affinescript", relationship = "aggregate-library-consumer", notes = "Compiles to typed WasmGC. Uses typed-wasm as aggregate library for binary layout conventions." },
+  { name = "nextgen-languages/ephapax", relationship = "aggregate-library-consumer", notes = "Compiles to typed WasmGC. Uses typed-wasm as aggregate library for binary layout conventions." },
 ]
 
 [integration-points]
