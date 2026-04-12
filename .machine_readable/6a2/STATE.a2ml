@@ -6,9 +6,9 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-04-11"
+last-updated = "2026-04-12"
 status = "active"  # active | paused | archived
-session = "2026-04-11 — layout proofs complete, panic-attack clean, ECHIDNA wired"
+session = "2026-04-12 — Zenodo preprint published (DOI 10.5281/zenodo.19535653), 12-level paper, all docs updated, repo closed out"
 
 [project-context]
 name = "typed-wasm"
@@ -39,6 +39,7 @@ milestones = [
   { name = "generated/abi/ C header pipeline", completion = 0 },
   { name = "Evidence-backed benchmarks and aspect coverage", completion = 10 },
   { name = "L11-L12 checked integration", completion = 0 },
+  { name = "Preprint published on Zenodo (12-level)", completion = 100 },
 ]
 
 [blockers-and-issues]

@@ -7,59 +7,54 @@ The README makes claims. This file backs them up with evidence from real code.
 
 == Core Claims & Evidence
 
-=== Claim 1: "The 10-Level Safety Hierarchy — Checked L1-L10 Core, 0 believe_me"
+=== Claim 1: "12-Level Progressive Type Safety — Checked L1-L10 Core, L11-L12 Published"
 
-**From README** (lines 11-14):
+**From README**:
 ____
 image:https://img.shields.io/badge/believe__me-0-brightgreen[believe_me: 0]
-image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_draft)-blue[Levels: checked core]
+image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_published)-blue[Levels: checked core]
 
-**Progressive type safety for WebAssembly linear memory — checked L1-L10 core, 0 believe_me in the checked proof package.**
+**Progressive type safety for WebAssembly linear memory — checked L1-L10 core, 0 believe_me in the checked proof package.
+L11 (tropical cost-tracking) and L12 (epistemic safety) are formally specified and published.**
 ____
 
-**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/src/abi/Levels.idr` defines Idris2 dependent types for all 10 levels: L1 (instruction validity), L2 (region binding), L3 (type compatibility), ..., L10 (linearity). Proof search at `/var/mnt/eclipse/repos/typed-wasm/src/abi/Proofs.idr` contains zero `believe_me`, `assert_total`, or escape hatches. LEVEL-STATUS.md confirms "checked L1-L10 core."
+**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/src/abi/Levels.idr` defines Idris2 dependent types for all 10 checked levels: L1 (instruction validity), L2 (region binding), L3 (type compatibility), ..., L10 (linearity). `src/abi/Proofs.idr` contains zero `believe_me`, `assert_total`, or escape hatches. LEVEL-STATUS.md confirms "checked L1-L10 core."
 
-**Caveat**: L11-L12 (advanced liveness + exotic type-level properties) are *draft files*, not integrated into the default proof package. Claims scope to L1-L10 only.
+L11 and L12 are formally specified in `src/abi/TypedWasm/ABI/Tropical.idr` (L11: AllPairsCosts + Level11KleeneProof) and `src/abi/TypedWasm/ABI/Epistemic.idr` (L12: Level12Proof + freshness witnesses). The full 12-level type hierarchy is given by the `fullCert12` top-level certificate type in `Proofs.idr`.
+
+**Published**: Zenodo `10.5281/zenodo.19535653` — "typed-wasm: Progressive Type Safety for WebAssembly Linear Memory" (v1.1.0-paper, 2026-04-12).
+
+**Caveat**: L11-L12 type-check in Idris2 but are NOT integrated into the default checked build. The `fullCert12` certificate exists as a type; producing concrete witnesses for arbitrary programs requires additional toolchain work. Claims cite the paper; do not assert machine-checked L11-L12 coverage.
 
 === Claim 2: "Multi-Module Type Safety Across Language Boundaries"
 
-**From README** (lines 52-93):
+**From README**:
 ____
 When Module A (compiled from Rust) shares memory with Module B (compiled from ReScript), **neither source-level type system can verify the boundary.**
 
 typed-wasm declares the shared schema once. Both modules import it. The typed-wasm checker verifies structural agreement at compile time, before any module runs.
 ____
 
-**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/examples/02-multi-module.twasm` demonstrates: Module A exports a `region Entity` with fields (pos_x, pos_y, hp); Module B imports the same region and defines typed load/store operations. Prover at `/var/mnt/eclipse/repos/typed-wasm/src/abi/Proofs.idr` proves field offset and alignment agreement.
+**Evidence**: `examples/02-multi-module.twasm` demonstrates: Module A exports a `region Entity` with fields (pos_x, pos_y, hp); Module B imports the same region and defines typed load/store operations. `src/abi/Proofs.idr` proves field offset and alignment agreement.
 
-**Caveat**: Schema agreement proof is *type-level* (compile-time). Does NOT verify that actual Rust/ReScript compiled code respects field layout—correspondence is manual. Runtime behavior depends on correct field packing across compilers.
+**Caveat**: Schema agreement proof is _type-level_ (compile-time). Does NOT verify that actual Rust/ReScript compiled code respects field layout — correspondence is manual. Runtime behavior depends on correct field packing across compilers.
 
 === Claim 3: "Checked L1-L10 Proof Core — All 10 Levels Integrated"
 
-**From README** (lines 31-47):
-____
-[cols="1,2,2"]
-|===
-| Level | Database (TypedQL) | WASM (typed-wasm)
-| 1 | Parse-time safety | Instruction validity
-| ...
-| 10 | Linearity | Linear resource usage
-|===
-____
+**Evidence**: `spec/10-levels-for-wasm.adoc` maps each level from database (TypedQL) to WASM. `src/abi/` contains proof files for each: L1-L3 in Types.idr, L4-L5 in Layout.idr, L6-L7 in Access.idr, L8-L10 in Linearity.idr.
 
-**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/spec/10-levels-for-wasm.adoc` maps each level from database (TypedQL) to WASM. `/var/mnt/eclipse/repos/typed-wasm/src/abi/` contains proof files for each: L1-L3 in Types.idr, L4-L5 in Layout.idr, L6-L7 in Access.idr, L8-L10 in Linearity.idr.
-
-**Caveat**: Proofs are *about abstract WASM models*, not actual WebAssembly instruction sequences. Translation from `.twasm` (typed-wasm surface syntax) to WASM bytecode is NOT mechanically verified.
+**Caveat**: Proofs are _about abstract WASM models_, not actual WebAssembly instruction sequences. Translation from `.twasm` (typed-wasm surface syntax) to WASM bytecode is NOT mechanically verified.
 
 == Dogfooded Across The Account
 
-Uses the hyperpolymath type safety stack (Idris2 + TypeLL + 10-level verification). Same pattern across:
-- https://github.com/hyperpolymath/typedqliser[TypedQLiser] — 10 levels for database query languages (origin)
-- https://github.com/hyperpolymath/vql-ut[VCL-total] — 10 levels for VeriSimDB
+Uses the hyperpolymath type safety stack (Idris2 + TypeLL + 12-level verification). Same pattern across:
+
+- https://github.com/hyperpolymath/typedqliser[TypedQLiser] — 12 levels for database query languages (origin)
+- https://github.com/hyperpolymath/vql-ut[VCL-total] — 12 levels for VeriSimDB
 - https://github.com/hyperpolymath/typell[TypeLL] — Type theory foundation (shared)
 - https://github.com/hyperpolymath/echidna[ECHIDNA] — Property-based prover testing (integrated)
 
-All share: *Progressive safety levels, mechanized proofs in Idris2, no escape hatches in checked core.*
+All share: _Progressive safety levels, mechanized proofs in Idris2, no escape hatches in checked core._
 
 == File Map
 
@@ -69,7 +64,7 @@ All share: *Progressive safety levels, mechanized proofs in Idris2, no escape ha
 
 | `spec/grammar.ebnf` | The `.twasm` surface syntax in EBNF: region declarations, typed load/store operations, effect annotations, module imports/exports
 
-| `spec/10-levels-for-wasm.adoc` | Mapping document: each of the 10 levels from TypedQL (database) → typed-wasm (WASM), with rationale and examples
+| `spec/10-levels-for-wasm.adoc` | Mapping document: each of the 12 levels from TypedQL (database) → typed-wasm (WASM), with rationale and examples
 
 | `src/abi/Types.idr` | Idris2 dependent types: L1-L3 proof definitions (instruction validity, region binding, type compatibility) with witness types
 
@@ -81,7 +76,11 @@ All share: *Progressive safety levels, mechanized proofs in Idris2, no escape ha
 
 | `src/abi/Linearity.idr` | Idris2 linear type proofs: L10 (exactly-once resource usage via linear arrows)
 
-| `src/abi/Proofs.idr` | Machine-checked proofs proving the 10 levels are satisfied. Zero `believe_me`.
+| `src/abi/TypedWasm/ABI/Tropical.idr` | L11: tropical cost-tracking — AllPairsCosts + Level11KleeneProof (min-plus semiring, bounded memory access cost)
+
+| `src/abi/TypedWasm/ABI/Epistemic.idr` | L12: epistemic safety — Level12Proof + freshness witnesses (prevents stale-state reads across modules)
+
+| `src/abi/Proofs.idr` | Machine-checked proofs for L1-L10. `fullCert12` top-level certificate for all 12 levels. Zero `believe_me`.
 
 | `src/abi/Foreign.idr` | FFI declarations: C header generation from Idris2 ABI
 
@@ -97,26 +96,34 @@ All share: *Progressive safety levels, mechanized proofs in Idris2, no escape ha
 
 | `examples/04-ecs-game.twasm` | Real-world example: Entity Component System as columnar database with typed-wasm regions
 
-| `LEVEL-STATUS.md` | Current claim envelope: which levels are checked (L1-L10), which are draft (L11-L12), audit status
+| `examples/05-tropical-cost.twasm` | L11 demo: particle system with bounded memory access cost via tropical semiring
 
-| `docs/WHITEPAPER.md` | Full academic treatment: type theory, proof structure, GraalVM implications
+| `examples/06-epistemic-sync.twasm` | L12 demo: game server/renderer with freshness enforcement across module boundaries
+
+| `docs/arxiv/typed-wasm.tex` | Preprint source: "typed-wasm: Progressive Type Safety for WebAssembly Linear Memory" (12-level)
+
+| `LEVEL-STATUS.md` | Current claim envelope: which levels are checked (L1-L10), which are published-but-not-integrated (L11-L12), audit status
+
+| `docs/supplementary/proof-inventory.adoc` | Full mapping of paper theorems to source locations, including Zero-Overhead Property, tropical semiring laws, epistemic freshness theorems
 |===
 
 == Status
 
-**Honest Assessment**: Pre-alpha / Research. The checked L1-L10 ABI core and Zig FFI are in place. Parser smoke tests pass. L11-L12 are experimental drafts (not integrated). End-to-end codegen (`.twasm` → WASM bytecode) is NOT yet implemented.
+**Honest Assessment**: Pre-alpha / Research. The checked L1-L10 ABI core and Zig FFI are in place. L11-L12 are formally specified and published (Zenodo `10.5281/zenodo.19535653`). End-to-end codegen (`.twasm` → WASM bytecode) is NOT yet implemented.
 
 **What Works**:
 - L1-L10 proof core in Idris2 (zero unsound axioms)
+- L11-L12 type specifications in Idris2 (`fullCert12` certificate type)
 - Zig FFI layer (C-compatible, tested)
 - Multi-module schema agreement verification
+- Published preprint with formal inference rules
 
 **What's Missing**:
 - Parser for `.twasm` syntax (spec exists, implementation partial)
 - Codegen: `.twasm` → WASM bytecode
-- L11-L12 integration (in progress)
+- L11-L12 concrete witness generation (type hierarchy complete; toolchain integration pending)
 - End-to-end examples (design only)
 
 == Questions?
 
-Open an issue or reach out at j.d.a.jewell@open.ac.uk — happy to explain the 10-level hierarchy, multi-module type safety, or proof structure.
+Open an issue or reach out at j.d.a.jewell@open.ac.uk — happy to explain the 12-level hierarchy, multi-module type safety, or proof structure.

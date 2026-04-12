@@ -122,3 +122,17 @@ sync_report*.txt
 
 # Hypatia scan cache (local-only)
 .hypatia/
+
+# LaTeX / tectonic build artifacts (compiled PDFs are not source)
+*.pdf
+*.aux
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.out
+*.bbl
+*.blg
+*.run.xml
+*-blx.bib
+_minted-*/

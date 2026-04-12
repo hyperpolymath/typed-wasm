@@ -11,7 +11,7 @@ last-updated = "2026-04-11"
 [hypatia-config]
 scan-enabled = true
 scan-depth = "standard"  # quick | standard | deep
-report-format = "logtalk"
+report-format = "json"  # logtalk removed from Hypatia 2026-04-12; now consumes JSON AssailReport
 
 [symbolic-rules]
 # Custom symbolic rules for this project
