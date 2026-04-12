@@ -4,6 +4,9 @@
 #
 # HAL accepts PDF upload + manual metadata entry.
 # This file documents the values to enter.
+#
+# PDF to upload: docs/arxiv/typed-wasm.pdf (compiled from typed-wasm.tex)
+# Zenodo DOI already live: 10.5281/zenodo.19535653
 
 title: "typed-wasm: Progressive Type Safety for WebAssembly Linear Memory"
 
@@ -18,25 +21,26 @@ abstract: |
   module boundaries. When independently compiled modules — potentially from
   different source languages — read and write the same memory regions, no
   existing type system covers the cross-module interface. We present
-  typed-wasm, a type system that applies a checked 10-level progressive type safety
+  typed-wasm, a type system that applies a 12-level progressive type safety
   framework, originally developed for database query languages, to Wasm
-  linear memory. The system treats contiguous memory segments as typed
-  region schemas and load/store operations as typed projections verified
-  against those schemas at compile time. We formalise the system in Idris 2
-  using Quantitative Type Theory (QTT), providing proofs of bounds safety,
-  aliasing freedom, effect purity, lifetime validity, and linearity — all
-  erased before code generation, yielding zero runtime overhead. Our principal
-  contribution is
-  multi-module schema agreement: a static verification that independently
-  compiled Wasm modules agree on the layout, types, alignment, and
-  invariants of shared memory regions — a property that no source-level
-  type system, and no existing Wasm proposal, can express. The repository
-  also contains draft research extensions for tropical cost-tracking and
-  epistemic safety, but these are not part of the current checked claim
-  envelope.
+  linear memory. The system treats contiguous memory segments as typed region
+  schemas and load/store operations as typed projections verified against
+  those schemas at compile time. We formalise the system in Idris 2 using
+  Quantitative Type Theory (QTT), providing proofs of bounds safety, aliasing
+  freedom, effect purity, lifetime validity, linearity, cost boundedness, and
+  epistemic freshness — all erased before code generation, yielding zero
+  runtime overhead. Our principal contribution is multi-module schema
+  agreement: a static verification that independently compiled Wasm modules
+  agree on the layout, types, alignment, and invariants of shared memory
+  regions — a property that no source-level type system, and no existing Wasm
+  proposal, can express. We further extend the framework with two novel
+  levels: tropical cost-tracking (Level 11), which proves that memory access
+  patterns have bounded cost via a min-plus semiring, and epistemic safety
+  (Level 12), which prevents modules from acting on stale knowledge of shared
+  state.
 
 # HAL document type
-document_type: preprint  # "preprint" or "conference paper" or "journal article"
+document_type: preprint
 
 # HAL domain classification
 domains:
@@ -54,15 +58,18 @@ keywords:
   - memory safety
   - formal verification
   - Idris2
+  - tropical semiring
+  - epistemic logic
   - schema agreement
 
 language: en
 
 # File to upload
-file: typed-wasm.pdf  # Compile typed-wasm.tex first
+file: typed-wasm.pdf  # Already compiled — use docs/arxiv/typed-wasm.pdf
 
 # License for HAL deposit
 license: "CC-BY-4.0"  # HAL prefers Creative Commons; PMPL for code, CC-BY for the paper text
 
 # Additional links
 software: "https://github.com/hyperpolymath/typed-wasm"
+related_identifier: "https://doi.org/10.5281/zenodo.19535653"  # Zenodo deposit
