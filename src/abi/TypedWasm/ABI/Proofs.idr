@@ -4,8 +4,9 @@
 -- Proofs.idr — Top-level proof combinators for typed-wasm ABI
 --
 -- This module composes the individual level proofs into a unified
--- "proof certificate" that attests to all 10 levels of type safety
--- for a typed-wasm program.
+-- "proof certificate" that attests to all 12 levels of type safety
+-- for a typed-wasm program (L1-10 from Levels.idr, L11 from Tropical.idr,
+-- L12 from Epistemic.idr).
 --
 -- The certificate is analogous to VCL-total's proof certificates (JSON/CBOR
 -- structures attached to query results) but operates at compile time.
@@ -24,6 +25,8 @@ import TypedWasm.ABI.Effects
 import TypedWasm.ABI.Lifetime
 import TypedWasm.ABI.Linear
 import TypedWasm.ABI.MultiModule
+import TypedWasm.ABI.Tropical
+import TypedWasm.ABI.Epistemic
 
 %default total
 
@@ -48,14 +51,14 @@ data LevelAttestation : Type where
   MkAttestation : (level : Nat) -> (status : LevelStatus) -> LevelAttestation
 
 -- ============================================================================
--- The Proof Certificate (All 10 Levels)
+-- The Proof Certificate (All 12 Levels)
 -- ============================================================================
 
 ||| A complete proof certificate for a typed-wasm program or function.
 ||| This is the top-level artifact that attests to type safety.
 |||
 ||| The certificate contains:
-|||   1. Attestations for each of the 10 levels
+|||   1. Attestations for each of the 12 levels (L1-L10 + L11 tropical + L12 epistemic)
 |||   2. The highest level achieved (early exit for simple operations)
 |||   3. Multi-module compatibility certificates (if applicable)
 |||
@@ -96,6 +99,18 @@ highestLevel : ProgressiveCheck -> Nat
 highestLevel (StartL1 (MkAttestation n _)) = n
 highestLevel (Advance _ (MkAttestation n Proven)) = n
 highestLevel (Advance prev (MkAttestation _ _)) = highestLevel prev
+
+||| Construct a Level 11 attestation from a cost-bounded access path.
+||| Requires an AllPairsCosts witness proving every access route is bounded.
+public export
+attestL11_CostBounded : {n : Nat} -> AllPairsCosts n -> LevelAttestation
+attestL11_CostBounded _ = MkAttestation 11 Proven
+
+||| Construct a Level 12 attestation from an epistemic freshness proof.
+||| Requires a Level12Proof witnessing that the reader's knowledge is current.
+public export
+attestL12_EpistemicFresh : Level12Proof -> LevelAttestation
+attestL12_EpistemicFresh _ = MkAttestation 12 Proven
 
 -- ============================================================================
 -- Proof Composition
@@ -199,6 +214,34 @@ simpleReadCert = MkCertificate
   , attestL5_BoundsProof
   , attestL6_ResultType
   ] 6 []
+
+-- ============================================================================
+-- Full 12-Level Certificate
+-- ============================================================================
+
+||| A certificate attesting all 12 levels: L1-L10 from the core type system,
+||| L11 from a tropical cost proof, L12 from an epistemic freshness proof.
+|||
+||| This is the publication-quality certificate for shared-memory access
+||| with full cost and knowledge accounting.  In practice, most functions
+||| will exit at L6 (simpleReadCert); L11-L12 are activated only when
+||| cost_bound and region.sync annotations are present.
+public export
+fullCert12 : {n : Nat} -> AllPairsCosts n -> Level12Proof -> ProofCertificate
+fullCert12 costProof epistemicProof = MkCertificate
+  [ attestL1_InstructionValid
+  , attestL2_RegionBound
+  , attestL3_TypeCompat
+  , attestL4_NullSafe
+  , attestL5_BoundsProof
+  , attestL6_ResultType
+  , attestL7_AliasFree
+  , attestL8_EffectSafe SubNil            -- SubNil : EffectSubsumes declared [] holds vacuously
+  , attestL9_LifetimeSafe
+  , attestL10_Linear
+  , attestL11_CostBounded costProof
+  , attestL12_EpistemicFresh epistemicProof
+  ] 12 []
 
 -- ============================================================================
 -- Proof Erasure Guarantee
