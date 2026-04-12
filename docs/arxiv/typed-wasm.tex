@@ -82,6 +82,8 @@
 }
 \email{j.d.a.jewell@open.ac.uk}
 
+\begin{document}
+
 \begin{abstract}
 WebAssembly (Wasm) linear memory is an untyped byte array shared across
 module boundaries. When independently compiled modules --- potentially from
@@ -1406,10 +1408,18 @@ zero \texttt{believe\_me}, but no Zig FFI implementation.  They are
 machine-checked mathematical definitions awaiting toolchain integration.
 
 \textbf{Proof inventory.}
-All 11 Idris~2 ABI files (Region, TypedAccess, Levels, Pointer, Effects,
-Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic) contain zero
-instances of \texttt{believe\_me}, \texttt{postulate}, or
-\texttt{assert\_total}.
+All 13 Idris~2 ABI files (Region, TypedAccess, Levels, Pointer, Effects,
+Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic, and the layout
+files ABI, Types, Stdlib) contain zero instances of \texttt{believe\_me},
+\texttt{postulate}, or \texttt{assert\_total}.
+A full mapping of paper theorems to source locations, including the
+Zero-Overhead Property, the tropical semiring laws, and the epistemic
+freshness theorems, is in
+\texttt{docs/supplementary/proof-inventory.adoc}.
+The \texttt{Proofs} module now provides a top-level \texttt{fullCert12}
+certificate type requiring concrete L11 (\texttt{AllPairsCosts}) and
+L12 (\texttt{Level12Proof}) witnesses, completing the 12-level type
+hierarchy.
 
 % ==========================================================================
 % Bibliography
