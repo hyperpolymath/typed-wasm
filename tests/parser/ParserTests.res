@@ -448,6 +448,954 @@ test("parse examples/04-ecs-game.twasm", () => {
 })
 
 // ============================================================================
+// v1.1 Surface Sugar Tests
+// ============================================================================
+
+Console.log("")
+Console.log("--- v1.1 Surface Sugar Tests ---")
+
+test("v1.1: parse top-level const declaration", () => {
+  let src = `const max_hp : i32 = 9999;`
+  let m = parseModule(src)->assertOk
+  assertEqual(m.declarations->Array.length, 1, "One declaration")
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | ConstDecl(c) =>
+    assertEqual(c.name, "max_hp", "const name")
+    switch c.value.node {
+    | IntLit(n) => assertEqual(n, 9999, "const value")
+    | _ => Exn.raiseError("Expected IntLit")
+    }
+  | _ => Exn.raiseError("Expected ConstDecl")
+  }
+})
+
+test("v1.1: Checker rejects non-literal const initializer", () => {
+  // `1 + 2` parses as a BinOp expression, not a literal
+  let src = `const computed : i32 = 1 + 2;`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) > 0, "Should have at least one diagnostic")
+  let d = diags->mustGet(0, "first diag")
+  assertTrue(
+    String.includes(d.message, "must be a literal"),
+    "Diagnostic should mention literal requirement",
+  )
+})
+
+test("v1.1: Checker accepts literal const initializer", () => {
+  let src = `const max_hp : i32 = 9999;`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "Literal const should produce no diagnostics")
+})
+
+test("v1.1: parse striated region declaration", () => {
+  let src = `
+    region Particles[1000] striated {
+      x: f32;
+      y: f32;
+      vx: f32;
+      vy: f32;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | RegionDecl(r) =>
+    assertEqual(r.name, "Particles", "region name")
+    switch r.layout {
+    | LayoutStriated => ()
+    | LayoutAoS => Exn.raiseError("Expected LayoutStriated, got LayoutAoS")
+    }
+  | _ => Exn.raiseError("Expected RegionDecl")
+  }
+})
+
+test("v1.1: parse non-striated region has LayoutAoS by default", () => {
+  let src = `
+    region Foo {
+      x: i32;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | RegionDecl(r) =>
+    switch r.layout {
+    | LayoutAoS => ()
+    | LayoutStriated => Exn.raiseError("Default should be AoS")
+    }
+  | _ => Exn.raiseError("Expected RegionDecl")
+  }
+})
+
+test("v1.1: Checker rejects whole-record pointer in striated region", () => {
+  let src = `
+    region Inner {
+      value: i32;
+    }
+    region Outer[100] striated {
+      ptr_field: ptr<@Inner>;
+      value: i32;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(
+    Array.length(diags) >= 1,
+    "Should reject whole-record pointer in striated region",
+  )
+  let hasStriatedError = diags->Array.some(d =>
+    String.includes(d.message, "whole-record pointer")
+  )
+  assertTrue(hasStriatedError, "Diagnostic should mention whole-record pointer")
+})
+
+test("v1.1: Checker allows primitive fields in striated region", () => {
+  let src = `
+    region Particles[100] striated {
+      x: f32;
+      y: f32;
+      hp: i32;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "Primitive-only striated region should check clean")
+})
+
+test("v1.1: parse match statement on union field", () => {
+  let src = `
+    region Enemies[10] {
+      kind: union {
+        Minion: i32;
+        Boss: i32;
+        Shade: i32;
+      };
+    }
+    fn dispatch(e: &region<Enemies>, i: i32) {
+      match $e[i] .kind {
+          | Minion => { return; }
+          | Boss => { return; }
+          | Shade => { return; }
+      }
+    }
+  `
+  let m = parseModule(src)->assertOk
+  // Walk to the function body and find the MatchStmt
+  let fnDecl = m.declarations->Array.find(d =>
+    switch d.node {
+    | FunctionDecl(_) => true
+    | _ => false
+    }
+  )
+  switch fnDecl {
+  | Some(d) =>
+    switch d.node {
+    | FunctionDecl(fd) =>
+      let firstStmt = fd.body->mustGet(0, "function body empty")
+      switch firstStmt.node {
+      | MatchStmt(ms) =>
+        assertEqual(Array.length(ms.arms), 3, "3 match arms")
+      | _ => Exn.raiseError("Expected MatchStmt")
+      }
+    | _ => Exn.raiseError("Expected FunctionDecl")
+    }
+  | None => Exn.raiseError("No function declared")
+  }
+})
+
+test("v1.1: Checker accepts exhaustive match", () => {
+  let src = `
+    region Enemies[10] {
+      kind: union {
+        Minion: i32;
+        Boss: i32;
+      };
+    }
+    fn dispatch(e: &region<Enemies>, i: i32) {
+      match $e[i] .kind {
+          | Minion => { return; }
+          | Boss => { return; }
+      }
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "Exhaustive match should check clean")
+})
+
+test("v1.1: Checker rejects non-exhaustive match", () => {
+  let src = `
+    region Enemies[10] {
+      kind: union {
+        Minion: i32;
+        Boss: i32;
+        Shade: i32;
+      };
+    }
+    fn dispatch(e: &region<Enemies>, i: i32) {
+      match $e[i] .kind {
+          | Minion => { return; }
+          | Boss => { return; }
+      }
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) > 0, "Non-exhaustive match should produce diagnostic")
+  let hasMissing = diags->Array.some(d => String.includes(d.message, "non-exhaustive"))
+  assertTrue(hasMissing, "Diagnostic should mention non-exhaustive")
+})
+
+test("v1.1: Checker rejects duplicate match arm", () => {
+  let src = `
+    region Enemies[10] {
+      kind: union {
+        Minion: i32;
+        Boss: i32;
+      };
+    }
+    fn dispatch(e: &region<Enemies>, i: i32) {
+      match $e[i] .kind {
+          | Minion => { return; }
+          | Boss => { return; }
+          | Boss => { return; }
+      }
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasDup = diags->Array.some(d => String.includes(d.message, "duplicate"))
+  assertTrue(hasDup, "Diagnostic should mention duplicate")
+})
+
+test("v1.1: Checker rejects unknown match arm tag", () => {
+  let src = `
+    region Enemies[10] {
+      kind: union {
+        Minion: i32;
+        Boss: i32;
+      };
+    }
+    fn dispatch(e: &region<Enemies>, i: i32) {
+      match $e[i] .kind {
+          | Minion => { return; }
+          | Boss => { return; }
+          | Phantom => { return; }
+      }
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasUnknown = diags->Array.some(d => String.includes(d.message, "not a declared variant"))
+  assertTrue(hasUnknown, "Diagnostic should flag unknown variant")
+})
+
+test("v1.1: parse split effects clause", () => {
+  let src = `
+    fn action() effects { memory: { Read, Write }, caps: { read_file, web_fetch } } {
+      return;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | FunctionDecl(fd) =>
+    switch fd.effects {
+    | Some(effs) => assertEqual(Array.length(effs), 2, "2 memory effects")
+    | None => Exn.raiseError("Expected memory effects")
+    }
+    switch fd.caps {
+    | Some(cs) =>
+      assertEqual(Array.length(cs), 2, "2 capabilities")
+      let firstCap = cs->mustGet(0, "first cap")
+      assertEqual(firstCap.node, "read_file", "first cap name")
+    | None => Exn.raiseError("Expected capabilities")
+    }
+  | _ => Exn.raiseError("Expected FunctionDecl")
+  }
+})
+
+test("v1.1: parse flat effects clause (backwards compat)", () => {
+  let src = `
+    fn action() effects { Read, Write } {
+      return;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | FunctionDecl(fd) =>
+    switch fd.effects {
+    | Some(effs) => assertEqual(Array.length(effs), 2, "2 memory effects")
+    | None => Exn.raiseError("Expected memory effects")
+    }
+    switch fd.caps {
+    | None => () // flat form — no caps
+    | Some(_) => Exn.raiseError("Flat form should not populate caps")
+    }
+  | _ => Exn.raiseError("Expected FunctionDecl")
+  }
+})
+
+test("v1.1: parse block-if expression in let", () => {
+  let src = `
+    fn compute() -> i32 {
+      let damage : i32 = if true { yield 20 } else { yield 10 };
+      return damage;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | FunctionDecl(fd) =>
+    let letStmt = fd.body->mustGet(0, "first stmt")
+    switch letStmt.node {
+    | LetStmt(ls) =>
+      switch ls.initializer.node {
+      | BlockIfExpr(_) => ()
+      | _ => Exn.raiseError("Expected BlockIfExpr")
+      }
+    | _ => Exn.raiseError("Expected LetStmt")
+    }
+  | _ => Exn.raiseError("Expected FunctionDecl")
+  }
+})
+
+test("v1.1: Checker accepts block-if with matching yield shapes", () => {
+  let src = `
+    fn compute() -> i32 {
+      let x : i32 = if true { yield 20 } else { yield 10 };
+      return x;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "Matching shapes should check clean")
+})
+
+test("v1.1: Checker rejects block-if with mismatched yield shapes", () => {
+  let src = `
+    fn compute() -> i32 {
+      let x : i32 = if true { yield 20 } else { yield "nope" };
+      return x;
+    }
+  `
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) > 0, "Mismatched yields should produce diagnostic")
+  let hasMismatch = diags->Array.some(d => String.includes(d.message, "different shapes"))
+  assertTrue(hasMismatch, "Diagnostic should mention different shapes")
+})
+
+// ============================================================================
+// v1.2 / L13 — Module Isolation Tests
+// ============================================================================
+
+Console.log("")
+Console.log("--- v1.2 / L13 Module Isolation Tests ---")
+
+test("v1.2: parse minimal isolated module", () => {
+  let src = `
+module Renderer isolated {
+  region Frame {
+    width: i32;
+    height: i32;
+  }
+}
+`
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | ModuleIsolatedDecl(im) =>
+    assertEqual(im.name, "Renderer", "module name")
+    assertTrue(im.privateMemory == None, "no private memory declared")
+    assertEqual(Array.length(im.declarations), 1, "one inner declaration")
+  | _ => Exn.raiseError("Expected ModuleIsolatedDecl")
+  }
+})
+
+test("v1.2: parse isolated module with private_memory", () => {
+  let src = `
+module Renderer isolated {
+  private_memory gfx_mem {
+    initial: 2;
+    maximum: 8;
+  }
+  region Frame { width: i32; height: i32; }
+}
+`
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | ModuleIsolatedDecl(im) =>
+    switch im.privateMemory {
+    | Some(pm) =>
+      assertEqual(pm.node.name, "gfx_mem", "private memory name")
+      assertEqual(pm.node.initialPages, 2, "initial pages")
+      assertEqual(pm.node.maximumPages, Some(8), "maximum pages")
+    | None => Exn.raiseError("Expected private_memory")
+    }
+  | _ => Exn.raiseError("Expected ModuleIsolatedDecl")
+  }
+})
+
+test("v1.2: parse boundary decls inside isolated module", () => {
+  let src = `
+module Renderer isolated {
+  region Frame { width: i32; height: i32; }
+  boundary frame_out : export region Frame;
+  boundary state_in  : import region PlayerState;
+}
+`
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | ModuleIsolatedDecl(im) =>
+    assertEqual(Array.length(im.declarations), 3, "three inner decls (1 region + 2 boundaries)")
+    let b1 = im.declarations->mustGet(1, "second inner decl")
+    switch b1.node {
+    | BoundaryDecl(b) =>
+      assertEqual(b.name, "frame_out", "boundary name")
+      assertEqual(b.regionName, "Frame", "boundary region")
+      assertTrue(b.direction == BoundaryExport, "export direction")
+    | _ => Exn.raiseError("Expected BoundaryDecl at slot 1")
+    }
+    let b2 = im.declarations->mustGet(2, "third inner decl")
+    switch b2.node {
+    | BoundaryDecl(b) =>
+      assertEqual(b.name, "state_in", "second boundary name")
+      assertTrue(b.direction == BoundaryImport, "import direction")
+    | _ => Exn.raiseError("Expected BoundaryDecl at slot 2")
+    }
+  | _ => Exn.raiseError("Expected ModuleIsolatedDecl")
+  }
+})
+
+test("v1.2: parser rejects boundary at top level", () => {
+  let src = `
+boundary stray : import region Foo;
+`
+  let result = parseModule(src)
+  switch result {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level boundary")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.2: parser rejects private_memory at top level", () => {
+  let src = `
+private_memory stray { initial: 1; }
+`
+  let result = parseModule(src)
+  switch result {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level private_memory")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.2: parser rejects module without 'isolated' keyword", () => {
+  let src = `
+module Foo {
+  region X { value: i32; }
+}
+`
+  let result = parseModule(src)
+  switch result {
+  | Ok(_) => Exn.raiseError("Expected parse error for module without 'isolated'")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.2: parser rejects two private_memory in one isolated module", () => {
+  let src = `
+module Renderer isolated {
+  private_memory a { initial: 1; }
+  private_memory b { initial: 2; }
+}
+`
+  let result = parseModule(src)
+  switch result {
+  | Ok(_) => Exn.raiseError("Expected parse error for second private_memory")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.2: Checker rejects duplicate boundary names", () => {
+  let src = `
+module Renderer isolated {
+  region Frame { width: i32; height: i32; }
+  boundary same_name : export region Frame;
+  boundary same_name : import region OtherRegion;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) > 0, "expected duplicate-boundary diagnostic")
+  let hasDup = Array.some(diags, d =>
+    String.includes(d.message, "duplicate boundary name 'same_name'")
+  )
+  assertTrue(hasDup, "diagnostic mentions duplicate boundary name")
+})
+
+test("v1.2: Checker rejects export boundary referencing missing region", () => {
+  let src = `
+module Renderer isolated {
+  region Frame { width: i32; height: i32; }
+  boundary missing_out : export region NotDeclaredHere;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasMissing = Array.some(diags, d => String.includes(d.message, "NotDeclaredHere"))
+  assertTrue(hasMissing, "diagnostic mentions missing exported region")
+})
+
+test("v1.2: Checker accepts well-formed isolated module", () => {
+  let src = `
+module Renderer isolated {
+  private_memory gfx { initial: 4; maximum: 16; }
+  region Frame { width: i32; height: i32; }
+  region Tile { x: i32; y: i32; }
+  boundary frame_out : export region Frame;
+  boundary tile_out  : export region Tile;
+  boundary state_in  : import region PlayerState;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics")
+})
+
+test("v1.2: Checker rejects top-level memory inside isolated module", () => {
+  let src = `
+module Renderer isolated {
+  memory main_mem {
+    initial: 1;
+  }
+  region Frame { width: i32; height: i32; }
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasMem = Array.some(diags, d => String.includes(d.message, "may not declare a top-level 'memory'"))
+  assertTrue(hasMem, "diagnostic mentions top-level memory inside isolated module")
+})
+
+test("v1.2: v1.1 checks still apply inside isolated module body", () => {
+  // const non-literal initializer should still be flagged inside an
+  // isolated module — verifies recursive descent in checkModule.
+  let src = `
+module M isolated {
+  const bad : i32 = 1 + 1;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasConst = Array.some(diags, d => String.includes(d.message, "literal"))
+  assertTrue(hasConst, "v1.1 const-literal check fires inside isolated body")
+})
+
+// ============================================================================
+// v1.3 / L14 — Session Protocols Tests
+// ============================================================================
+
+Console.log("")
+Console.log("--- v1.3 / L14 Session Protocols Tests ---")
+
+test("v1.3: parse minimal session", () => {
+  let src = `
+session OrderFlow {
+  state Idle    : i32;
+  state Pending : i64;
+  state Done    : i32;
+  transition submit  : consume Idle    -> yield Pending;
+  transition approve : consume Pending -> yield Done;
+}
+`
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | SessionDecl(s) =>
+    assertEqual(s.name, "OrderFlow", "session name")
+    assertEqual(Array.length(s.states), 3, "three states")
+    assertEqual(Array.length(s.transitions), 2, "two transitions")
+    assertTrue(s.dualName == None, "no dual declared")
+  | _ => Exn.raiseError("Expected SessionDecl")
+  }
+})
+
+test("v1.3: parse session with dual", () => {
+  let src = `
+session ClientSide {
+  state S1 : i32;
+  state S2 : i32;
+  transition go : consume S1 -> yield S2;
+  dual : ServerSide;
+}
+`
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | SessionDecl(s) =>
+    switch s.dualName {
+    | Some(d) => assertEqual(d, "ServerSide", "dual target")
+    | None => Exn.raiseError("Expected dual clause")
+    }
+  | _ => Exn.raiseError("Expected SessionDecl")
+  }
+})
+
+test("v1.3: state without payload is allowed", () => {
+  let src = `
+session S {
+  state Tick;
+  state Tock;
+  transition flip : consume Tick -> yield Tock;
+}
+`
+  let m = parseModule(src)->assertOk
+  let d = m.declarations->mustGet(0, "first decl")
+  switch d.node {
+  | SessionDecl(s) =>
+    let st = s.states->mustGet(0, "first state")
+    assertTrue(st.node.payload == None, "payload-less state")
+  | _ => Exn.raiseError("Expected SessionDecl")
+  }
+})
+
+test("v1.3: parser rejects state outside session block", () => {
+  let src = `
+state Stray : i32;
+`
+  let result = parseModule(src)
+  switch result {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level state")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.3: parser rejects transition outside session block", () => {
+  let src = `
+transition stray : consume A -> yield B;
+`
+  let result = parseModule(src)
+  switch result {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level transition")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.3: Checker rejects duplicate state names", () => {
+  let src = `
+session S {
+  state Same : i32;
+  state Same : i64;
+  transition t : consume Same -> yield Same;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasDup = Array.some(diags, d => String.includes(d.message, "duplicate state name 'Same'"))
+  assertTrue(hasDup, "duplicate state name diagnostic")
+})
+
+test("v1.3: Checker rejects transition with undeclared consume state", () => {
+  let src = `
+session S {
+  state Idle : i32;
+  state Done : i32;
+  transition oops : consume Phantom -> yield Done;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasMissing = Array.some(diags, d => String.includes(d.message, "Phantom"))
+  assertTrue(hasMissing, "undeclared consume diagnostic")
+})
+
+test("v1.3: Checker rejects transition with undeclared yield state", () => {
+  let src = `
+session S {
+  state Idle : i32;
+  transition oops : consume Idle -> yield Phantom;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasMissing = Array.some(diags, d => String.includes(d.message, "Phantom"))
+  assertTrue(hasMissing, "undeclared yield diagnostic")
+})
+
+test("v1.3: Checker rejects duplicate (name, consumes) transition pair", () => {
+  let src = `
+session S {
+  state A : i32;
+  state B : i32;
+  transition go : consume A -> yield B;
+  transition go : consume A -> yield A;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasDup = Array.some(diags, d => String.includes(d.message, "duplicate transition 'go'"))
+  assertTrue(hasDup, "duplicate transition pair diagnostic")
+})
+
+test("v1.3: Checker rejects asymmetric dual", () => {
+  let src = `
+session A {
+  state X : i32;
+  state Y : i32;
+  transition t : consume X -> yield Y;
+  dual : B;
+}
+session B {
+  state P : i32;
+  state Q : i32;
+  transition u : consume P -> yield Q;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  let hasAsym = Array.some(diags, d => String.includes(d.message, "dual asymmetry"))
+  assertTrue(hasAsym, "dual asymmetry diagnostic")
+})
+
+test("v1.3: Checker accepts symmetric dual", () => {
+  let src = `
+session A {
+  state X : i32;
+  transition t : consume X -> yield X;
+  dual : B;
+}
+session B {
+  state Y : i32;
+  transition u : consume Y -> yield Y;
+  dual : A;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics for symmetric dual")
+})
+
+test("v1.3: Checker accepts well-formed session", () => {
+  let src = `
+session OrderFlow {
+  state Idle    : i32;
+  state Pending : i64;
+  state Done    : i32;
+  transition submit  : consume Idle    -> yield Pending;
+  transition approve : consume Pending -> yield Done;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics")
+})
+
+test("v1.3: session inside isolated module body parses + checks", () => {
+  let src = `
+module Worker isolated {
+  region Frame { width: i32; height: i32; }
+  boundary frame_out : export region Frame;
+  session JobFlow {
+    state Idle  : i32;
+    state Busy  : i64;
+    transition pick : consume Idle -> yield Busy;
+    transition done : consume Busy -> yield Idle;
+  }
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics for nested session")
+})
+
+// ============================================================================
+// v1.4 / L15 — Resource Capabilities
+// ============================================================================
+
+test("v1.4: parse top-level capability decl", () => {
+  let src = `
+capability read_file;
+region R { v: i32; }
+`
+  let m = parseModule(src)->assertOk
+  assertEqual(Array.length(m.declarations), 2, "expected 2 top-level decls")
+  switch (m.declarations->mustGet(0, "first decl")).node {
+  | CapabilityDecl(c) => assertEqual(c.name, "read_file", "capability name")
+  | _ => Exn.raiseError("first decl must be CapabilityDecl")
+  }
+})
+
+test("v1.4: parse multiple top-level capability decls", () => {
+  let src = `
+capability read_file;
+capability web_fetch;
+capability gpio_4;
+`
+  let m = parseModule(src)->assertOk
+  assertEqual(Array.length(m.declarations), 3, "expected 3 capability decls")
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics for distinct caps")
+})
+
+test("v1.4: parse capability decl inside isolated module", () => {
+  let src = `
+module Net isolated {
+  private_memory net_mem { initial: 1; }
+  capability web_fetch;
+  region Buf { bytes: i32; }
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics")
+})
+
+test("v1.4: Checker rejects duplicate top-level capability (L15-A)", () => {
+  let src = `
+capability read_file;
+capability read_file;
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) >= 1, "expected at least one L15-A diagnostic")
+  let hasA = diags->Array.some(d =>
+    d.message->String.includes("L15-A")
+  )
+  assertTrue(hasA, "diagnostic should cite L15-A")
+})
+
+test("v1.4: Checker rejects duplicate capability inside isolated module (L15-A)", () => {
+  let src = `
+module M isolated {
+  capability foo;
+  capability foo;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) >= 1, "expected at least one L15-A diagnostic")
+})
+
+test("v1.4: Checker accepts function caps scoped to declared top-level cap (L15-B pass)", () => {
+  let src = `
+capability read_file;
+fn load() -> i32 effects {
+  memory: { Read },
+  caps: { read_file }
+} {
+  return 0;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics")
+})
+
+test("v1.4: Checker rejects function caps not in declared set (L15-B fail)", () => {
+  let src = `
+capability read_file;
+fn leak() -> i32 effects {
+  memory: { Read },
+  caps: { web_fetch }
+} {
+  return 0;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) >= 1, "expected an L15-B diagnostic")
+  let hasB = diags->Array.some(d =>
+    d.message->String.includes("L15-B")
+  )
+  assertTrue(hasB, "diagnostic should cite L15-B")
+})
+
+test("v1.4: Checker accepts caps declared inside enclosing isolated module", () => {
+  let src = `
+module Net isolated {
+  private_memory net_mem { initial: 1; }
+  capability web_fetch;
+  fn fetch() -> i32 effects {
+    memory: { Read },
+    caps: { web_fetch }
+  } {
+    return 0;
+  }
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics")
+})
+
+test("v1.4: Checker rejects function referencing top-level cap from inside isolated module (scope boundary)", () => {
+  // `read_file` is declared at top level, not inside `Net`. The function
+  // inside `Net` cannot reference it because L15 scopes capabilities
+  // strictly to the nearest enclosing module.
+  let src = `
+capability read_file;
+module Net isolated {
+  private_memory net_mem { initial: 1; }
+  fn fetch() -> i32 effects {
+    memory: { Read },
+    caps: { read_file }
+  } {
+    return 0;
+  }
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(Array.length(diags) >= 1, "expected L15-B diagnostic for scope crossing")
+})
+
+test("v1.4: Checker accepts pure function (empty caps) regardless of module caps", () => {
+  let src = `
+capability read_file;
+fn pure_fn() -> i32 effects {
+  memory: { Read },
+  caps: { }
+} {
+  return 0;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics for empty caps")
+})
+
+test("v1.4: parser rejects 'grant' at top level (reserved, not live at v1.4)", () => {
+  let src = `grant foo to bar;`
+  switch parseModule(src) {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level grant")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.4: parser rejects 'relinquish' at top level (reserved, not live at v1.4)", () => {
+  let src = `relinquish foo;`
+  switch parseModule(src) {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level relinquish")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.4: parser rejects 'requires_caps' at top level (reserved, not live at v1.4)", () => {
+  let src = `requires_caps { foo }`
+  switch parseModule(src) {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level requires_caps")
+  | Error(_) => () // expected
+  }
+})
+
+// ============================================================================
 // Summary
 // ============================================================================
 

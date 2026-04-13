@@ -63,6 +63,36 @@ type token =
   | Shared
   | Align
   | Union
+  // --- v1.1 surface sugar ---
+  | Const // top-level `const name : type = literal;`
+  | Match // `match $region .tag { | Variant => { ... } }`
+  | Striated // `region Name[N] striated { ... }`
+  | Yield // block-expression `if` yield form
+  //
+  // NOTE on split effects: `memory:` reuses the existing `Memory` token
+  // (disambiguated in the parser by the following `Colon` vs `Ident LBrace`
+  // lookahead), and `caps:` is lexed as `Ident("caps")` — the parser matches
+  // it by string inside an effects clause. Neither gets a dedicated token.
+  //
+  // NOTE on L13-L16 reservations: the L13-L16 keyword list in
+  // spec/L13-L16-reserved-syntax.adoc is documentation-only at v1.1. It does
+  // NOT reserve identifiers globally at the lexer level, because many of the
+  // listed words (`state`, `message`, `boundary`, …) are common English
+  // words used as field/variable names in existing .twasm sources.
+  //
+  // Enforcement policy:
+  //   - v1.1 (now): doc reservation only; lexer treats all reserved words
+  //     as `Ident(...)` unless they appear in a context where the v1.1
+  //     grammar itself uses them (e.g. `striated` after `region <name>[N]`).
+  //   - v1.2+ : each level that claims a keyword adds a CONTEXTUAL parser
+  //     check. For example, L14 will parse `session Name { ... }` and
+  //     treat `state`, `transition`, `consume`, `yield`, `dual` as keywords
+  //     ONLY inside that block. Outside session blocks they remain valid
+  //     identifiers.
+  //
+  // This preserves backwards compatibility with existing .twasm sources,
+  // which was the reason the global ReservedKeyword token was removed
+  // after `state` collided with example 02-multi-module.twasm.
   // --- Region operations ---
   | RegionGet
   | RegionSet
@@ -348,6 +378,17 @@ let readIdentOrKeyword = (l: lexerState): token => {
     | "shared" => Shared
     | "align" => Align
     | "union" => Union
+    // v1.1 surface sugar
+    | "const" => Const
+    | "match" => Match
+    | "striated" => Striated
+    | "yield" => Yield
+    // L13-L16 keywords are NOT globally reserved at the lexer level —
+    // see the note on the token type above for the contextual-reservation
+    // policy. They are plain identifiers until the level that claims them
+    // activates its contextual check. This preserves backward compatibility
+    // with existing .twasm sources that use words like `state` or `message`
+    // as field / variable names.
     // Pointer kinds
     | "ptr" => Ptr
     | "ref" => Ref

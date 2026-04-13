@@ -525,6 +525,113 @@ and parsePrimary = (p: parserState): result<Ast.located<Ast.expr>> => {
     } else {
       Ok({node: Identifier(name), loc: startLoc})
     }
+
+  // v1.1: block-expression `if cond { stmts; yield e } else { stmts; yield e }`
+  //
+  // Distinct from the statement-form `if` handled in parseStatement: this
+  // form is reachable only from expression position (e.g. `let x = if ...`)
+  // and REQUIRES a `yield` expression as the last statement of each branch.
+  // parseStatement intercepts `if` at the statement level and produces an
+  // IfStmt, so this branch only fires when parsePrimary is called from
+  // parseExpr in a non-statement context.
+  //
+  // Both `yield` expressions must have the same type (checked by
+  // Checker.blockIfBranchesAgree).
+  | If =>
+    advance(p) // consume 'if'
+    switch parseExpr(p) {
+    | Error(e) => Error(e)
+    | Ok(condition) =>
+      switch expect(p, LBrace) {
+      | Error(e) => Error(e)
+      | Ok() =>
+        // Parse zero-or-more statements, then a terminating `yield expr`.
+        let thenStmts: array<Ast.located<Ast.statement>> = []
+        let rec parseThenStmts = () => {
+          switch peek(p) {
+          | Yield => Ok()
+          | RBrace => Error({message: "Block-if then-branch must end with `yield`", loc: loc(p)})
+          | _ =>
+            switch parseStatement(p) {
+            | Error(e) => Error(e)
+            | Ok(s) =>
+              let _ = Array.push(thenStmts, s)
+              parseThenStmts()
+            }
+          }
+        }
+        switch parseThenStmts() {
+        | Error(e) => Error(e)
+        | Ok() =>
+          advance(p) // consume 'yield'
+          switch parseExpr(p) {
+          | Error(e) => Error(e)
+          | Ok(thenYield) =>
+            // Optional trailing semicolon after the yield expression.
+            if peek(p) == Semicolon {
+              advance(p)
+            }
+            switch expect(p, RBrace) {
+            | Error(e) => Error(e)
+            | Ok() =>
+              switch expect(p, Else) {
+              | Error(e) => Error(e)
+              | Ok() =>
+                switch expect(p, LBrace) {
+                | Error(e) => Error(e)
+                | Ok() =>
+                  let elseStmts: array<Ast.located<Ast.statement>> = []
+                  let rec parseElseStmts = () => {
+                    switch peek(p) {
+                    | Yield => Ok()
+                    | RBrace =>
+                      Error({
+                        message: "Block-if else-branch must end with `yield`",
+                        loc: loc(p),
+                      })
+                    | _ =>
+                      switch parseStatement(p) {
+                      | Error(e) => Error(e)
+                      | Ok(s) =>
+                        let _ = Array.push(elseStmts, s)
+                        parseElseStmts()
+                      }
+                    }
+                  }
+                  switch parseElseStmts() {
+                  | Error(e) => Error(e)
+                  | Ok() =>
+                    advance(p) // consume 'yield'
+                    switch parseExpr(p) {
+                    | Error(e) => Error(e)
+                    | Ok(elseYield) =>
+                      if peek(p) == Semicolon {
+                        advance(p)
+                      }
+                      switch expect(p, RBrace) {
+                      | Error(e) => Error(e)
+                      | Ok() =>
+                        Ok({
+                          node: BlockIfExpr({
+                            condition,
+                            thenStmts,
+                            thenYield,
+                            elseStmts,
+                            elseYield,
+                          }),
+                          loc: startLoc,
+                        })
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
   | _ => Error({message: "Expected expression", loc: startLoc})
   }
 }
@@ -586,7 +693,7 @@ and parseExpr = (p: parserState): result<Ast.located<Ast.expr>> => {
 // ============================================================================
 
 /// Parse a region target: $name or $name[index]
-let parseRegionTarget = (p: parserState): result<Ast.regionTarget> => {
+and parseRegionTarget = (p: parserState): result<Ast.regionTarget> => {
   let _ = expect(p, Dollar)
   switch expectIdent(p) {
   | Ok(name) =>
@@ -608,7 +715,7 @@ let parseRegionTarget = (p: parserState): result<Ast.regionTarget> => {
 }
 
 /// Parse a field path: .field.subfield[index]...
-let parseFieldPath = (p: parserState): result<array<Ast.fieldPathSegment>> => {
+and parseFieldPath = (p: parserState): result<array<Ast.fieldPathSegment>> => {
   let segments = []
   let rec loop = () => {
     switch peek(p) {
@@ -639,7 +746,13 @@ let parseFieldPath = (p: parserState): result<array<Ast.fieldPathSegment>> => {
 }
 
 /// Parse a single statement.
-let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> => {
+// NOTE: parseStatement and parseBlock are intentionally in the SAME
+// mutually-recursive group as parsePrimary / parseExpr above. This is
+// required for v1.1 block-expression `if`: parsePrimary's BlockIfExpr
+// branch calls parseStatement to parse statements inside the block
+// before the final `yield`. Without the merge, parsePrimary cannot reach
+// parseStatement because it is defined later in the file.
+and parseStatement = (p: parserState): result<Ast.located<Ast.statement>> => {
   let startLoc = loc(p)
 
   switch peek(p) {
@@ -1075,6 +1188,72 @@ let rec parseStatement = (p: parserState): result<Ast.located<Ast.statement>> =>
     | Error(e) => Error(e)
     }
 
+  // v1.1: match $target .field { | Tag => { body } | ... }
+  | Match =>
+    advance(p) // consume 'match'
+    switch parseRegionTarget(p) {
+    | Error(e) => Error(e)
+    | Ok(target) =>
+      switch parseFieldPath(p) {
+      | Error(e) => Error(e)
+      | Ok(fieldPath) =>
+        switch expect(p, LBrace) {
+        | Error(e) => Error(e)
+        | Ok() =>
+          let arms: array<Ast.located<Ast.matchArm>> = []
+          let rec parseArms = () => {
+            switch peek(p) {
+            | RBrace => Ok()
+            | Pipe =>
+              let armLoc = loc(p)
+              advance(p) // consume '|'
+              switch expectIdent(p) {
+              | Error(e) => Error(e)
+              | Ok(tag) =>
+                // '=>' is lexed as Eq followed by RAngle — the parser does
+                // not have a dedicated FatArrow token yet.
+                switch expect(p, Eq) {
+                | Error(e) => Error(e)
+                | Ok() =>
+                  switch expect(p, RAngle) {
+                  | Error(e) => Error(e)
+                  | Ok() =>
+                    switch expect(p, LBrace) {
+                    | Error(e) => Error(e)
+                    | Ok() =>
+                      switch parseBlock(p) {
+                      | Error(e) => Error(e)
+                      | Ok(body) =>
+                        switch expect(p, RBrace) {
+                        | Error(e) => Error(e)
+                        | Ok() =>
+                          let _ = Array.push(
+                            arms,
+                            {node: ({tag, body}: Ast.matchArm), loc: armLoc},
+                          )
+                          parseArms()
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            | _ => Error({message: "Expected `|` or `}` in match body", loc: loc(p)})
+            }
+          }
+          switch parseArms() {
+          | Error(e) => Error(e)
+          | Ok() =>
+            switch expect(p, RBrace) {
+            | Error(e) => Error(e)
+            | Ok() =>
+              Ok({node: MatchStmt({target, fieldPath, arms}), loc: startLoc})
+            }
+          }
+        }
+      }
+    }
+
   // Default: expression statement or assignment (e.g., count = count + 1;)
   | _ =>
     switch parseExpr(p) {
@@ -1182,6 +1361,14 @@ let parseRegionDecl = (p: parserState): result<Ast.located<Ast.declaration>> => 
       None
     }
 
+    // v1.1: optional `striated` layout marker between the instance count
+    // and the opening brace. Default is AoS (pre-v1.1 behaviour).
+    let layout = ref(Ast.LayoutAoS)
+    if peek(p) == Striated {
+      advance(p)
+      layout := Ast.LayoutStriated
+    }
+
     switch expect(p, LBrace) {
     | Ok() =>
       let fields = []
@@ -1258,6 +1445,7 @@ let parseRegionDecl = (p: parserState): result<Ast.located<Ast.declaration>> => 
             node: RegionDecl({
               name,
               instanceCount,
+              layout: layout.contents, // v1.1: set by the `striated` keyword check above
               fields,
               alignment: alignment.contents,
               invariants,
@@ -1275,12 +1463,17 @@ let parseRegionDecl = (p: parserState): result<Ast.located<Ast.declaration>> => 
 }
 
 /// Parse effects clause: effects { Read, Write, ... }
-let parseEffects = (p: parserState): result<array<Ast.located<Ast.effect>>> => {
+/// Parse a flat list of memory effects, stopping at `}` or the start of a
+/// split-form transition (comma followed by `caps:`). Used by both the
+/// flat-form clause and the split form's `memory:` sub-clause.
+///
+/// Caller is responsible for consuming the enclosing braces.
+let parseFlatEffectList = (p: parserState): result<array<Ast.located<Ast.effect>>> => {
   let effects = []
-  advance(p) // consume 'effects'
-  let _ = expect(p, LBrace)
   let rec loop = () => {
-    if peek(p) != RBrace {
+    if peek(p) == RBrace {
+      Ok()
+    } else {
       let startLoc = loc(p)
       let eff = switch peek(p) {
       | EffRead =>
@@ -1316,23 +1509,154 @@ let parseEffects = (p: parserState): result<array<Ast.located<Ast.effect>>> => {
       | _ => Error({message: "Expected effect", loc: startLoc})
       }
       switch eff {
+      | Error(e) => Error(e)
       | Ok(e) =>
         let _ = Array.push(effects, {node: e, loc: startLoc})
         if peek(p) == Comma {
           advance(p)
         }
         loop()
-      | Error(e) => Error(e)
       }
-    } else {
-      Ok()
     }
   }
   switch loop() {
-  | Ok() =>
-    let _ = expect(p, RBrace)
-    Ok(effects)
   | Error(e) => Error(e)
+  | Ok() => Ok(effects)
+  }
+}
+
+/// Parse a comma-separated capability identifier list up to `}`.
+/// Caller is responsible for consuming the enclosing braces.
+let parseCapsList = (p: parserState): result<array<Ast.located<string>>> => {
+  let caps: array<Ast.located<string>> = []
+  let rec loop = () => {
+    if peek(p) == RBrace {
+      Ok()
+    } else {
+      let startLoc = loc(p)
+      switch expectIdent(p) {
+      | Error(e) => Error(e)
+      | Ok(name) =>
+        let _ = Array.push(caps, {node: name, loc: startLoc})
+        if peek(p) == Comma {
+          advance(p)
+        }
+        loop()
+      }
+    }
+  }
+  switch loop() {
+  | Error(e) => Error(e)
+  | Ok() => Ok(caps)
+  }
+}
+
+/// v1.1: Parse the effects clause, supporting both flat and split forms.
+///
+///   Flat  (v1.0): effects { Read, Write, ReadRegion(X) }
+///   Split (v1.1): effects { memory: { Read, Write }, caps: { read_file, web_fetch } }
+///
+/// Returns (memory_effects, capabilities). For the flat form, `caps` is
+/// always `None`. For the split form, either sub-clause may be missing
+/// (both `memory:` and `caps:` are optional, in any order).
+///
+/// Disambiguation: after consuming `effects {`, peek at the next token.
+///   - `Memory` (i.e. the keyword `memory` followed by `:`) → split form
+///   - `Ident("caps")` followed by `:` → split form
+///   - Anything else → flat form
+let parseEffectsClause = (p: parserState): result<(
+  option<array<Ast.located<Ast.effect>>>,
+  option<array<Ast.located<string>>>,
+)> => {
+  advance(p) // consume 'effects'
+  switch expect(p, LBrace) {
+  | Error(e) => Error(e)
+  | Ok() =>
+    // Detect split vs flat by peeking.
+    let isSplit = switch peek(p) {
+    | Memory => true
+    | Ident(id) => id == "caps"
+    | _ => false
+    }
+    if isSplit {
+      // Split form. Accept `memory:` and `caps:` sub-clauses in any order.
+      let memRef: ref<option<array<Ast.located<Ast.effect>>>> = ref(None)
+      let capsRef: ref<option<array<Ast.located<string>>>> = ref(None)
+      let rec loop = () => {
+        switch peek(p) {
+        | RBrace => Ok()
+        | Memory =>
+          advance(p) // consume 'memory'
+          switch expect(p, Colon) {
+          | Error(e) => Error(e)
+          | Ok() =>
+            switch expect(p, LBrace) {
+            | Error(e) => Error(e)
+            | Ok() =>
+              switch parseFlatEffectList(p) {
+              | Error(e) => Error(e)
+              | Ok(effs) =>
+                switch expect(p, RBrace) {
+                | Error(e) => Error(e)
+                | Ok() =>
+                  memRef := Some(effs)
+                  if peek(p) == Comma {
+                    advance(p)
+                  }
+                  loop()
+                }
+              }
+            }
+          }
+        | Ident(id) if id == "caps" =>
+          advance(p) // consume 'caps'
+          switch expect(p, Colon) {
+          | Error(e) => Error(e)
+          | Ok() =>
+            switch expect(p, LBrace) {
+            | Error(e) => Error(e)
+            | Ok() =>
+              switch parseCapsList(p) {
+              | Error(e) => Error(e)
+              | Ok(c) =>
+                switch expect(p, RBrace) {
+                | Error(e) => Error(e)
+                | Ok() =>
+                  capsRef := Some(c)
+                  if peek(p) == Comma {
+                    advance(p)
+                  }
+                  loop()
+                }
+              }
+            }
+          }
+        | _ =>
+          Error({
+            message: "Expected `memory:` or `caps:` in split effects clause, or `}`",
+            loc: loc(p),
+          })
+        }
+      }
+      switch loop() {
+      | Error(e) => Error(e)
+      | Ok() =>
+        switch expect(p, RBrace) {
+        | Error(e) => Error(e)
+        | Ok() => Ok((memRef.contents, capsRef.contents))
+        }
+      }
+    } else {
+      // Flat form.
+      switch parseFlatEffectList(p) {
+      | Error(e) => Error(e)
+      | Ok(effs) =>
+        switch expect(p, RBrace) {
+        | Error(e) => Error(e)
+        | Ok() => Ok((Some(effs), None))
+        }
+      }
+    }
   }
 }
 
@@ -1465,14 +1789,15 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
         None
       }
 
-      // Optional effects clause
-      let effects = if peek(p) == Effects {
-        switch parseEffects(p) {
-        | Ok(effs) => Some(effs)
-        | Error(_) => None
+      // Optional effects clause — v1.1 supports both flat and split forms.
+      // parseEffectsClause returns a (memory_effects, caps) tuple.
+      let (effects, caps) = if peek(p) == Effects {
+        switch parseEffectsClause(p) {
+        | Ok((mem, cs)) => (mem, cs)
+        | Error(_) => (None, None)
         }
       } else {
-        None
+        (None, None)
       }
 
       // Function body
@@ -1488,6 +1813,7 @@ let parseFunctionDecl = (p: parserState): result<Ast.located<Ast.declaration>> =
                 params,
                 returnType,
                 effects,
+                caps, // v1.1: populated by parseEffectsClause (None for flat form)
                 lifetimeConstraints: [],
                 body,
               }),
@@ -1750,8 +2076,387 @@ let parseInvariantDecl = (p: parserState): result<Ast.located<Ast.declaration>> 
 // Module Parsing (Top Level)
 // ============================================================================
 
+/// v1.1: Parse a top-level const declaration.
+///
+///   const_decl = 'const' identifier ':' field_type '=' literal ';'
+///
+/// The value MUST be a literal expression (Int/Float/String/Bool/Null). The
+/// parser accepts any expression here to keep the grammar regular, and
+/// `Checker.constValueIsLiteral` rejects non-literals at check time with a
+/// more informative error than a parse error could give. This also keeps
+/// the door open for a v1.2+ relaxation to allow const-folded expressions.
+let parseConstDecl = (p: parserState): result<Ast.located<Ast.declaration>> => {
+  let startLoc = loc(p)
+  advance(p) // consume 'const'
+
+  switch expectIdent(p) {
+  | Ok(name) =>
+    switch expect(p, Colon) {
+    | Ok() =>
+      switch parseFieldType(p) {
+      | Ok(constType) =>
+        switch expect(p, Eq) {
+        | Ok() =>
+          switch parseExpr(p) {
+          | Ok(value) =>
+            switch expect(p, Semicolon) {
+            | Ok() =>
+              Ok({
+                node: ConstDecl({name, constType, value}),
+                loc: startLoc,
+              })
+            | Error(e) => Error(e)
+            }
+          | Error(e) => Error(e)
+          }
+        | Error(e) => Error(e)
+        }
+      | Error(e) => Error(e)
+      }
+    | Error(e) => Error(e)
+    }
+  | Error(e) => Error(e)
+  }
+}
+
+// ============================================================================
+// v1.2 / L13 — Module Isolation
+// ============================================================================
+//
+// L13 adds three contextual keywords — `module`, `isolated`, `private_memory`,
+// `boundary` — that are lexed as plain `Ident(...)` and recognised here by
+// the parser when they appear at a declaration position. This follows the
+// contextual-reservation policy documented in Lexer.res and
+// spec/L13-L16-reserved-syntax.adoc; the global lexer reservation attempted
+// earlier collided with field names like `state` in real .twasm sources.
+//
+// Scope:
+//   * `module Name isolated { ... }` is the ONLY legal placement for
+//     `private_memory` and `boundary` decls. A bare `boundary ...;` at the
+//     top level produces a parse error pointing at L13.
+//   * An isolated module's body may contain regular declarations
+//     (region / fn / import / export / memory / invariant / const) plus
+//     nested boundary decls and at most one private_memory.
+
+/// v1.2 / L13: parse a private_memory declaration inside an isolated module.
+///
+///   private_memory_decl = 'private_memory' identifier '{'
+///                             'initial' ':' positive_integer ';'
+///                             ['maximum' ':' positive_integer ';']
+///                         '}'
+let parsePrivateMemoryDecl = (p: parserState): result<Ast.located<Ast.privateMemoryDecl>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("private_memory")
+  switch expectIdent(p) {
+  | Ok(name) =>
+    switch expect(p, LBrace) {
+    | Ok() =>
+      let initialPages = ref(0)
+      let maximumPages = ref(None)
+      let rec parsePmBody = () => {
+        switch peek(p) {
+        | RBrace => Ok()
+        | Initial =>
+          advance(p)
+          let _ = expect(p, Colon)
+          switch expectInt(p) {
+          | Ok(n) =>
+            initialPages := n
+            let _ = expect(p, Semicolon)
+            parsePmBody()
+          | Error(e) => Error(e)
+          }
+        | Maximum =>
+          advance(p)
+          let _ = expect(p, Colon)
+          switch expectInt(p) {
+          | Ok(n) =>
+            maximumPages := Some(n)
+            let _ = expect(p, Semicolon)
+            parsePmBody()
+          | Error(e) => Error(e)
+          }
+        | _ => Error({message: "Unexpected token in private_memory block", loc: loc(p)})
+        }
+      }
+      switch parsePmBody() {
+      | Ok() =>
+        let _ = expect(p, RBrace)
+        Ok({
+          node: {
+            name,
+            initialPages: initialPages.contents,
+            maximumPages: maximumPages.contents,
+          },
+          loc: startLoc,
+        })
+      | Error(e) => Error(e)
+      }
+    | Error(e) => Error(e)
+    }
+  | Error(e) => Error(e)
+  }
+}
+
+/// v1.2 / L13: parse a boundary declaration.
+///
+///   boundary_decl = 'boundary' identifier ':' ('import' | 'export')
+///                   'region' identifier ';'
+let parseBoundaryDecl = (p: parserState): result<Ast.located<Ast.declaration>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("boundary")
+  switch expectIdent(p) {
+  | Ok(name) =>
+    switch expect(p, Colon) {
+    | Ok() =>
+      let direction = switch peek(p) {
+      | Import =>
+        advance(p)
+        Ok(BoundaryImport)
+      | Export =>
+        advance(p)
+        Ok(BoundaryExport)
+      | _ =>
+        Error({message: "Boundary direction must be 'import' or 'export'", loc: loc(p)})
+      }
+      switch direction {
+      | Ok(dir) =>
+        switch expect(p, Region) {
+        | Ok() =>
+          switch expectIdent(p) {
+          | Ok(regionName) =>
+            switch expect(p, Semicolon) {
+            | Ok() =>
+              Ok({
+                node: BoundaryDecl({name, direction: dir, regionName}),
+                loc: startLoc,
+              })
+            | Error(e) => Error(e)
+            }
+          | Error(e) => Error(e)
+          }
+        | Error(e) => Error(e)
+        }
+      | Error(e) => Error(e)
+      }
+    | Error(e) => Error(e)
+    }
+  | Error(e) => Error(e)
+  }
+}
+
+// ============================================================================
+// v1.3 / L14 — Session Protocols
+// ============================================================================
+//
+// Session, state, transition, consume, dual are contextual keywords. They
+// appear here as Ident(...) and are matched by string inside parseSessionDecl.
+// `yield` reuses the existing global `Yield` token from v1.1 block-if; it has
+// the same surface meaning ("produce a value") in both contexts.
+
+/// Parse one state declaration inside a `session` block.
+///
+///   state_decl = 'state' identifier [':' field_type] ';'
+let parseSessionStateDecl = (p: parserState): result<Ast.located<Ast.sessionStateDecl>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("state")
+  switch expectIdent(p) {
+  | Ok(name) =>
+    let payload = if peek(p) == Colon {
+      advance(p)
+      switch parseFieldType(p) {
+      | Ok(t) => Ok(Some(t))
+      | Error(e) => Error(e)
+      }
+    } else {
+      Ok(None)
+    }
+    switch payload {
+    | Ok(pl) =>
+      switch expect(p, Semicolon) {
+      | Ok() => Ok({node: {name, payload: pl}, loc: startLoc})
+      | Error(e) => Error(e)
+      }
+    | Error(e) => Error(e)
+    }
+  | Error(e) => Error(e)
+  }
+}
+
+/// Parse one transition declaration inside a `session` block.
+///
+///   transition_decl = 'transition' identifier ':' 'consume' identifier
+///                     '->' 'yield' identifier ';'
+let parseSessionTransitionDecl = (
+  p: parserState,
+): result<Ast.located<Ast.sessionTransitionDecl>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("transition")
+  switch expectIdent(p) {
+  | Ok(name) =>
+    switch expect(p, Colon) {
+    | Ok() =>
+      // 'consume' is a contextual keyword — Ident("consume")
+      switch peek(p) {
+      | Ident("consume") =>
+        advance(p)
+        switch expectIdent(p) {
+        | Ok(consumes) =>
+          switch expect(p, Arrow) {
+          | Ok() =>
+            // 'yield' is the global Yield token
+            switch peek(p) {
+            | Yield =>
+              advance(p)
+              switch expectIdent(p) {
+              | Ok(produces) =>
+                switch expect(p, Semicolon) {
+                | Ok() =>
+                  Ok({node: {name, consumes, produces}, loc: startLoc})
+                | Error(e) => Error(e)
+                }
+              | Error(e) => Error(e)
+              }
+            | _ =>
+              Error({
+                message: "Expected 'yield' in transition (L14)",
+                loc: loc(p),
+              })
+            }
+          | Error(e) => Error(e)
+          }
+        | Error(e) => Error(e)
+        }
+      | _ =>
+        Error({
+          message: "Expected 'consume' after transition name (L14)",
+          loc: loc(p),
+        })
+      }
+    | Error(e) => Error(e)
+    }
+  | Error(e) => Error(e)
+  }
+}
+
+/// Parse a session declaration.
+///
+///   session_decl = 'session' identifier '{' { state_decl } { transition_decl }
+///                  ['dual' ':' identifier ';'] '}'
+///
+/// State, transition, and dual entries may appear in any order; the parser
+/// dispatches on the leading contextual keyword for each.
+let parseSessionDecl = (p: parserState): result<Ast.located<Ast.declaration>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("session")
+  switch expectIdent(p) {
+  | Ok(name) =>
+    switch expect(p, LBrace) {
+    | Ok() =>
+      let states: array<Ast.located<Ast.sessionStateDecl>> = []
+      let transitions: array<Ast.located<Ast.sessionTransitionDecl>> = []
+      let dualName = ref(None)
+      let rec parseBody = () => {
+        switch peek(p) {
+        | RBrace => Ok()
+        | EOF =>
+          Error({
+            message: "Unexpected EOF inside 'session " ++ name ++ " { ... }' body",
+            loc: loc(p),
+          })
+        | Ident("state") =>
+          switch parseSessionStateDecl(p) {
+          | Ok(s) =>
+            let _ = Array.push(states, s)
+            parseBody()
+          | Error(e) => Error(e)
+          }
+        | Ident("transition") =>
+          switch parseSessionTransitionDecl(p) {
+          | Ok(t) =>
+            let _ = Array.push(transitions, t)
+            parseBody()
+          | Error(e) => Error(e)
+          }
+        | Ident("dual") =>
+          advance(p)
+          switch expect(p, Colon) {
+          | Ok() =>
+            switch expectIdent(p) {
+            | Ok(d) =>
+              switch expect(p, Semicolon) {
+              | Ok() =>
+                dualName := Some(d)
+                parseBody()
+              | Error(e) => Error(e)
+              }
+            | Error(e) => Error(e)
+            }
+          | Error(e) => Error(e)
+          }
+        | _ =>
+          Error({
+            message: "Unexpected token in session body — expected 'state', 'transition', 'dual', or '}'",
+            loc: loc(p),
+          })
+        }
+      }
+      switch parseBody() {
+      | Ok() =>
+        let _ = expect(p, RBrace)
+        Ok({
+          node: SessionDecl({
+            name,
+            states,
+            transitions,
+            dualName: dualName.contents,
+          }),
+          loc: startLoc,
+        })
+      | Error(e) => Error(e)
+      }
+    | Error(e) => Error(e)
+    }
+  | Error(e) => Error(e)
+  }
+}
+
+/// v1.4 / L15 — parse a capability declaration.
+///
+///   capability_decl = 'capability' identifier ';' ;
+///
+/// `capability` is a contextual keyword — arrives as Ident("capability").
+/// Legal at top level and inside an isolated module body. The checker
+/// enforces L15-A (distinct) and L15-B (well-scoped) on the collected set.
+let parseCapabilityDecl = (p: parserState): result<Ast.located<Ast.declaration>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("capability")
+  switch expectIdent(p) {
+  | Error(e) => Error(e)
+  | Ok(name) =>
+    switch expect(p, Semicolon) {
+    | Error(e) => Error(e)
+    | Ok() =>
+      Ok({
+        node: CapabilityDecl({name: name}),
+        loc: startLoc,
+      })
+    }
+  }
+}
+
 /// Parse a top-level declaration.
-let parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>> => {
+///
+/// v1.2 / L13: also recognises `module Name isolated { ... }` via the
+/// Ident("module") contextual branch, and rejects stray `boundary` or
+/// `private_memory` at top level with a pointer to L13.
+///
+/// v1.3 / L14: also recognises `session Name { ... }` via Ident("session").
+///
+/// v1.4 / L15: also recognises `capability NAME;` via Ident("capability").
+/// Rejects stray `grant` / `relinquish` / `requires_caps` at top level —
+/// those remain reserved-but-not-live at v1.4.
+let rec parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>> => {
   switch peek(p) {
   | Region => parseRegionDecl(p)
   | Import => parseImportRegion(p)
@@ -1759,11 +2464,138 @@ let parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>> =>
   | Fn => parseFunctionDecl(p)
   | Memory => parseMemoryDecl(p)
   | Invariant => parseInvariantDecl(p)
-  | _ =>
+  | Const => parseConstDecl(p) // v1.1
+  | Ident("module") => parseIsolatedModule(p) // v1.2 / L13
+  | Ident("session") => parseSessionDecl(p) // v1.3 / L14
+  | Ident("capability") => parseCapabilityDecl(p) // v1.4 / L15
+  | Ident("boundary") =>
     Error({
-      message: "Expected declaration (region, import, export, fn, memory, invariant)",
+      message: "'boundary' may only appear inside 'module Name isolated { ... }' (L13 — see spec/L13-L16-reserved-syntax.adoc)",
       loc: loc(p),
     })
+  | Ident("private_memory") =>
+    Error({
+      message: "'private_memory' may only appear inside 'module Name isolated { ... }' (L13 — see spec/L13-L16-reserved-syntax.adoc)",
+      loc: loc(p),
+    })
+  | Ident("state")
+  | Ident("transition")
+  | Ident("dual") =>
+    Error({
+      message: "session-body keyword used outside a 'session Name { ... }' block (L14 — see spec/L13-L16-reserved-syntax.adoc)",
+      loc: loc(p),
+    })
+  | Ident("grant")
+  | Ident("relinquish")
+  | Ident("requires_caps") =>
+    Error({
+      message: "'grant' / 'relinquish' / 'requires_caps' are reserved L15 keywords but not live at v1.4 (see spec/L13-L16-reserved-syntax.adoc — only 'capability' is live in v1.4)",
+      loc: loc(p),
+    })
+  | _ =>
+    Error({
+      message: "Expected declaration (region, import, export, fn, memory, invariant, const, module, session, capability)",
+      loc: loc(p),
+    })
+  }
+}
+
+/// v1.2 / L13: parse an isolated module declaration.
+///
+///   module_decl_isolated = 'module' identifier 'isolated' '{'
+///                              [private_memory_decl]
+///                              { declaration | boundary_decl }
+///                          '}'
+///
+/// The body may contain at most one private_memory declaration (typically
+/// first). Boundary decls and regular declarations may be interleaved. The
+/// contextual keywords `module`, `isolated`, `private_memory`, `boundary`
+/// are not reserved at the lexer level — they arrive here as Ident(...).
+and parseIsolatedModule = (p: parserState): result<Ast.located<Ast.declaration>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("module")
+  switch expectIdent(p) {
+  | Ok(name) =>
+    switch peek(p) {
+    | Ident("isolated") =>
+      advance(p)
+      switch expect(p, LBrace) {
+      | Ok() =>
+        let privateMemory = ref(None)
+        let declarations: array<Ast.located<Ast.declaration>> = []
+        let rec parseBody = () => {
+          switch peek(p) {
+          | RBrace => Ok()
+          | EOF =>
+            Error({
+              message: "Unexpected EOF inside 'module " ++ name ++ " isolated { ... }' body",
+              loc: loc(p),
+            })
+          | Ident("private_memory") =>
+            switch privateMemory.contents {
+            | Some(_) =>
+              Error({
+                message: "Isolated module '" ++
+                name ++ "' may declare at most one private_memory",
+                loc: loc(p),
+              })
+            | None =>
+              switch parsePrivateMemoryDecl(p) {
+              | Ok(pm) =>
+                privateMemory := Some(pm)
+                parseBody()
+              | Error(e) => Error(e)
+              }
+            }
+          | Ident("boundary") =>
+            switch parseBoundaryDecl(p) {
+            | Ok(decl) =>
+              let _ = Array.push(declarations, decl)
+              parseBody()
+            | Error(e) => Error(e)
+            }
+          | Ident("capability") =>
+            // v1.4 / L15: capability decls legal inside isolated modules
+            switch parseCapabilityDecl(p) {
+            | Ok(decl) =>
+              let _ = Array.push(declarations, decl)
+              parseBody()
+            | Error(e) => Error(e)
+            }
+          | _ =>
+            switch parseDeclaration(p) {
+            | Ok(decl) =>
+              let _ = Array.push(declarations, decl)
+              parseBody()
+            | Error(e) => Error(e)
+            }
+          }
+        }
+        switch parseBody() {
+        | Ok() =>
+          let _ = expect(p, RBrace)
+          Ok({
+            node: ModuleIsolatedDecl({
+              name,
+              privateMemory: privateMemory.contents,
+              declarations,
+            }),
+            loc: startLoc,
+          })
+        | Error(e) => Error(e)
+        }
+      | Error(e) => Error(e)
+      }
+    | _ =>
+      Error({
+        message: "Expected 'isolated' after module name '" ++
+        name ++
+        "' (L13 — `module " ++
+        name ++ " isolated { ... }`)",
+        loc: loc(p),
+      })
+    }
+  | Error(e) => Error(e)
   }
 }
 

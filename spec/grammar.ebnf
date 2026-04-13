@@ -3,8 +3,54 @@
 (*
  * typed-wasm — Typed Memory Regions for WebAssembly
  * Format: Extended Backus-Naur Form (EBNF)
- * Version: 0.1.0
- * Date: 2026-03-21
+ * Version: 0.5.0 (v1.4 — L15 Resource Capabilities)
+ * Date: 2026-04-13
+ *
+ * v1.4 additions over v0.4 (L15 Resource Capabilities):
+ *   - `capability NAME ;` top-level and isolated-module-body declaration
+ *   - The v1.1 `caps: { ... }` sub-clause of split effects becomes load-bearing:
+ *     every capability name in a function's caps set must correspond to a
+ *     `capability` declaration in the enclosing module's scope.
+ *   - Checker enforcements: L15-A distinct capability names per module
+ *     (top-level or isolated-module body), L15-B function caps ⊆ enclosing
+ *     module's declared capability set. Call-graph monotonicity (L15-C) is
+ *     proven in the Idris2 core and deferred at the surface checker for v1.4.
+ *   - Idris2 proof artefact: src/abi/TypedWasm/ABI/ResourceCapabilities.idr —
+ *     DistinctCaps (L15-A), ContainedIn + containedRefl/containedTrans
+ *     (L15-B subset), CallCompatible + callCompose (L15-C monotonicity),
+ *     FullEffectBudget orthogonality with L8 memory effects, soundness
+ *     theorems l15bSoundness / l15cSoundness / callReachesModule.
+ *   - `grant`, `relinquish`, `requires_caps` remain reserved-but-not-live —
+ *     reserved for a future v1.4.x refinement, parser rejects at top level.
+ *
+ * v1.3 additions over v0.3 (L14 Session Protocols):
+ *   - `session Name { state ...; transition ...; [dual : ...;] }` declarations
+ *   - `state` declares typed-state labels (optionally annotated with a payload type)
+ *   - `transition consume X -> yield Y` lifts L10 linearity into typed-state chains
+ *   - `dual : Other` pairs two-party sessions; symmetry checked intra-module
+ *   - Idris2 proof artefact: src/abi/TypedWasm/ABI/SessionProtocol.idr —
+ *     SessionHandle parameterised by state index; step proves type-state
+ *     soundness; DistinctStateNames + TransitionsClosed give well-formedness;
+ *     DualPair captures two-party symmetry.
+ *
+ * v1.2 additions over v0.2 (L13 Module Isolation):
+ *   - `module Name isolated { ... }` declaration form
+ *   - `private_memory name { initial: N; [maximum: M;] }` (only inside isolated)
+ *   - `boundary name : (import|export) region RegionName ;` (only inside isolated)
+ *   - Checker enforcements: unique boundary names per module, export boundaries
+ *     must reference a locally-declared region, no top-level `memory` block
+ *     inside an isolated module body.
+ *   - Idris2 proof artefact: src/abi/TypedWasm/ABI/ModuleIsolation.idr —
+ *     access witnesses, well-formed boundary list, soundness theorem.
+ *
+ * v1.1 additions over v0.1:
+ *   - `const identifier : type = literal;` at module level
+ *   - `match $target .field { | Tag => { stmts } | ... }` on union regions
+ *   - Block-expression `if`: `if cond { stmts; yield e } else { stmts; yield e }`
+ *   - Split effects clause: `effects { memory: { ... }, caps: { ... } }`
+ *   - `region Name[N] striated { ... }` — SoA layout annotation
+ *   - Reserved keywords for L13–L16 (rejected by parser with pointer to
+ *     spec/L13-L16-reserved-syntax.adoc)
  *
  * Applies a checked TypeLL-derived 10-level core to WebAssembly linear memory,
  * treating memory regions as typed schemas and memory operations as typed
@@ -52,7 +98,68 @@ declaration = region_decl
             | export_region_decl
             | function_decl
             | memory_decl
-            | invariant_decl ;
+            | invariant_decl
+            | const_decl                              (* v1.1 *)
+            | module_isolated_decl                    (* v1.2 / L13 *)
+            | session_decl                            (* v1.3 / L14 *)
+            | capability_decl ;                       (* v1.4 / L15 *)
+
+(* v1.4 / L15: a capability declaration names an external resource that
+   functions may require via the `caps: { ... }` sub-clause of the v1.1
+   split-effects form. Legal at top level and inside an isolated module
+   body; capabilities declared in one isolated module are NOT visible to
+   functions in another isolated module or at the top level — the scope
+   is the nearest enclosing module. Checker enforces L15-A (distinct
+   names per scope) and L15-B (function caps ⊆ enclosing scope's caps).
+   Idris2 proof: TypedWasm.ABI.ResourceCapabilities. `capability` is a
+   contextual keyword. `grant`, `relinquish`, `requires_caps` remain
+   reserved but not live at v1.4 — the parser rejects them at top level
+   with a pointer to L15+future. *)
+capability_decl = 'capability', identifier, ';' ;
+
+(* v1.3 / L14: a session protocol is a finite-state machine over typed
+   linear handles. Each `state` declares a labelled typed state (optionally
+   carrying a payload field type), each `transition` lifts a single L10
+   handle from a source state into a target state. The optional `dual`
+   clause names the peer protocol used by the OTHER party in a two-party
+   session; intra-module duals are symmetry-checked at v1.3, inter-module
+   duals are deferred to L16 link-time. The contextual keywords
+   `session`, `state`, `transition`, `consume`, `dual` are NOT lexed
+   globally — see spec/L13-L16-reserved-syntax.adoc. `yield` reuses the
+   v1.1 block-if `Yield` token. *)
+session_decl = 'session', identifier, '{',
+                   { state_decl | transition_decl | dual_clause },
+               '}' ;
+
+state_decl = 'state', identifier, [':', field_type], ';' ;
+
+transition_decl = 'transition', identifier, ':',
+                      'consume', identifier, '->', 'yield', identifier,
+                  ';' ;
+
+dual_clause = 'dual', ':', identifier, ';' ;
+
+(* v1.2 / L13: an isolated module owns at most one private_memory and exposes
+   cross-module access ONLY through declared boundaries. Boundary and
+   private_memory decls outside an isolated module body are a parse error.
+   The contextual keywords `module`, `isolated`, `private_memory`, `boundary`
+   are NOT lexed globally — see spec/L13-L16-reserved-syntax.adoc. *)
+module_isolated_decl = 'module', identifier, 'isolated', '{',
+                           [private_memory_decl],
+                           { declaration | boundary_decl },
+                       '}' ;
+
+private_memory_decl = 'private_memory', identifier, '{',
+                          'initial', ':', positive_integer, ';',
+                          ['maximum', ':', positive_integer, ';'],
+                      '}' ;
+
+boundary_decl = 'boundary', identifier, ':',
+                    ('import' | 'export'), 'region', identifier, ';' ;
+
+(* v1.1: Top-level constants. Must be literals. Desugared by consumers into
+   singleton regions with known placement. *)
+const_decl = 'const', identifier, ':', field_type, '=', literal, ';' ;
 
 (* ============================================================================
    2. REGION DECLARATIONS — The Schema Layer
@@ -70,7 +177,7 @@ declaration = region_decl
    memory layout.
    ============================================================================ *)
 
-region_decl = 'region', identifier, [region_quantifier], '{',
+region_decl = 'region', identifier, [region_quantifier], [region_layout], '{',
                   { field_decl },
                   [alignment_decl],
                   [invariant_block],
@@ -78,6 +185,15 @@ region_decl = 'region', identifier, [region_quantifier], '{',
 
 (* Array regions: region Players[100] { ... } — 100 instances in contiguous memory *)
 region_quantifier = '[', expression, ']' ;
+
+(* v1.1: Optional SoA layout marker. Default is AoS (pre-v1.1 behaviour).
+   Striated regions MUST NOT contain whole-record pointer fields; the checker
+   rejects any `ptr<@R>`, `unique<@R>`, or `ref<@R>` field in a striated region
+   (Checker.striatedLayoutIsWellFormed). Projection-only access, which
+   sidesteps the AoS/SoA coercion problem entirely.
+
+   See typed-wasm/spec/L13-L16-reserved-syntax.adoc — "Striation" section. *)
+region_layout = 'striated' ;
 
 field_decl = field_name, ':', field_type, [field_constraints], ';' ;
 
@@ -196,8 +312,26 @@ handle_mode = '&' | '&mut' | 'own' ;
 
 return_type = field_type | 'void' ;
 
-(* Level 8: Effect tracking — declare what a function does to memory *)
-effects_clause = 'effects', '{', effect, { ',', effect }, '}' ;
+(* Level 8: Effect tracking — declare what a function does to memory.
+   v1.1 adds a split form with an orthogonal `caps:` sub-clause; both forms
+   are accepted by the v1.1 parser. The flat form is memory-only. The split
+   form separates memory effects from resource capabilities. *)
+effects_clause = effects_clause_flat | effects_clause_split ;
+
+(* v1.0 flat form — memory effects only *)
+effects_clause_flat = 'effects', '{', effect, { ',', effect }, '}' ;
+
+(* v1.1 split form — memory + capabilities on orthogonal lattices. The `caps`
+   sub-clause is OPAQUE in v1.1 (accepted but not semantically checked); it
+   becomes load-bearing under L15 Resource capabilities (typed-wasm v1.4).
+   Emitters targeting v1.1 SHOULD prefer this form so output does not need
+   regeneration when the checker upgrades from v1.1 → v1.4. *)
+effects_clause_split = 'effects', '{',
+                           ['memory', ':', '{', [ effect, { ',', effect } ], '}'],
+                           [','],
+                           ['caps',   ':', '{', [ identifier, { ',', identifier } ], '}'],
+                       '}' ;
+
 effect = 'Read' | 'Write' | 'Alloc' | 'Free'
        | 'ReadRegion', '(', identifier, ')'
        | 'WriteRegion', '(', identifier, ')' ;
@@ -227,7 +361,20 @@ statement = access_stmt
           | proof_stmt
           | sync_stmt
           | cost_assert_stmt
+          | match_stmt                               (* v1.1 *)
           | expression_stmt ;
+
+(* v1.1: Dispatch on a tagged-union region field. The scrutinee must refer
+   to a field of union type in the region schema; arms must be exhaustive
+   with respect to the union's declared variant tags
+   (Checker.matchIsExhaustive). Non-exhaustive matches are a hard parse /
+   check error, not a warning. Arms are non-overlapping by construction:
+   each tag may appear at most once across the arms. *)
+match_stmt = 'match', region_target, field_path, '{',
+                 { match_arm },
+             '}' ;
+
+match_arm = '|', variant_tag, '=>', '{', { statement }, '}' ;
 
 (* --- Level 2+3: Typed access (get/set through schema projection) --- *)
 
@@ -311,7 +458,24 @@ expression = literal
            | knowledge_check_expr                       (* Level 12: freshness check *)
            | version_expr                               (* Level 12: version query *)
            | 'cast', '<', field_type, '>', '(', expression, ')'  (* explicit cast *)
+           | block_if_expr                              (* v1.1: block-expression if *)
            | '(', expression, ')' ;
+
+(* v1.1: Block-expression `if`. Distinct from the statement form (if_stmt) in
+   that each branch YIELDS a value via a final `yield` expression — suitable
+   for use in expression position such as `let x = if ... { ... yield a } else { ... yield b };`.
+
+   Both branches MUST contain exactly one `yield` as the final statement, and
+   both yielded values MUST have the same type (Checker.blockIfBranchesAgree).
+   Arbitrary statements may precede the yield in either branch. *)
+block_if_expr = 'if', expression, '{',
+                    { statement },
+                    'yield', expression,
+                '}',
+                'else', '{',
+                    { statement },
+                    'yield', expression,
+                '}' ;
 
 binop = '+' | '-' | '*' | '/' | '%'
       | '==' | '!=' | '<' | '>' | '<=' | '>='
@@ -444,6 +608,18 @@ string_literal = '"', { ? any character except '"' ? }, '"' ;
 (* ============================================================================
    10. RESERVED KEYWORDS
    ============================================================================ *)
+
+(* v1.1 surface sugar *)
+(* const, match, striated, yield *)
+(* memory: and caps: inside effects clauses (contextual; not global keywords) *)
+
+(* L13-L16 RESERVED — parser rejects with a pointer to
+   spec/L13-L16-reserved-syntax.adoc *)
+(* isolated, private_memory, boundary                    — L13 *)
+(* session, protocol, state, transition, consume, dual   — L14 *)
+(* capability, grant, relinquish, requires_caps          — L15 *)
+(* choreography, agent_role, message, composes           — L16 *)
+(* strided_ptr, packed                                   — L17 (future) *)
 
 (* Region system *)
 (* region, import, export, from, field, align, invariant, across, holds *)

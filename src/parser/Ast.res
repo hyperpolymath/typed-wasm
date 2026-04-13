@@ -34,19 +34,254 @@ and declaration =
   | FunctionDecl(functionDecl)
   | MemoryDecl(memoryDecl)
   | InvariantDecl(invariantDecl)
+  | ConstDecl(constDecl) // v1.1: top-level `const name : type = literal;`
+  | ModuleIsolatedDecl(moduleIsolatedDecl) // v1.2 / L13
+  | BoundaryDecl(boundaryDecl) // v1.2 / L13 — only legal inside a ModuleIsolatedDecl body
+  | SessionDecl(sessionDecl) // v1.3 / L14
+  | CapabilityDecl(capabilityDecl) // v1.4 / L15
+
+// ============================================================================
+// v1.2 / L13 — Module Isolation
+// ============================================================================
+//
+// Surface:
+//
+//   module Renderer isolated {
+//       private_memory gfx_mem { initial: 2; maximum: 8; }
+//       boundary player_in : import region PlayerState;
+//       boundary frame_out : export region RenderedFrame;
+//       // ... regular declarations here: regions, functions, ...
+//   }
+//
+// Semantics:
+//   * Each isolated module owns AT MOST ONE `private_memory`. Other modules
+//     cannot reach into that memory except through a declared `boundary`.
+//   * Boundary names are local to their module and must be unique inside
+//     the module body (Checker.l13ModuleIsolation).
+//   * Boundaries declared OUTSIDE an isolated module body are a parse error:
+//     `boundary` only has meaning inside the `module Name isolated { ... }`
+//     block. The parser produces a BoundaryDecl-at-top-level error for the
+//     top-level occurrence.
+//   * An isolated module's body may contain any normal declaration
+//     (RegionDecl, FunctionDecl, ImportRegionDecl, ExportRegionDecl,
+//     ConstDecl, MemoryDecl, InvariantDecl) plus its nested boundary decls
+//     and at most one private_memory.
+//
+// Reserved-keyword policy:
+//   `module`, `isolated`, `private_memory`, `boundary` are NOT globally
+//   lexed as keywords (see Lexer.res — contextual reservation). The parser
+//   recognises them in context inside parseDeclaration / parseIsolatedBody.
+
+/// v1.2 / L13 — declaration of an isolated module.
+and moduleIsolatedDecl = {
+  name: string,
+  privateMemory: option<located<privateMemoryDecl>>,
+  declarations: array<located<declaration>>,
+}
+
+/// v1.2 / L13 — private linear-memory declaration inside an isolated module.
+///
+/// Syntactically similar to a top-level `memory { ... }` declaration but
+/// tagged PRIVATE. The checker enforces that private memory is only referenced
+/// by regions and placements inside the owning module.
+and privateMemoryDecl = {
+  name: string,
+  initialPages: int,
+  maximumPages: option<int>,
+}
+
+/// v1.2 / L13 — cross-module boundary declaration.
+///
+/// A boundary is the ONLY legal path for cross-module region access. It
+/// names a boundary (the lookup key), a direction, and the region that
+/// is exposed through it.
+///
+/// Example:
+///   boundary player_in : import region PlayerState;
+///
+/// Semantics:
+///   * `import` direction: this module consumes `PlayerState` from another
+///     module. The checker pairs this with a matching `export` boundary on
+///     the peer side at link time.
+///   * `export` direction: this module exposes `regionName` to other modules
+///     through this boundary.
+and boundaryDecl = {
+  name: string,
+  direction: boundaryDirection,
+  regionName: string,
+}
+
+and boundaryDirection =
+  | BoundaryImport
+  | BoundaryExport
+
+// ============================================================================
+// v1.3 / L14 — Session Protocols
+// ============================================================================
+//
+// Surface:
+//
+//   session OrderFlow {
+//       state Idle    : i32;
+//       state Pending : i64;
+//       state Done    : i32;
+//       transition submit  : consume Idle    -> yield Pending;
+//       transition approve : consume Pending -> yield Done;
+//       dual : OrderFlowDual;
+//   }
+//
+// Semantics:
+//   * Each `state` declares a typed-state label optionally annotated with a
+//     payload field type. State names must be unique inside a session
+//     (Checker L14-A).
+//   * Each `transition` consumes a source state and yields a target state.
+//     Both source and target MUST be declared `state`s of the same session
+//     (Checker L14-B). Transition names need not be unique — same name can
+//     appear from different source states (overloaded transitions).
+//   * The optional `dual` clause names the peer protocol used by the OTHER
+//     party in a two-party session. Symmetry checking (A.dual = B AND
+//     B.dual = A) is best-effort at v1.3 — it requires whole-program
+//     visibility, so the surface checker only verifies that the named
+//     protocol exists in the same module if it does, and otherwise records
+//     it for L16 link-time checking.
+//
+// Reserved-keyword policy: `session`, `state`, `transition`, `consume`,
+// `dual` are NOT globally lexed. They arrive as Ident(...) and are
+// recognised contextually inside `parseSessionDecl`. The pre-existing
+// global `Yield` token (used by v1.1 block-if expressions) is reused
+// inside transitions — same token, different surface position.
+
+/// v1.3 / L14 — declaration of a session protocol.
+and sessionDecl = {
+  name: string,
+  states: array<located<sessionStateDecl>>,
+  transitions: array<located<sessionTransitionDecl>>,
+  dualName: option<string>,
+}
+
+/// v1.3 / L14 — typed state declaration inside a session.
+///
+///   state Idle : i32;
+///
+/// `payload` is optional; a payload-less state is unit-like and the field
+/// type defaults to `i32` (matching the L10 LinHandle inner schema).
+and sessionStateDecl = {
+  name: string,
+  payload: option<located<fieldType>>,
+}
+
+/// v1.3 / L14 — transition declaration inside a session.
+///
+///   transition submit : consume Idle -> yield Pending;
+///
+/// Surface obligation: both `consumes` and `produces` must name a
+/// state declared in the same session block.
+and sessionTransitionDecl = {
+  name: string,
+  consumes: string,
+  produces: string,
+}
+
+// ============================================================================
+// v1.4 / L15 — Resource Capabilities
+// ============================================================================
+//
+// Surface:
+//
+//   capability read_file;
+//   capability web_fetch;
+//
+//   fn load_config() -> i32 effects {
+//       memory: { Read },
+//       caps:   { read_file }
+//   } { ... }
+//
+// A `capability NAME;` declaration names an external resource that functions
+// in the same module may require via the `caps:` sub-clause of their split
+// effects. The v1.1 surface sugar already parses the `caps:` sub-clause into
+// `functionDecl.caps`; v1.4 / L15 makes it load-bearing by requiring every
+// name in any function's `caps:` set to correspond to a declared
+// `capability`, and by enforcing uniqueness of the declarations themselves.
+//
+// Semantics (checker obligations in Checker.checkCapabilities):
+//   * L15-A (Distinct)    : no two `capability` declarations in the same
+//                           module (top-level module body OR the body of
+//                           a single `ModuleIsolatedDecl`) may share a
+//                           name.
+//   * L15-B (Well-scoped) : for every `FunctionDecl` with a non-None
+//                           `caps` field, every capability name in that
+//                           set must refer to a `capability` declaration
+//                           in the enclosing module's scope. Inside an
+//                           isolated module, "enclosing module" means
+//                           that isolated module's declarations; at top
+//                           level it means the top-level module.
+//
+// L15-C (call-graph monotonicity) is proven in the Idris2 core
+// (`ResourceCapabilities.idr`: `CallCompatible`, `callCompose`,
+// `callReachesModule`) but surface-level call-graph analysis is
+// deferred — v1.4 ships without it because the current checker doesn't
+// track inter-function calls. When the call-graph check lands, it will
+// piggy-back on this same capability-declaration set.
+//
+// Reserved-keyword policy: `capability` is NOT globally lexed; the parser
+// recognises it contextually from `Ident("capability")`. The reserved
+// words `grant`, `relinquish`, `requires_caps` remain reserved-but-not-
+// live at v1.4 (they are for a future refinement) and the parser rejects
+// them at the top level with a pointer to L15+future.
+
+/// v1.4 / L15 — capability declaration.
+///
+///   capability read_file;
+and capabilityDecl = {
+  name: string,
+}
+
+// ============================================================================
+// v1.1 — Top-level `const` declaration
+// ============================================================================
+//
+// Surface:
+//   const max_hp : i32 = 9999;
+//
+// Semantics: desugared by downstream consumers into a singleton region
+// holding a single field with the declared type and an initializer. The
+// checker verifies that `value` is a literal (not a general expression) and
+// that the literal's type matches `constType`.
+
+/// Top-level constant binding.
+and constDecl = {
+  name: string,
+  constType: located<fieldType>,
+  value: located<expr>, // must be a literal — enforced by Checker.constValueIsLiteral
+}
 
 // ============================================================================
 // Region Declarations (Section 2 of grammar)
 // ============================================================================
 
-/// A region declaration: `region Name[count] { fields; align N; invariant { ... } }`
+/// A region declaration: `region Name[count] [striated] { fields; align N; invariant { ... } }`
 and regionDecl = {
   name: string,
   instanceCount: option<located<expr>>,
+  layout: regionLayout, // v1.1: AoS (default) or SoA (striated)
   fields: array<located<fieldDecl>>,
   alignment: option<int>,
   invariants: array<located<invariantExpr>>,
 }
+
+/// v1.1 region layout — chosen at the schema level, not per access.
+///
+/// `LayoutAoS` is the pre-v1.1 default: records are contiguous in memory
+/// (array-of-structs). Whole-record pointers are allowed.
+///
+/// `LayoutStriated` is struct-of-arrays: all `field_A` values contiguous,
+/// then all `field_B` values contiguous, etc. Whole-record pointers are
+/// FORBIDDEN in striated regions because the record's bytes are not
+/// contiguous; see Checker.striatedLayoutIsWellFormed. The projection-only
+/// rule lets the checker sidestep the AoS/SoA coercion problem entirely.
+and regionLayout =
+  | LayoutAoS // default — pre-v1.1 behaviour, array-of-structs
+  | LayoutStriated // v1.1 — struct-of-arrays, projection-only access
 
 /// A field within a region: `name: type where constraints;`
 and fieldDecl = {
@@ -127,10 +362,27 @@ and functionDecl = {
   name: string,
   params: array<located<param>>,
   returnType: option<located<fieldType>>,
-  effects: option<array<located<effect>>>,
+  effects: option<array<located<effect>>>, // v1.0 flat effects (memory-only)
+  caps: option<array<located<string>>>, // v1.1 split-effects capabilities (names only; opaque in v1.1, checked by L15)
   lifetimeConstraints: array<located<lifetimeConstraint>>,
   body: array<located<statement>>,
 }
+//
+// v1.1 split effects clause — two orthogonal lattices.
+//
+// The pre-v1.1 flat form `effects { Read, Write, ReadRegion(X) }` remains
+// valid and populates only `effects`.
+//
+// The v1.1 split form `effects { memory: { Read, Write }, caps: { read_file, web_fetch } }`
+// populates both `effects` (from `memory:` sub-clause) and `caps` (from
+// `caps:` sub-clause). The `caps` set is opaque to v1.1 — the parser accepts
+// it and downstream consumers can emit it, but semantic checking of
+// capabilities does not activate until L15 (typed-wasm v1.4).
+//
+// Rationale: emitting the split form from v1.1 means languages targeting
+// typed-wasm (007, Ephapax, AffineScript) do not need to regenerate their
+// output when the checker upgrades from v1.1 → v1.4. The output is already
+// in the final shape; only its semantic enforcement grows.
 
 /// Function parameter.
 and param = {
@@ -189,6 +441,32 @@ and statement =
   | StaticAssertStmt(located<expr>)
   | ProofStmt(proofStmt)
   | ExprStmt(located<expr>)
+  | MatchStmt(matchStmt) // v1.1: match on a tagged-union region field
+
+/// v1.1 match statement — dispatches on the tag of a union-typed region field.
+///
+/// Surface:
+///   match $enemies[i] .kind {
+///       | Minion => { ... }
+///       | Boss   => { ... }
+///       | Shade  => { ... }
+///   }
+///
+/// Semantics: the scrutinee must refer to a field of union type in the region
+/// schema; `arms` must be exhaustive with respect to that union's declared
+/// variant tags (Checker.matchIsExhaustive). Arms are non-overlapping by
+/// construction because each tag may appear at most once.
+and matchStmt = {
+  target: regionTarget,
+  fieldPath: array<fieldPathSegment>,
+  arms: array<located<matchArm>>,
+}
+
+/// One arm of a v1.1 match statement.
+and matchArm = {
+  tag: string, // must match a variant tag of the scrutinee's union type
+  body: array<located<statement>>,
+}
 
 /// region.get $target .field.path -> binding
 and regionGetStmt = {
@@ -296,6 +574,25 @@ and expr =
   | CastExpr(located<fieldType>, located<expr>) // cast<Type>(expr)
   | ParenExpr(located<expr>)
   | CallExpr(string, array<located<expr>>)
+  | BlockIfExpr(blockIfExpr) // v1.1: if cond { stmts; yield e } else { stmts; yield e }
+
+/// v1.1 block-expression if. Distinct from IfStmt (statement form) in that it
+/// produces a value, yielded from each branch by the last expression in a
+/// `yield`-terminated block. Both branches must yield the same type (checker
+/// obligation: Checker.blockIfBranchesAgree).
+///
+/// Surface:
+///   let damage = if boss_phase == 2 { yield 20 } else { yield 10 };
+///
+/// The branches may contain zero or more statements before the yield; at
+/// least one yield is required per branch.
+and blockIfExpr = {
+  condition: located<expr>,
+  thenStmts: array<located<statement>>,
+  thenYield: located<expr>,
+  elseStmts: array<located<statement>>,
+  elseYield: located<expr>,
+}
 
 /// Binary operators.
 and binOp =

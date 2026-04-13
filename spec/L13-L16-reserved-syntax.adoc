@@ -1,0 +1,314 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= typed-wasm: L13–L16 Reserved Syntax (and Striation)
+:toc: preamble
+:icons: font
+
+Reservation note for grammar shapes and keywords that the L13–L16 level work
+will require, plus the orthogonal **striation** layout annotation landing in
+v1.1. This file exists so that v1.1 surface sugar (`const`, block-`if`,
+`match` on unions, split `effects` clause, `striated` regions) does not
+accidentally claim keywords or syntactic shapes that later levels need.
+
+This is a *reservation*, not a specification. The full level definitions will
+land in `type-safety-levels-for-wasm.adoc` as each level is implemented with
+its checked Idris2 proof artefact.
+
+== Why these levels
+
+typed-wasm currently checks L1–L10 end-to-end. L11–L12 exist as draft files.
+The four new levels below fill out what a language targeting typed-wasm needs
+to express *agent-style computation* on top of the existing checked core:
+
+* **L13 Module isolation** — each module owns private linear memory; cross-module
+  access is only through declared import/export regions. Already prefigured in
+  §3 of the grammar (import_region_decl / export_region_decl); L13 names it
+  and makes it a checked invariant.
+* **L14 Session protocols** — linear handle chains over L10, proving message-passing
+  protocols consume exactly once per state transition.
+* **L15 Resource capabilities** — an orthogonal effect lattice alongside memory
+  effects, tracking external resource access (`read_file`, `web_fetch`, …) with
+  monotone propagation and explicit relinquish.
+* **L16 Agent choreography** — composition proof over L13 + L14 + L15, verifying
+  multi-agent protocols end to end across module boundaries.
+
+== Reserved keywords
+
+The following identifiers are reserved from v1.1 onward and MUST NOT be used
+as identifiers, region names, or field names by surface sugar added in v1.1.
+Each is claimed for a specific future level.
+
+[cols="2,1,4"]
+|===
+| Keyword | Level | Purpose
+
+| `isolated`           | L13 | **LIVE v1.2** — Module isolation marker on `module` declarations
+| `private_memory`     | L13 | **LIVE v1.2** — Per-module private linear memory declaration
+| `boundary`           | L13 | **LIVE v1.2** — Cross-module region access point
+| `session`            | L14 | **LIVE v1.3** — Session protocol declaration
+| `protocol`           | L14 | (reserved; not used at v1.3 — `session` is the surface keyword)
+| `state`              | L14 | **LIVE v1.3** — Session state declaration
+| `transition`         | L14 | **LIVE v1.3** — Explicit state transition in a protocol
+| `consume`            | L14 | **LIVE v1.3** — Marks a linear handle as consumed by a transition
+| `yield`              | L14 | **LIVE v1.3** — Produces the successor handle from a transition (reuses v1.1 block-if `yield` token)
+| `dual`               | L14 | **LIVE v1.3** — Dual of a session protocol (intra-module symmetry checked)
+| `caps`               | L15 | **LIVE v1.1 (parsed) / load-bearing v1.4** — Resource capability sub-clause of split effects; names must refer to declared capabilities under L15
+| `capability`         | L15 | **LIVE v1.4** — Capability declaration at module level (top-level or inside an isolated module body)
+| `grant`              | L15 | (reserved; not live at v1.4 — future v1.4.x dynamic grant/relinquish refinement)
+| `relinquish`         | L15 | (reserved; not live at v1.4 — future v1.4.x dynamic grant/relinquish refinement)
+| `requires_caps`      | L15 | (reserved; not live at v1.4 — future refinement; v1.4 uses `caps:` sub-clause as the surface)
+| `choreography`       | L16 | Multi-agent protocol declaration
+| `agent_role`         | L16 | Named role within a choreography
+| `message`            | L16 | Typed message between roles
+| `composes`           | L16 | Composition directive linking L13/L14/L15 proofs
+| `striated`           | v1.1 | SoA layout annotation on array regions (added v1.1; cost story lands with L11 Tropical)
+| `strided_ptr`        | L17* | Future: proof-visible strided-pointer variant (reserved for potential L17 "Layout-proof striation")
+| `packed`             | L17* | Future: AoS-preserving dense layout annotation (reserved; contrast with `striated`)
+|===
+
+[NOTE]
+====
+`striated` is **live from v1.1** as a layout annotation. The associated
+`strided_ptr` and `packed` keywords are **reserved but not used** until a
+possible future L17 "Layout-proof striation" level — they are listed here only
+to prevent v1.1 sugar from claiming them. See the Striation section below.
+====
+
+== Reserved grammar shapes
+
+The following *shapes* are reserved — v1.1 sugar must not collide with them:
+
+=== L13 shape — isolated modules
+
+[source,ebnf]
+----
+module_decl_isolated = 'module', identifier, 'isolated', '{',
+                           [private_memory_decl],
+                           { declaration },
+                       '}' ;
+
+private_memory_decl = 'private_memory', identifier, '{',
+                          'initial', ':', positive_integer, ';',
+                          ['maximum', ':', positive_integer, ';'],
+                      '}' ;
+
+boundary_decl = 'boundary', identifier, ':',
+                    'import' | 'export', 'region', identifier, ';' ;
+----
+
+=== L14 shape — session protocols
+
+[source,ebnf]
+----
+session_decl = 'session', identifier, '{',
+                   { state_decl },
+                   { transition_decl },
+                   ['dual', ':', identifier, ';'],
+               '}' ;
+
+state_decl = 'state', identifier, [':', field_type], ';' ;
+
+transition_decl = 'transition', identifier, ':',
+                       'consume', identifier, '->', 'yield', identifier,
+                  ';' ;
+----
+
+=== L15 shape — split effects with capabilities
+
+[source,ebnf]
+----
+effects_clause_split = 'effects', '{',
+                           ['memory', ':', '{', effect_list, '}', ','],
+                           ['caps',   ':', '{', cap_list, '}'],
+                       '}' ;
+
+capability_decl = 'capability', identifier, ';' ;
+
+grant_stmt = 'grant', identifier, 'to', identifier, ';' ;
+
+relinquish_stmt = 'relinquish', identifier, ';' ;
+
+requires_caps_clause = 'requires_caps', '{', cap_list, '}' ;
+
+cap_list = identifier, { ',', identifier } ;
+----
+
+=== L16 shape — agent choreography
+
+[source,ebnf]
+----
+choreography_decl = 'choreography', identifier, '{',
+                        { agent_role_decl },
+                        { message_decl },
+                        'composes', ':', composition_spec, ';',
+                    '}' ;
+
+agent_role_decl = 'agent_role', identifier, ':', identifier, ';' ;
+
+message_decl = 'message', identifier, ':',
+                    identifier, '->', identifier, ',', field_type, ';' ;
+
+composition_spec = 'L13', '+', 'L14', '+', 'L15' ;
+----
+
+== Enforcement policy — contextual, not global
+
+The keyword table above is **documentation only at v1.1**. Reserved keywords
+are NOT globally reserved at the lexer level, because many of them
+(`state`, `message`, `boundary`, `consume`, …) are common English words
+already used as field/variable/region names in existing `.twasm` sources.
+Globally reserving them would break backward compatibility without gain:
+a level that does not yet exist cannot claim a keyword it is not yet using.
+
+=== How it actually works
+
+* **v1.1 (now):** Lexer treats all L13–L16 words as plain `Ident(...)`.
+  Parser only recognises them as keywords when the v1.1 grammar itself
+  uses them in context (e.g. `striated` immediately after a region's
+  optional instance count).
+* **v1.2 onward:** Each level that lands its grammar adds a CONTEXTUAL
+  parser check. For example, when L14 lands:
++
+[source]
+----
+session Name {
+    state Idle : i32;           // `state` recognised here
+    transition start : ...;     // `transition` recognised here
+}
+
+fn some_func() {
+    let state = 42;             // `state` remains a valid identifier here
+}
+----
++
+The same token string is a keyword inside `session { ... }` and an
+identifier everywhere else. Contextual reservation is how Rust handles
+`dyn` and `async`, and how Go handles its contextual keywords.
+* **Compound words** (`private_memory`, `requires_caps`, `strided_ptr`,
+  `agent_role`) are safe to reserve globally when the time comes because
+  they cannot collide with single-word identifiers. These are the only
+  candidates for eventual global lexer-level reservation.
+
+=== What v1.1 MAY do
+
+. Emit the split `effects { memory: {...}, caps: {...} }` clause — even
+  though `caps` is opaque under v1.1, emitters that already emit the split
+  form do not need to regenerate output when the checker upgrades from
+  v1.1 to v1.4.
+. Use `match`, `const`, `striated`, `yield` (these are v1.1 sugar keywords).
+
+=== What v1.1 MUST NOT do
+
+. Claim any of the L13–L16 keywords listed in the table as v1.1 sugar —
+  they are reserved by documentation for the levels that will eventually
+  use them.
+. Globally lex any L13–L16 word as a keyword — the collision with existing
+  `.twasm` sources broke example 02-multi-module.twasm when this was first
+  attempted 2026-04-13, and the policy was revised to contextual reservation.
+
+== Striation (v1.1 layout annotation — orthogonal to safety levels)
+
+=== What it is
+
+Striation is the struct-of-arrays (SoA) analogue of disk striping. Where the
+default array-region layout is array-of-structs (AoS) — each record's fields
+packed contiguously, records one after another — a *striated* region inverts
+the axes: all `field_A` values contiguous, then all `field_B` values
+contiguous, etc. Same logical schema, different physical layout.
+
+[source]
+----
+// Default (AoS): Players[0].hp, Players[0].speed, Players[1].hp, ...
+region Players[100] { hp: i32; speed: f64; }
+
+// Striated (SoA): all 100 hp values, then all 100 speed values
+region Players[100] striated { hp: i32; speed: f64; }
+----
+
+=== Why it earns a place in v1.1
+
+. **SIMD.** A scan over `hp` is one vectorised `i32x4` load instead of a gather.
+. **Cache.** Hot-path scans touch only the hot stripe's cache lines; cold fields never cross the bus.
+. **Accelerator offload.** Striated regions are directly memcpy-able to GPU / TPU device memory; AoS requires a transpose.
+. **Proof-visible layout.** Striation is part of the schema, not a hidden compiler choice. The checker proves access patterns are SoA-consistent; raw wasm cannot express this at all.
+
+=== Why it is NOT a safety level
+
+Striation is a layout-and-performance annotation, not a safety property. It
+does not introduce new invariants that require an Idris2 proof artefact of its
+own. L1–L10 safety properties hold pointwise on any striated region exactly
+as they do on any AoS region; the checker's proof obligations are unchanged,
+only the emitted offset arithmetic differs.
+
+The **cost** story for striation lives in **L11 Tropical cost-tracking**,
+which is already drafted in typed-wasm. A striated region's access cost is
+provably lower than the AoS equivalent for stride-1 field scans, expressible
+in the tropical (min-plus) semiring. L11 is the natural home for "striation
+is cheaper" proofs once both L11 and this annotation are checked-in-package.
+
+=== The pointer constraint
+
+Striation breaks natural pointer semantics: you cannot take an owning pointer
+to "one whole record" in a striated region because the record's bytes are not
+contiguous. v1.1 resolves this with a hard rule:
+
+> **Striated regions are access-by-projection only.** `region.get $r[i] .field`
+> and `region.set $r[i] .field, v` are allowed. Whole-record pointers
+> (`ptr<Record>`, `unique<Record>`, `ref<Record>`) are NOT allowed into a
+> striated region. Field-level pointers (`ptr<i32>` to a specific stripe
+> element) are allowed if the field type admits them.
+
+This rule sidesteps the dependent-type coercion problem between AoS and SoA
+views entirely: there is no coercion because whole-record pointers are simply
+absent from striated regions at the type level.
+
+A potential future **L17 "Layout-proof striation"** level would lift this
+restriction by introducing a `strided_ptr<T>` that carries its stride as a
+type-level parameter and proves coercion-freedom against the region schema.
+L17 is **reserved but not scheduled** — v1.1's projection-only rule is
+sufficient for the 007, Ephapax, and AffineScript use cases that motivate
+striation in the first place.
+
+=== Grammar shape (v1.1)
+
+[source,ebnf]
+----
+region_decl_striated = 'region', identifier, [region_quantifier],
+                          'striated',
+                          '{', { field_decl }, [alignment_decl], '}' ;
+
+(* Striated regions MAY NOT contain whole-region pointer fields *)
+(* Striated regions MAY NOT be imported/exported pre-L13 (module isolation) *)
+----
+
+=== Reserved for future (L17, not in v1.1)
+
+- `strided_ptr<T>` — field-level pointer carrying stride at the type level
+- `packed` — AoS-preserving dense layout annotation (contrasts with `striated`)
+- Coercion lemma between AoS and SoA views of the same record schema
+
+These are reserved now so v1.1 sugar and L13–L16 level work do not claim them.
+
+== Version impact
+
+* v1.1 = L1–L10 checked + surface sugar (const, match, block-if, split-effects) + `striated` regions
+* **v1.2 = v1.1 + L13 checked (LIVE 2026-04-13).** Idris2 proof:
+  `src/abi/TypedWasm/ABI/ModuleIsolation.idr`. Surface enforcement:
+  `Checker.checkIsolatedModule`. Parser tests: 12 (L13) + 38 (v1.1) = 50 passing.
+* **v1.3 = v1.2 + L14 checked (LIVE 2026-04-13).** Idris2 proof:
+  `src/abi/TypedWasm/ABI/SessionProtocol.idr` — `SessionHandle` parameterised
+  by state index, `step` lemma proves type-state soundness, `DualPair`
+  captures two-party symmetry. Surface enforcement: `Checker.checkSession`.
+  Parser tests: 13 (L14) + 50 (prior) = 63 passing.
+* **v1.4 = v1.3 + L15 checked (LIVE 2026-04-13).** Idris2 proof:
+  `src/abi/TypedWasm/ABI/ResourceCapabilities.idr` — `DistinctCaps`
+  (L15-A), `ContainedIn` with `containedRefl` / `containedTrans` (L15-B
+  subset), `CallCompatible` + `callCompose` (L15-C call-graph monotone),
+  `FullEffectBudget` orthogonality with L8 memory effects, soundness
+  theorems `l15bSoundness` / `l15cSoundness` / `callReachesModule`.
+  Surface enforcement: `Checker.checkCapabilities` + scope-threaded
+  `checkDeclaration` (L15-A + L15-B only; L15-C surface analysis deferred
+  to v1.4.x). Parser tests: 13 (L15) + 63 (prior) = 76 passing.
+* v1.5 = v1.4 + L16 checked (or v2.0 if the aggregate library is promoted at this point)
+* L17  = reserved, unscheduled — "Layout-proof striation" with `strided_ptr<T>`
