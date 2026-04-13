@@ -39,6 +39,7 @@ and declaration =
   | BoundaryDecl(boundaryDecl) // v1.2 / L13 — only legal inside a ModuleIsolatedDecl body
   | SessionDecl(sessionDecl) // v1.3 / L14
   | CapabilityDecl(capabilityDecl) // v1.4 / L15
+  | ChoreographyDecl(choreographyDecl) // v1.5 / L16
 
 // ============================================================================
 // v1.2 / L13 — Module Isolation
@@ -234,6 +235,68 @@ and sessionTransitionDecl = {
 ///   capability read_file;
 and capabilityDecl = {
   name: string,
+}
+
+// ============================================================================
+// v1.5 / L16 — Agent Choreography
+// ============================================================================
+//
+// Surface:
+//
+//   choreography CheckoutFlow {
+//     agent_role Buyer  : BuyerSession;
+//     agent_role Seller : SellerModule;
+//     message pay : Buyer -> Seller, i64;
+//     composes: L13 + L14 + L15;
+//   }
+//
+// A choreography declaration composes the already-proven lower levels:
+// L13 isolation, L14 session linearity, and L15 capability containment.
+// The parser records role/message declarations plus the composition spec;
+// Checker.checkChoreography enforces L16-A..L16-D.
+
+/// v1.5 / L16 — choreography declaration.
+and choreographyDecl = {
+  name: string,
+  roles: array<located<agentRoleDecl>>,
+  messages: array<located<choreographyMessageDecl>>,
+  composition: choreographyCompositionSpec,
+}
+
+/// v1.5 / L16 — role declaration in a choreography.
+///
+///   agent_role RoleName : TargetName;
+///
+/// `TargetName` must resolve to a session or isolated module in the same file
+/// (checked by Checker L16-A).
+and agentRoleDecl = {
+  roleName: string,
+  targetName: string,
+}
+
+/// v1.5 / L16 — typed message declaration between roles.
+///
+///   message MsgName : RoleA -> RoleB, field_type;
+///
+/// Checker enforces:
+///   * from/to roles exist (L16-B)
+///   * payload is primitive or declared region reference (L16-C)
+and choreographyMessageDecl = {
+  name: string,
+  fromRole: string,
+  toRole: string,
+  payload: located<fieldType>,
+}
+
+/// v1.5 / L16 — composition spec.
+///
+/// Current v1.5 surface requires exactly `L13 + L14 + L15`.
+/// The parser stores the three components verbatim; checker enforces exact
+/// equality so future versions can extend this shape without changing AST.
+and choreographyCompositionSpec = {
+  first: string,
+  second: string,
+  third: string,
 }
 
 // ============================================================================

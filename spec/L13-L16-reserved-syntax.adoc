@@ -58,10 +58,10 @@ Each is claimed for a specific future level.
 | `grant`              | L15 | (reserved; not live at v1.4 — future v1.4.x dynamic grant/relinquish refinement)
 | `relinquish`         | L15 | (reserved; not live at v1.4 — future v1.4.x dynamic grant/relinquish refinement)
 | `requires_caps`      | L15 | (reserved; not live at v1.4 — future refinement; v1.4 uses `caps:` sub-clause as the surface)
-| `choreography`       | L16 | Multi-agent protocol declaration
-| `agent_role`         | L16 | Named role within a choreography
-| `message`            | L16 | Typed message between roles
-| `composes`           | L16 | Composition directive linking L13/L14/L15 proofs
+| `choreography`       | L16 | **LIVE v1.5** — Multi-agent protocol declaration
+| `agent_role`         | L16 | **LIVE v1.5** — Named role within a choreography
+| `message`            | L16 | **LIVE v1.5** — Typed message between roles
+| `composes`           | L16 | **LIVE v1.5** — Composition directive linking L13/L14/L15 proofs
 | `striated`           | v1.1 | SoA layout annotation on array regions (added v1.1; cost story lands with L11 Tropical)
 | `strided_ptr`        | L17* | Future: proof-visible strided-pointer variant (reserved for potential L17 "Layout-proof striation")
 | `packed`             | L17* | Future: AoS-preserving dense layout annotation (reserved; contrast with `striated`)
@@ -310,5 +310,9 @@ These are reserved now so v1.1 sugar and L13–L16 level work do not claim them.
   Surface enforcement: `Checker.checkCapabilities` + scope-threaded
   `checkDeclaration` (L15-A + L15-B only; L15-C surface analysis deferred
   to v1.4.x). Parser tests: 13 (L15) + 63 (prior) = 76 passing.
-* v1.5 = v1.4 + L16 checked (or v2.0 if the aggregate library is promoted at this point)
+* **v1.5 = v1.4 + L16 checked (LIVE 2026-04-13).** Idris2 proof:
+  `src/abi/TypedWasm/ABI/Choreography.idr` — composition-only theorem over
+  L13 + L14 + L15 (no re-proof of lower levels). Surface enforcement:
+  `Checker.checkChoreography` with L16-A..L16-D. Parser tests: 12 (L16) +
+  76 (prior) = 88 passing.
 * L17  = reserved, unscheduled — "Layout-proof striation" with `strided_ptr<T>`

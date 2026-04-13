@@ -3,8 +3,21 @@
 (*
  * typed-wasm — Typed Memory Regions for WebAssembly
  * Format: Extended Backus-Naur Form (EBNF)
- * Version: 0.5.0 (v1.4 — L15 Resource Capabilities)
+ * Version: 0.6.0 (v1.5 — L16 Agent Choreography)
  * Date: 2026-04-13
+ *
+ * v1.5 additions over v0.5 (L16 Agent choreography):
+ *   - `choreography Name { ... }` declaration form for multi-agent protocol
+ *     composition over L13 + L14 + L15.
+ *   - `agent_role Role : Target;` entries binding choreography roles to
+ *     session/module realisations declared in the same file.
+ *   - `message Msg : From -> To, field_type;` typed message edges.
+ *   - Mandatory composition clause: `composes: L13 + L14 + L15;`
+ *   - Checker enforcements: L16-A role target exists (session/module),
+ *     L16-B message endpoints declared, L16-C payload primitive or declared
+ *     region reference, L16-D composition spec fixed to L13+L14+L15 at v1.5.
+ *   - Idris2 proof artefact: src/abi/TypedWasm/ABI/Choreography.idr —
+ *     composition-only theorem citing L13/L14/L15 witnesses per role.
  *
  * v1.4 additions over v0.4 (L15 Resource Capabilities):
  *   - `capability NAME ;` top-level and isolated-module-body declaration
@@ -102,7 +115,8 @@ declaration = region_decl
             | const_decl                              (* v1.1 *)
             | module_isolated_decl                    (* v1.2 / L13 *)
             | session_decl                            (* v1.3 / L14 *)
-            | capability_decl ;                       (* v1.4 / L15 *)
+            | capability_decl                         (* v1.4 / L15 *)
+            | choreography_decl ;                     (* v1.5 / L16 *)
 
 (* v1.4 / L15: a capability declaration names an external resource that
    functions may require via the `caps: { ... }` sub-clause of the v1.1
@@ -116,6 +130,24 @@ declaration = region_decl
    reserved but not live at v1.4 — the parser rejects them at top level
    with a pointer to L15+future. *)
 capability_decl = 'capability', identifier, ';' ;
+
+(* v1.5 / L16: choreography composes lower-level invariants across
+   multiple agent roles. `agent_role` binds a choreography role-name to
+   a same-file session/module target. `message` edges are typed and must
+   connect declared roles. `composes` is currently fixed to
+   `L13 + L14 + L15` at v1.5. *)
+choreography_decl = 'choreography', identifier, '{',
+                        { agent_role_decl },
+                        { message_decl },
+                        'composes', ':', composition_spec, ';',
+                    '}' ;
+
+agent_role_decl = 'agent_role', identifier, ':', identifier, ';' ;
+
+message_decl = 'message', identifier, ':',
+                   identifier, '->', identifier, ',', field_type, ';' ;
+
+composition_spec = 'L13', '+', 'L14', '+', 'L15' ;
 
 (* v1.3 / L14: a session protocol is a finite-state machine over typed
    linear handles. Each `state` declares a labelled typed state (optionally

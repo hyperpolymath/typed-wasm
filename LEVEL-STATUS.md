@@ -16,7 +16,7 @@ full trajectory and keyword reservations.
 | v1.2 | L1-10, L13 | v0.3 sugar | +L13 Module isolation: `module Name isolated { ... }`, `private_memory`, `boundary`. Idris2 proof: ModuleIsolation.idr. Surface enforcement: Checker.checkIsolatedModule. |
 | v1.3 | L1-10, L13, L14 | v0.4 sugar | +L14 Session protocols: `session Name { state ...; transition consume X -> yield Y; dual : ...; }`. Idris2 proof: SessionProtocol.idr (SessionHandle parameterised by state index, step soundness, DualPair symmetry). Surface enforcement: Checker.checkSession. 63/63 parser tests. |
 | **v1.4** | **L1-10, L13, L14, L15** | **v0.5 sugar** | **+L15 Resource capabilities: `capability NAME;` top-level and isolated-module-body declarations; v1.1 `caps: { ... }` sub-clause becomes load-bearing. Idris2 proof: ResourceCapabilities.idr (DistinctCaps L15-A, ContainedIn + containedTrans L15-B, CallCompatible + callCompose L15-C, FullEffectBudget orthogonality with L8). Surface enforcement: Checker.checkCapabilities + scope-threaded checkDeclaration. L15-A (distinct) + L15-B (well-scoped) live at v1.4; L15-C (call-graph monotone) deferred to v1.4.x (proof already carries the theorem). 76/76 parser tests pass.** |
-| v1.5 / v2.0 | L1-L16 | v0.2 sugar | +L16 Agent choreography (composition proof over L13+L14+L15) |
+| **v1.5** | **L1-10, L13, L14, L15, L16** | **v0.6 sugar** | **+L16 Agent choreography: `choreography { agent_role ...; message ...; composes: L13 + L14 + L15; }`. Idris2 proof: Choreography.idr (composition-only theorem citing lower levels). Surface enforcement: Checker.checkChoreography (L16-A..L16-D). 88/88 parser tests pass.** |
 | L17 (reserved) | L1-L16, **L17** | future | "Layout-proof striation" with `strided_ptr<T>` — removes the projection-only restriction on striated regions |
 
 **L11 (Tropical)** and **L12 (Epistemic)** remain draft-only at v1.1. They are
@@ -38,7 +38,7 @@ natural home for "striation is cheaper" proofs once it lands.
 **AST and lexer tokens landed 2026-04-13. Parser rules and Checker module are
 the remaining v1.1 work.**
 
-## Current: checked core = L1-10, L11-L12 = draft, v1.1 surface sugar IN PROGRESS
+## Current: checked core = L1-10 + L13-L16, L11-L12 = draft
 
 | Level | Name | Idris2 Proof | Zig FFI | Tests | Status |
 |-------|------|-------------|---------|-------|--------|
@@ -56,7 +56,8 @@ the remaining v1.1 work.**
 | 12 | Epistemic safety | Epistemic.idr | Not yet | None | **Draft only; not in package; standalone check currently fails** |
 | 13 | Module isolation | ModuleIsolation.idr | (per-module handles, future) | 12 parser/Checker tests | **v1.2 — Idris2 proof + surface checker live; 007 lowering DONE (task #5)** |
 | 14 | Session protocols | SessionProtocol.idr | (typed-state handles, future) | 13 parser/Checker tests | **v1.3 — Idris2 proof + surface checker live; 007 send/receive lowering DONE (task #7)** |
-| 15 | Resource capabilities | ResourceCapabilities.idr | (future) | 13 parser/Checker tests | **v1.4 — Idris2 proof + surface checker (L15-A + L15-B) live; L15-C call-graph check deferred to v1.4.x; 007 lowering pending (task #9)** |
+| 15 | Resource capabilities | ResourceCapabilities.idr | (future) | 13 parser/Checker tests | **v1.4 — Idris2 proof + surface checker (L15-A + L15-B) live; L15-C call-graph check deferred to v1.4.x; 007 lowering DONE (task #9)** |
+| 16 | Agent choreography | Choreography.idr | (future) | 12 parser/Checker tests | **v1.5 — composition proof over L13+L14+L15 live; surface checker enforces L16-A (role targets exist), L16-B (message endpoints declared), L16-C (payload primitive/declared region ref), L16-D (exact `L13 + L14 + L15` composition spec).** |
 
 **[sfap]** = "so far as possible" — proofs are machine-checked in Idris2 with
 zero dangerous patterns. They are as complete as the Idris2 type checker can
@@ -94,6 +95,7 @@ toolchain remains future work.
 | ModuleIsolation.idr | 0 | 0 | 0 | In package (v1.2 / L13) |
 | SessionProtocol.idr | 0 | 0 | 0 | In package (v1.3 / L14) |
 | ResourceCapabilities.idr | 0 | 0 | 0 | In package (v1.4 / L15) |
+| Choreography.idr | 0 | 0 | 0 | In package (v1.5 / L16) |
 | Proofs.idr | 0 | 0 | 0 | In package |
 | Tropical.idr | 0 | 0 | 0 | Draft file; standalone check fails |
 | Epistemic.idr | 0 | 0 | 0 | Draft file; standalone check fails |

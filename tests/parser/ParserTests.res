@@ -1396,6 +1396,200 @@ test("v1.4: parser rejects 'requires_caps' at top level (reserved, not live at v
 })
 
 // ============================================================================
+// v1.5 / L16 — Agent Choreography
+// ============================================================================
+
+test("v1.5: parse minimal choreography decl", () => {
+  let src = `
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography TradeFlow {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message pay : buyer -> seller, i64;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  assertTrue(Array.length(m.declarations) >= 3, "expected choreography decl in module")
+})
+
+test("v1.5: parser rejects 'agent_role' at top level", () => {
+  let src = `agent_role buyer : Buyer;`
+  switch parseModule(src) {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level agent_role")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.5: parser rejects 'message' at top level", () => {
+  let src = `message ping : a -> b, i32;`
+  switch parseModule(src) {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level message")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.5: parser rejects 'composes' at top level", () => {
+  let src = `composes: L13 + L14 + L15;`
+  switch parseModule(src) {
+  | Ok(_) => Exn.raiseError("Expected parse error for top-level composes")
+  | Error(_) => () // expected
+  }
+})
+
+test("v1.5: Checker accepts well-formed choreography", () => {
+  let src = `
+region MsgRegion { value: i32; }
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography TradeFlow {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message pay : buyer -> seller, i64;
+  message ack : seller -> buyer, @MsgRegion;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics")
+})
+
+test("v1.5: Checker rejects agent_role target missing in file (L16-A)", () => {
+  let src = `
+choreography C {
+  agent_role buyer : MissingTarget;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(diags->Array.some(d => d.message->String.includes("L16-A")), "expected L16-A diagnostic")
+})
+
+test("v1.5: Checker rejects message with unknown from-role (L16-B)", () => {
+  let src = `
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography C {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message bad_from : ghost -> seller, i32;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(diags->Array.some(d => d.message->String.includes("L16-B")), "expected L16-B diagnostic")
+})
+
+test("v1.5: Checker rejects message with unknown to-role (L16-B)", () => {
+  let src = `
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography C {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message bad_to : buyer -> ghost, i32;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(diags->Array.some(d => d.message->String.includes("L16-B")), "expected L16-B diagnostic")
+})
+
+test("v1.5: Checker rejects opaque message payload type (L16-C)", () => {
+  let src = `
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography C {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message ptr_payload : buyer -> seller, ptr<i32>;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(diags->Array.some(d => d.message->String.includes("L16-C")), "expected L16-C diagnostic")
+})
+
+test("v1.5: Checker rejects undeclared region payload reference (L16-C)", () => {
+  let src = `
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography C {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message missing_region : buyer -> seller, @NoSuchRegion;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(diags->Array.some(d => d.message->String.includes("L16-C")), "expected L16-C diagnostic")
+})
+
+test("v1.5: Checker accepts declared region payload reference (L16-C pass)", () => {
+  let src = `
+region SharedMsg { v: i32; }
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography C {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message ok_region : buyer -> seller, @SharedMsg;
+  composes: L13 + L14 + L15;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertEqual(Array.length(diags), 0, "expected zero diagnostics")
+})
+
+test("v1.5: Checker rejects non-v1.5 composition spec (L16-D)", () => {
+  let src = `
+module Buyer isolated { region BuyerState { v: i32; } }
+session SellerProto {
+  state Ready : i32;
+  transition loop : consume Ready -> yield Ready;
+}
+choreography C {
+  agent_role buyer : Buyer;
+  agent_role seller : SellerProto;
+  message pay : buyer -> seller, i32;
+  composes: L13 + L14 + L99;
+}
+`
+  let m = parseModule(src)->assertOk
+  let diags = Checker.checkModule(m)
+  assertTrue(diags->Array.some(d => d.message->String.includes("L16-D")), "expected L16-D diagnostic")
+})
+
+// ============================================================================
 // Summary
 // ============================================================================
 

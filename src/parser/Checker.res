@@ -811,6 +811,174 @@ let checkFunctionCapsScoped = (
 }
 
 // ============================================================================
+// 8. checkChoreography — v1.5 L16 well-formedness
+// ============================================================================
+//
+// L16 choreography declarations compose lower-level obligations. Surface checks:
+//
+//   L16-A  Each `agent_role` target must name a session OR isolated module
+//          declared in the same file.
+//   L16-B  Each message endpoint (`from` / `to`) must name a declared role in
+//          the choreography.
+//   L16-C  Message payload type must be primitive OR a declared region
+//          reference (`@RegionName`) in the same file.
+//   L16-D  Composition spec must be exactly `L13 + L14 + L15` at v1.5.
+
+let pushUnique = (names: array<string>, name: string): unit => {
+  if !Array.includes(names, name) {
+    let _ = Array.push(names, name)
+  }
+}
+
+let rec collectSessionNamesInDecls = (
+  decls: array<Ast.located<Ast.declaration>>,
+  acc: array<string>,
+): unit => {
+  Array.forEach(decls, d => {
+    switch d.node {
+    | SessionDecl(s) => pushUnique(acc, s.name)
+    | ModuleIsolatedDecl(im) => collectSessionNamesInDecls(im.declarations, acc)
+    | _ => ()
+    }
+  })
+}
+
+let rec collectIsolatedModuleNamesInDecls = (
+  decls: array<Ast.located<Ast.declaration>>,
+  acc: array<string>,
+): unit => {
+  Array.forEach(decls, d => {
+    switch d.node {
+    | ModuleIsolatedDecl(im) =>
+      pushUnique(acc, im.name)
+      collectIsolatedModuleNamesInDecls(im.declarations, acc)
+    | _ => ()
+    }
+  })
+}
+
+let rec collectRegionNamesInDecls = (
+  decls: array<Ast.located<Ast.declaration>>,
+  acc: array<string>,
+): unit => {
+  Array.forEach(decls, d => {
+    switch d.node {
+    | RegionDecl(r) => pushUnique(acc, r.name)
+    | ModuleIsolatedDecl(im) => collectRegionNamesInDecls(im.declarations, acc)
+    | _ => ()
+    }
+  })
+}
+
+let checkChoreography = (
+  c: Ast.choreographyDecl,
+  m: module_,
+  loc: Lexer.loc,
+): array<diagnostic> => {
+  let diags: array<diagnostic> = []
+
+  // Collect declaration sets from the full file (top-level + nested isolated).
+  let sessionNames: array<string> = []
+  let isolatedModuleNames: array<string> = []
+  let regionNames: array<string> = []
+  collectSessionNamesInDecls(m.declarations, sessionNames)
+  collectIsolatedModuleNamesInDecls(m.declarations, isolatedModuleNames)
+  collectRegionNamesInDecls(m.declarations, regionNames)
+
+  // L16-A: role targets must resolve to a declared session or isolated module.
+  Array.forEach(c.roles, r => {
+    let target = r.node.targetName
+    let foundSession = Array.includes(sessionNames, target)
+    let foundModule = Array.includes(isolatedModuleNames, target)
+    if !foundSession && !foundModule {
+      let _ = Array.push(
+        diags,
+        {
+          message: "agent_role '" ++
+          r.node.roleName ++
+          "' references '" ++
+          target ++
+          "' which is not a declared session or isolated module in this file (L16-A)",
+          loc: r.loc,
+        },
+      )
+    }
+  })
+
+  let roleNames = c.roles->Array.map(r => r.node.roleName)
+
+  // L16-B + L16-C: message endpoints and payload typing constraints.
+  Array.forEach(c.messages, msgDecl => {
+    let msg = msgDecl.node
+    if !Array.includes(roleNames, msg.fromRole) {
+      let _ = Array.push(
+        diags,
+        {
+          message: "message '" ++
+          msg.name ++
+          "' references unknown from-role '" ++
+          msg.fromRole ++ "' (L16-B)",
+          loc: msgDecl.loc,
+        },
+      )
+    }
+    if !Array.includes(roleNames, msg.toRole) {
+      let _ = Array.push(
+        diags,
+        {
+          message: "message '" ++
+          msg.name ++
+          "' references unknown to-role '" ++
+          msg.toRole ++ "' (L16-B)",
+          loc: msgDecl.loc,
+        },
+      )
+    }
+    switch msg.payload.node {
+    | Primitive(_) => ()
+    | RegionRef(regionName) =>
+      if !Array.includes(regionNames, regionName) {
+        let _ = Array.push(
+          diags,
+          {
+            message: "message '" ++
+            msg.name ++
+            "' payload references undeclared region '" ++
+            regionName ++ "' (L16-C)",
+            loc: msg.payload.loc,
+          },
+        )
+      }
+    | _ =>
+      let _ = Array.push(
+        diags,
+        {
+          message: "message '" ++
+          msg.name ++
+          "' payload type is not allowed in v1.5 choreography: use a primitive or declared region reference (L16-C)",
+          loc: msg.payload.loc,
+        },
+      )
+    }
+  })
+
+  // L16-D: composition spec fixed to L13 + L14 + L15 at v1.5.
+  if c.composition.first != "L13" || c.composition.second != "L14" || c.composition.third != "L15" {
+    let _ = Array.push(
+      diags,
+      {
+        message: "choreography '" ++
+        c.name ++
+        "' must declare `composes: L13 + L14 + L15;` at v1.5 (L16-D)",
+        loc,
+      },
+    )
+  }
+
+  diags
+}
+
+// ============================================================================
 // Top-level module check — runs all checks, returns accumulated diags
 // ============================================================================
 
@@ -899,14 +1067,14 @@ and walkExpr = (e: Ast.located<expr>, acc: array<diagnostic>): array<diagnostic>
   acc
 }
 
-/// Run all v1.1 + v1.2 (L13) + v1.3 (L14) + v1.4 (L15) well-formedness
+/// Run all v1.1 + v1.2 (L13) + v1.3 (L14) + v1.4 (L15) + v1.5 (L16) well-formedness
 /// checks across the module. Returns the accumulated diagnostics; empty
 /// array means the module passes.
 ///
 /// Isolated modules (L13) are walked recursively: v1.1 checks continue to
 /// apply to the declarations INSIDE an isolated module's body (const decls,
 /// region striation, match exhaustiveness, block-if yield shapes), and the
-/// L13/L14/L15-specific checks run in addition.
+/// L13/L14/L15/L16-specific checks run in addition.
 ///
 /// v1.4 / L15 scoping: the `enclosingCaps` parameter carries the capability
 /// set visible at this point. At the top level it is the top-level
@@ -965,6 +1133,12 @@ let rec checkDeclaration = (
   | SessionDecl(s) =>
     // v1.3 / L14
     let d = checkSession(s, m, decl.loc)
+    Array.forEach(d, x => {
+      let _ = Array.push(diags, x)
+    })
+  | ChoreographyDecl(c) =>
+    // v1.5 / L16
+    let d = checkChoreography(c, m, decl.loc)
     Array.forEach(d, x => {
       let _ = Array.push(diags, x)
     })

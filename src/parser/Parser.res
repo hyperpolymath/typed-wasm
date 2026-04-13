@@ -2445,6 +2445,220 @@ let parseCapabilityDecl = (p: parserState): result<Ast.located<Ast.declaration>>
   }
 }
 
+// ============================================================================
+// v1.5 / L16 — Agent Choreography
+// ============================================================================
+//
+// L16 introduces `choreography` declarations that compose L13 + L14 + L15.
+// All L16 keywords are contextual and arrive as Ident(...):
+//   choreography, agent_role, message, composes
+
+/// Parse one `agent_role` declaration inside a choreography.
+///
+///   agent_role_decl = 'agent_role' identifier ':' identifier ';'
+let parseChoreographyAgentRoleDecl = (
+  p: parserState,
+): result<Ast.located<Ast.agentRoleDecl>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("agent_role")
+  switch expectIdent(p) {
+  | Error(e) => Error(e)
+  | Ok(roleName) =>
+    switch expect(p, Colon) {
+    | Error(e) => Error(e)
+    | Ok() =>
+      switch expectIdent(p) {
+      | Error(e) => Error(e)
+      | Ok(targetName) =>
+        switch expect(p, Semicolon) {
+        | Error(e) => Error(e)
+        | Ok() =>
+          Ok({
+            node: {roleName, targetName},
+            loc: startLoc,
+          })
+        }
+      }
+    }
+  }
+}
+
+/// Parse one `message` declaration inside a choreography.
+///
+///   message_decl = 'message' identifier ':'
+///                    identifier '->' identifier ',' field_type ';'
+let parseChoreographyMessageDecl = (
+  p: parserState,
+): result<Ast.located<Ast.choreographyMessageDecl>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("message")
+  switch expectIdent(p) {
+  | Error(e) => Error(e)
+  | Ok(name) =>
+    switch expect(p, Colon) {
+    | Error(e) => Error(e)
+    | Ok() =>
+      switch expectIdent(p) {
+      | Error(e) => Error(e)
+      | Ok(fromRole) =>
+        switch expect(p, Arrow) {
+        | Error(e) => Error(e)
+        | Ok() =>
+          switch expectIdent(p) {
+          | Error(e) => Error(e)
+          | Ok(toRole) =>
+            switch expect(p, Comma) {
+            | Error(e) => Error(e)
+            | Ok() =>
+              switch parseFieldType(p) {
+              | Error(e) => Error(e)
+              | Ok(payload) =>
+                switch expect(p, Semicolon) {
+                | Error(e) => Error(e)
+                | Ok() =>
+                  Ok({
+                    node: {name, fromRole, toRole, payload},
+                    loc: startLoc,
+                  })
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Parse `L13 + L14 + L15` (stored verbatim; checker enforces exactness).
+let parseChoreographyCompositionSpec = (
+  p: parserState,
+): result<Ast.choreographyCompositionSpec> => {
+  switch expectIdent(p) {
+  | Error(e) => Error(e)
+  | Ok(first) =>
+    switch expect(p, Plus) {
+    | Error(e) => Error(e)
+    | Ok() =>
+      switch expectIdent(p) {
+      | Error(e) => Error(e)
+      | Ok(second) =>
+        switch expect(p, Plus) {
+        | Error(e) => Error(e)
+        | Ok() =>
+          switch expectIdent(p) {
+          | Error(e) => Error(e)
+          | Ok(third) => Ok({first, second, third})
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Parse a choreography declaration.
+///
+///   choreography_decl = 'choreography' identifier '{'
+///                         { agent_role_decl }
+///                         { message_decl }
+///                         'composes' ':' composition_spec ';'
+///                       '}'
+let parseChoreographyDecl = (p: parserState): result<Ast.located<Ast.declaration>> => {
+  let startLoc = loc(p)
+  advance(p) // consume Ident("choreography")
+  switch expectIdent(p) {
+  | Error(e) => Error(e)
+  | Ok(name) =>
+    switch expect(p, LBrace) {
+    | Error(e) => Error(e)
+    | Ok() =>
+      let roles: array<Ast.located<Ast.agentRoleDecl>> = []
+      let messages: array<Ast.located<Ast.choreographyMessageDecl>> = []
+      let composition = ref(None)
+      let rec parseBody = () => {
+        switch peek(p) {
+        | RBrace => Ok()
+        | EOF =>
+          Error({
+            message: "Unexpected EOF inside 'choreography " ++ name ++ " { ... }' body",
+            loc: loc(p),
+          })
+        | Ident("agent_role") =>
+          switch parseChoreographyAgentRoleDecl(p) {
+          | Error(e) => Error(e)
+          | Ok(r) =>
+            let _ = Array.push(roles, r)
+            parseBody()
+          }
+        | Ident("message") =>
+          switch parseChoreographyMessageDecl(p) {
+          | Error(e) => Error(e)
+          | Ok(m) =>
+            let _ = Array.push(messages, m)
+            parseBody()
+          }
+        | Ident("composes") =>
+          switch composition.contents {
+          | Some(_) =>
+            Error({
+              message: "Duplicate 'composes' clause in choreography '" ++ name ++ "'",
+              loc: loc(p),
+            })
+          | None =>
+            advance(p) // consume Ident("composes")
+            switch expect(p, Colon) {
+            | Error(e) => Error(e)
+            | Ok() =>
+              switch parseChoreographyCompositionSpec(p) {
+              | Error(e) => Error(e)
+              | Ok(spec) =>
+                switch expect(p, Semicolon) {
+                | Error(e) => Error(e)
+                | Ok() =>
+                  composition := Some(spec)
+                  parseBody()
+                }
+              }
+            }
+          }
+        | _ =>
+          Error({
+            message: "Unexpected token in choreography body — expected 'agent_role', 'message', 'composes', or '}'",
+            loc: loc(p),
+          })
+        }
+      }
+      switch parseBody() {
+      | Error(e) => Error(e)
+      | Ok() =>
+        switch composition.contents {
+        | None =>
+          Error({
+            message: "Choreography '" ++
+            name ++
+            "' is missing `composes: ...;` (L16 requires a composition spec)",
+            loc: startLoc,
+          })
+        | Some(spec) =>
+          switch expect(p, RBrace) {
+          | Error(e) => Error(e)
+          | Ok() =>
+            Ok({
+              node: ChoreographyDecl({
+                name,
+                roles,
+                messages,
+                composition: spec,
+              }),
+              loc: startLoc,
+            })
+          }
+        }
+      }
+    }
+  }
+}
+
 /// Parse a top-level declaration.
 ///
 /// v1.2 / L13: also recognises `module Name isolated { ... }` via the
@@ -2456,6 +2670,10 @@ let parseCapabilityDecl = (p: parserState): result<Ast.located<Ast.declaration>>
 /// v1.4 / L15: also recognises `capability NAME;` via Ident("capability").
 /// Rejects stray `grant` / `relinquish` / `requires_caps` at top level —
 /// those remain reserved-but-not-live at v1.4.
+///
+/// v1.5 / L16: recognises `choreography Name { ... }` via Ident("choreography")
+/// and rejects stray `agent_role` / `message` / `composes` outside a
+/// choreography body.
 let rec parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>> => {
   switch peek(p) {
   | Region => parseRegionDecl(p)
@@ -2468,6 +2686,7 @@ let rec parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>
   | Ident("module") => parseIsolatedModule(p) // v1.2 / L13
   | Ident("session") => parseSessionDecl(p) // v1.3 / L14
   | Ident("capability") => parseCapabilityDecl(p) // v1.4 / L15
+  | Ident("choreography") => parseChoreographyDecl(p) // v1.5 / L16
   | Ident("boundary") =>
     Error({
       message: "'boundary' may only appear inside 'module Name isolated { ... }' (L13 — see spec/L13-L16-reserved-syntax.adoc)",
@@ -2485,6 +2704,13 @@ let rec parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>
       message: "session-body keyword used outside a 'session Name { ... }' block (L14 — see spec/L13-L16-reserved-syntax.adoc)",
       loc: loc(p),
     })
+  | Ident("agent_role")
+  | Ident("message")
+  | Ident("composes") =>
+    Error({
+      message: "choreography-body keyword used outside a 'choreography Name { ... }' block (L16 — see spec/L13-L16-reserved-syntax.adoc)",
+      loc: loc(p),
+    })
   | Ident("grant")
   | Ident("relinquish")
   | Ident("requires_caps") =>
@@ -2494,7 +2720,7 @@ let rec parseDeclaration = (p: parserState): result<Ast.located<Ast.declaration>
     })
   | _ =>
     Error({
-      message: "Expected declaration (region, import, export, fn, memory, invariant, const, module, session, capability)",
+      message: "Expected declaration (region, import, export, fn, memory, invariant, const, module, session, capability, choreography)",
       loc: loc(p),
     })
   }
