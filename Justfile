@@ -486,7 +486,7 @@ test-matrix suite="unit" verbosity="normal" parallel="true":
     @echo "Test matrix: suite={{suite}} verbosity={{verbosity}} parallel={{parallel}}"
 
 # Container matrix: [build|run|push|shell|scan] x [registry] x [tag]
-container-matrix action="build" registry="ghcr.io/{{OWNER}}" tag="latest":
+container-matrix action="build" registry="ghcr.io/hyperpolymath" tag="latest":
     @echo "Container matrix: action={{action}} registry={{registry}} tag={{tag}}"
 
 # CI matrix: [lint|test|build|security|all] x [quick|full]
