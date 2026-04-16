@@ -27,6 +27,10 @@ import TypedWasm.ABI.Linear
 import TypedWasm.ABI.MultiModule
 import TypedWasm.ABI.Tropical
 import TypedWasm.ABI.Epistemic
+import TypedWasm.ABI.Layout
+import TypedWasm.ABI.ModuleIsolation
+import TypedWasm.ABI.SessionProtocol
+import TypedWasm.ABI.ResourceCapabilities
 
 %default total
 
@@ -111,6 +115,24 @@ attestL11_CostBounded _ = MkAttestation 11 Proven
 public export
 attestL12_EpistemicFresh : Level12Proof -> LevelAttestation
 attestL12_EpistemicFresh _ = MkAttestation 12 Proven
+
+||| Construct a Level 13 attestation from an isolated module declaration.
+||| Requires an IsolatedModule witness proving per-module memory isolation.
+public export
+attestL13_Isolated : IsolatedModule -> LevelAttestation
+attestL13_Isolated _ = MkAttestation 13 Proven
+
+||| Construct a Level 14 attestation from a well-formed session protocol.
+||| Requires a WellFormedProtocol witness proving type-state transition safety.
+public export
+attestL14_SessionSafe : {p : Protocol} -> WellFormedProtocol p -> LevelAttestation
+attestL14_SessionSafe _ = MkAttestation 14 Proven
+
+||| Construct a Level 15 attestation from a capability containment proof.
+||| Requires an l15bSoundness or l15cSoundness witness proving resource safety.
+public export
+attestL15_CapsSafe : {owner : ModuleCaps} -> FunctionCaps owner -> LevelAttestation
+attestL15_CapsSafe _ = MkAttestation 15 Proven
 
 -- ============================================================================
 -- Proof Composition
@@ -242,6 +264,43 @@ fullCert12 costProof epistemicProof = MkCertificate
   , attestL11_CostBounded costProof
   , attestL12_EpistemicFresh epistemicProof
   ] 12 []
+
+-- ============================================================================
+-- Full 15-Level Certificate
+-- ============================================================================
+
+||| A certificate attesting all 15 levels: L1-L10 from the core type system,
+||| L11-L12 for shared memory, L13-L15 for agent-style isolation and protocols.
+|||
+||| This is the highest-tier certificate for multi-agent, effectful,
+||| protocol-driven typed-wasm modules.
+public export
+fullCert15 : {n : Nat}
+          -> {p : Protocol}
+          -> {owner : ModuleCaps}
+          -> AllPairsCosts n
+          -> Level12Proof
+          -> IsolatedModule
+          -> WellFormedProtocol p
+          -> FunctionCaps owner
+          -> ProofCertificate
+fullCert15 costProof epistemicProof isoMod wfProto fc = MkCertificate
+  [ attestL1_InstructionValid
+  , attestL2_RegionBound
+  , attestL3_TypeCompat
+  , attestL4_NullSafe
+  , attestL5_BoundsProof
+  , attestL6_ResultType
+  , attestL7_AliasFree
+  , attestL8_EffectSafe SubNil
+  , attestL9_LifetimeSafe
+  , attestL10_Linear
+  , attestL11_CostBounded costProof
+  , attestL12_EpistemicFresh epistemicProof
+  , attestL13_Isolated isoMod
+  , attestL14_SessionSafe wfProto
+  , attestL15_CapsSafe fc
+  ] 15 []
 
 -- ============================================================================
 -- Proof Erasure Guarantee

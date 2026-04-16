@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+= typed-wasm SPARK Experiment
+:toc:
+
+== Why This Exists
+
+`typed-wasm` already sits at a cross-language verification boundary (AffineScript
+and Ephapax targeting shared WasmGC layouts). This makes it a good place for a
+"one level higher" SPARK experiment focused on *boundary safety kernels*.
+
+This directory tracks small, fun-but-serious experiments that test whether
+selected typed-wasm invariants can be mirrored in Ada/SPARK artifacts.
+
+== Candidate Experiment Surface
+
+Highest-value kernels for SPARK prototyping:
+
+* layout agreement checks (offset/alignment consistency),
+* region bounds/index safety helpers,
+* import/export contract validation state machines.
+
+These are narrow, deterministic, and align well with SPARK proof strengths.
+
+== Non-Goals
+
+* Re-implementing typed-wasm proof stack in Ada.
+* Replacing Idris2 proofs.
+* Translating full `.twasm` language semantics.
+
+== Suggested Experiment Tracks
+
+1. `layout-kernel/`
+  Validate fixed record layout invariants from generated metadata.
+2. `bounds-kernel/`
+  Prove index-range and overflow safety for representative region access logic.
+3. `interop-kernel/`
+  Prove protocol progression for module import/export compatibility checks.
+
+== Practical Path
+
+1. Pick one existing typed-wasm invariant and encode it as a SPARK package spec.
+2. Generate a tiny deterministic test corpus from current fixtures.
+3. Run GNATprove and compare obligations with existing Idris2 proof intent.
+4. Record a decision: keep as supplementary audit artifact, or drop.
+
+== Success Criteria
+
+* At least one SPARK kernel compiles and proves with GNATprove.
+* Mapping from typed-wasm invariant -> SPARK contract is documented.
+* Clear statement of where SPARK adds value and where Idris2 remains primary.

@@ -65,7 +65,7 @@ that MUST hold at all times.
 
 ### no-template-placeholders
 - description: Replace template placeholders before publication.
-- run: "! rg '{{PROJECT}}\\|{{PLACEHOLDER}}\\|rsr-template-repo' -n src -g'*.*' 2>/dev/null | head -1 | grep -q ."
+- run: "! rg 'TYPED_WASM\\|\\|rsr-template-repo' -n src -g'*.*' 2>/dev/null | head -1 | grep -q ."
 - severity: error
 
 ### placeholder-fuzz

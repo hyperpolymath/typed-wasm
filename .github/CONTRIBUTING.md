@@ -1,13 +1,13 @@
 # Clone the repository
-git clone https://{{FORGE}}/{{OWNER}}/{{REPO}}.git
-cd {{REPO}}
+git clone https://{{FORGE}}/hyperpolymath/typed-wasm.git
+cd typed-wasm
 
 # Using Nix (recommended for reproducibility)
 nix develop
 
 # Or using toolbox/distrobox
-toolbox create {{REPO}}-dev
-toolbox enter {{REPO}}-dev
+toolbox create typed-wasm-dev
+toolbox enter typed-wasm-dev
 # Install dependencies manually
 
 # Verify setup
@@ -17,7 +17,7 @@ just test    # Run test suite
 
 ### Repository Structure
 ```
-{{REPO}}/
+typed-wasm/
 ├── src/                 # Source code (Perimeter 1-2)
 ├── lib/                 # Library code (Perimeter 1-2)
 ├── extensions/          # Extensions (Perimeter 2)
@@ -91,10 +91,10 @@ Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md) an
 
 Look for issues labelled:
 
-- [`good first issue`](https://{{FORGE}}/{{OWNER}}/{{REPO}}/labels/good%20first%20issue) — Simple Perimeter 3 tasks
-- [`help wanted`](https://{{FORGE}}/{{OWNER}}/{{REPO}}/labels/help%20wanted) — Community help needed
-- [`documentation`](https://{{FORGE}}/{{OWNER}}/{{REPO}}/labels/documentation) — Docs improvements
-- [`perimeter-3`](https://{{FORGE}}/{{OWNER}}/{{REPO}}/labels/perimeter-3) — Community sandbox scope
+- [`good first issue`](https://{{FORGE}}/hyperpolymath/typed-wasm/labels/good%20first%20issue) — Simple Perimeter 3 tasks
+- [`help wanted`](https://{{FORGE}}/hyperpolymath/typed-wasm/labels/help%20wanted) — Community help needed
+- [`documentation`](https://{{FORGE}}/hyperpolymath/typed-wasm/labels/documentation) — Docs improvements
+- [`perimeter-3`](https://{{FORGE}}/hyperpolymath/typed-wasm/labels/perimeter-3) — Community sandbox scope
 
 ---
 

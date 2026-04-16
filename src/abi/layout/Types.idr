@@ -103,6 +103,21 @@ resultLayout =
 -- at the use site.  WHT_Any is the WasmGC top reference type — all structs and
 -- arrays are subtypes, so this is the canonical encoding for a sum-type payload.
 
+||| The agreed layout for an arbitrary Record (product type).
+||| Encoding: (ref (struct (field T1) (field T2) ... (field Tn)))
+||| Fields are ordered as they appear in the source language declaration.
+recordLayout : List (String, WasmValType) -> WasmValType
+recordLayout fields = WVT_Ref (WHT_Struct fields)
+
+||| The agreed layout for an arbitrary Enum (sum type).
+||| Encoding: (ref (struct (field i32) (field (ref any))))
+||| Field 0: tag (discriminant).
+||| Field 1: payload as (ref any).
+|||
+||| This is the generalized version of `resultLayout`.
+enumLayout : WasmValType
+enumLayout = WVT_Ref (WHT_Struct [("tag", WVT_Prim WasmI32), ("payload", WVT_Ref WHT_Any)])
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- DecEq instances
 -- ─────────────────────────────────────────────────────────────────────────────

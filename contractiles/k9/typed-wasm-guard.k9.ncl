@@ -39,11 +39,11 @@ let typed_wasm_guard = {
     },
 
     no_template_placeholders = {
-      description = "No {{PROJECT}}/ {{PLACEHOLDER}} tokens remain in the source base.",
+      description = "No TYPED_WASM/  tokens remain in the source base.",
       severity = "error",
       check_type = "file-pattern-guard",
       scope = ".",
-      reject_patterns = ["{{PROJECT}}", "{{PLACEHOLDER}}", "rsr-template-repo"],
+      reject_patterns = ["TYPED_WASM", "", "rsr-template-repo"],
     },
 
     placeholder_fuzz_absent = {

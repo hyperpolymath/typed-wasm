@@ -1,20 +1,20 @@
 ;; SPDX-License-Identifier: PMPL-1.0-or-later
-;; Copyright (c) {{CURRENT_YEAR}} {{AUTHOR}} ({{OWNER}}) <{{AUTHOR_EMAIL}}>
+;; Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 ;;
-;; Guix channel definition for {{PROJECT_NAME}}
+;; Guix channel definition for typed-wasm
 ;;
 ;; To use this channel, add to ~/.config/guix/channels.scm:
 ;;
 ;;   (channel
-;;     (name '{{PROJECT_NAME}})
-;;     (url "https://github.com/{{OWNER}}/{{PROJECT_NAME}}")
+;;     (name 'typed-wasm)
+;;     (url "https://github.com/hyperpolymath/typed-wasm")
 ;;     (branch "main"))
 ;;
 ;; Then: guix pull
 
 (channel
   (version 0)
-  (url "https://github.com/{{OWNER}}/{{PROJECT_NAME}}")
+  (url "https://github.com/hyperpolymath/typed-wasm")
   (dependencies
    (channel
      (name 'guix)

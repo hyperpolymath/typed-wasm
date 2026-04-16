@@ -1,578 +1,274 @@
+// TYPED_WASM FFI Implementation
+//
+// This module implements the C-compatible FFI declared in src/abi/Foreign.idr
+// All types and layouts must match the Idris2 ABI definitions.
+//
 // SPDX-License-Identifier: PMPL-1.0-or-later
-// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
-//
-// typed-wasm Zig FFI — C-ABI compatible memory operations for typed regions.
-//
-// This layer bridges the Idris2 ABI definitions (which prove correctness)
-// with actual WASM memory operations (which execute at runtime). The Zig
-// code implements what the Idris2 proofs guarantee.
-//
-// Architecture:
-//   Idris2 ABI (proofs) → C headers (generated) → Zig FFI (this file)
-//
-// All functions are exported with C calling convention for maximum
-// interoperability. No Zig-specific types cross the ABI boundary.
 
 const std = @import("std");
 
-// ============================================================================
-// Core Types
-// ============================================================================
+// Version information (keep in sync with project)
+const VERSION = "0.1.0";
+const BUILD_INFO = "TYPED_WASM built with Zig " ++ @import("builtin").zig_version_string;
 
-/// Opaque handle to a region instance. The u64 encodes:
-///   - bits [0:31]  = base offset in linear memory
-///   - bits [32:47] = region schema ID (matches Idris2 ABI)
-///   - bits [48:62] = generation counter (for lifetime safety)
-///   - bit  [63]    = ownership flag (1 = owning, 0 = borrowed)
-pub const RegionHandle = u64;
+/// Thread-local error storage
+threadlocal var last_error: ?[]const u8 = null;
 
-/// Region schema descriptor — describes the layout of a region.
-/// Generated from Idris2 ABI definitions at compile time.
-pub const RegionSchema = extern struct {
-    /// Unique schema identifier (matches Idris2 ABI)
-    schema_id: u16,
-    /// Number of fields in the region
-    field_count: u16,
-    /// Total size of one region instance in bytes (including padding)
-    instance_size: u32,
-    /// Required alignment in bytes (must be power of 2)
-    alignment: u32,
-    /// Pointer to field descriptor array
-    fields: [*]const FieldDescriptor,
-    /// Number of instances (1 for singleton, N for array regions)
-    instance_count: u32,
-    /// Schema name (for diagnostics)
-    name: [*:0]const u8,
-};
+/// Set the last error message
+fn setError(msg: []const u8) void {
+    last_error = msg;
+}
 
-/// Field descriptor within a region schema.
-pub const FieldDescriptor = extern struct {
-    /// Byte offset from region base
-    offset: u32,
-    /// Field size in bytes
-    size: u16,
-    /// Field type tag (see FieldType enum)
-    field_type: FieldType,
-    /// Is this field nullable (opt<T>)?
-    nullable: bool,
-    /// Field name (for diagnostics)
-    name: [*:0]const u8,
-};
+/// Clear the last error
+fn clearError() void {
+    last_error = null;
+}
 
-/// Field type tags — mirrors the Idris2 ABI PrimitiveType.
-pub const FieldType = enum(u8) {
-    i8 = 0,
-    i16 = 1,
-    i32 = 2,
-    i64 = 3,
-    u8 = 4,
-    u16 = 5,
-    u32 = 6,
-    u64 = 7,
-    f32 = 8,
-    f64 = 9,
-    bool_ = 10,
-    ptr = 11, // owning pointer
-    ref_ = 12, // borrowing reference
-    unique = 13, // exclusive pointer
-    region_ref = 14, // embedded region
-};
+//==============================================================================
+// Core Types (must match src/abi/Types.idr)
+//==============================================================================
 
-/// Effect flags — bitfield matching Idris2 ABI effect types.
-pub const EffectFlags = packed struct(u8) {
-    read: bool = false,
-    write: bool = false,
-    alloc: bool = false,
-    free: bool = false,
-    _padding: u4 = 0,
-};
-
-/// Result type for operations that can fail.
-pub const RegionError = enum(u32) {
+/// Result codes (must match Idris2 Result type)
+pub const Result = enum(c_int) {
     ok = 0,
-    out_of_bounds = 1,
-    type_mismatch = 2,
-    null_dereference = 3,
-    lifetime_expired = 4,
-    already_freed = 5,
-    alias_violation = 6,
-    effect_violation = 7,
-    schema_mismatch = 8,
-    alignment_fault = 9,
-    invariant_violation = 10,
+    @"error" = 1,
+    invalid_param = 2,
+    out_of_memory = 3,
+    null_pointer = 4,
 };
 
-// ============================================================================
-// Region Registry — tracks live regions and their schemas
-// ============================================================================
-
-/// Maximum number of simultaneously live region instances.
-const MAX_REGIONS: usize = 4096;
-
-/// Generation counter for lifetime tracking (Level 9).
-/// 15 bits (0-32767) — bit 15 of the handle's generation field is the ownership flag.
-var generation_counter: u15 = 0;
-
-/// Registry entry for a live region.
-const RegistryEntry = struct {
-    schema: *const RegionSchema,
-    base_offset: u32,
-    generation: u15,
-    is_live: bool,
-    ref_count: u16, // number of active borrows
-    has_mut_borrow: bool, // exclusive mutable borrow active
+/// Library handle (opaque to prevent direct access)
+pub const Handle = opaque {
+    // Internal state hidden from C
+    allocator: std.mem.Allocator,
+    initialized: bool,
+    // Add your fields here
 };
 
-/// The global region registry.
-var registry: [MAX_REGIONS]RegistryEntry = [_]RegistryEntry{.{
-    .schema = undefined,
-    .base_offset = 0,
-    .generation = 0,
-    .is_live = false,
-    .ref_count = 0,
-    .has_mut_borrow = false,
-}} ** MAX_REGIONS;
-
-// ============================================================================
-// Region Lifecycle (Level 10: Linearity)
-// ============================================================================
-
-/// Allocate a new region instance in linear memory.
-/// Returns an owning RegionHandle (linear — must be freed exactly once).
-///
-/// The Idris2 ABI proves that the caller will free this handle exactly once.
-/// This function trusts that proof and does not add runtime linearity checks.
-export fn tw_region_alloc_c(
-    schema: *const RegionSchema,
-    memory_base: [*]u8,
-    memory_size: u32,
-    offset: u32,
-) RegionHandle {
-    // Find a free registry slot
-    for (&registry, 0..) |*entry, i| {
-        if (!entry.is_live) {
-            generation_counter +%= 1;
-
-            entry.* = .{
-                .schema = schema,
-                .base_offset = offset,
-                .generation = generation_counter,
-                .is_live = true,
-                .ref_count = 0,
-                .has_mut_borrow = false,
-            };
-
-            // Zero-initialise the memory region
-            const region_size = schema.instance_size * schema.instance_count;
-            if (offset + region_size <= memory_size) {
-                const region_mem = memory_base[offset..][0..region_size];
-                @memset(region_mem, 0);
-            }
-
-            // Encode handle: offset | schema_id | generation | ownership
-            return @as(u64, offset) |
-                (@as(u64, schema.schema_id) << 32) |
-                (@as(u64, generation_counter) << 48) |
-                (@as(u64, 1) << 63); // owning
-        }
-        _ = i;
-    }
-
-    // No free slot — should not happen if Idris2 proofs are correct
-    return 0;
-}
-
-/// Free a region instance. Consumes the owning handle.
-/// After this call, any use of the handle is a Level 9 violation.
-export fn tw_region_free_c(handle: RegionHandle) RegionError {
-    const slot = decode_slot(handle) orelse return .lifetime_expired;
-    var entry = &registry[slot];
-
-    if (!entry.is_live) return .already_freed;
-    if (entry.ref_count > 0) return .alias_violation; // outstanding borrows
-
-    entry.is_live = false;
-    return .ok;
-}
-
-// ============================================================================
-// Typed Access (Levels 2-6)
-// ============================================================================
-//
-// panic-attack: classified ffi-boundary.
-// The typed-memory-read operations below use Zig's standard ABI cast builtins
-// to reinterpret a byte slice at a computed offset as a typed pointer.
-// Each call is preceded by field_type, offset, and instance_count guards that
-// enforce the Idris2 level-2/3/5 invariants at the Zig runtime boundary.
-// The alignment cast adds a debug-build runtime check; the Idris2 ABI proves
-// correctness at compile time.  No alternative idiom exists in Zig for
-// typed memory reads at computed byte offsets.
-
-/// Read a 32-bit integer field from a region instance.
-/// Level 2: schema resolves field_index to a FieldDescriptor.
-/// Level 3: field type must be i32.
-/// Level 5: instance_index must be < schema.instance_count.
-/// Level 6: return type is i32.
-export fn tw_region_get_i32_c(
-    handle: RegionHandle,
-    instance_index: u32,
-    field_index: u16,
-    memory_base: [*]const u8,
-) i32 {
-    const slot = decode_slot(handle) orelse return 0;
-    const entry = &registry[slot];
-
-    if (!entry.is_live) return 0;
-
-    const schema = entry.schema;
-    if (field_index >= schema.field_count) return 0;
-    if (instance_index >= schema.instance_count) return 0;
-
-    const field = &schema.fields[field_index];
-
-    // Level 3: type check
-    if (field.field_type != .i32) return 0;
-
-    const offset = entry.base_offset +
-        (instance_index * schema.instance_size) +
-        field.offset;
-
-    return std.mem.readInt(i32, @as(*const [4]u8, @ptrCast(@alignCast(memory_base + offset))), .little);
-}
-
-/// Write a 32-bit integer field to a region instance.
-/// Same level checks as get, plus Level 7: requires &mut (exclusive access).
-export fn tw_region_set_i32_c(
-    handle: RegionHandle,
-    instance_index: u32,
-    field_index: u16,
-    value: i32,
-    memory_base: [*]u8,
-) RegionError {
-    const slot = decode_slot(handle) orelse return .lifetime_expired;
-    const entry = &registry[slot];
-
-    if (!entry.is_live) return .already_freed;
-
-    const schema = entry.schema;
-    if (field_index >= schema.field_count) return .out_of_bounds;
-    if (instance_index >= schema.instance_count) return .out_of_bounds;
-
-    const field = &schema.fields[field_index];
-    if (field.field_type != .i32) return .type_mismatch;
-
-    const offset = entry.base_offset +
-        (instance_index * schema.instance_size) +
-        field.offset;
-
-    std.mem.writeInt(i32, @as(*[4]u8, @ptrCast(@alignCast(memory_base + offset))), value, .little);
-    return .ok;
-}
-
-/// Read a 64-bit float field from a region instance.
-export fn tw_region_get_f64_c(
-    handle: RegionHandle,
-    instance_index: u32,
-    field_index: u16,
-    memory_base: [*]const u8,
-) f64 {
-    const slot = decode_slot(handle) orelse return 0.0;
-    const entry = &registry[slot];
-
-    if (!entry.is_live) return 0.0;
-
-    const schema = entry.schema;
-    if (field_index >= schema.field_count) return 0.0;
-    if (instance_index >= schema.instance_count) return 0.0;
-
-    const field = &schema.fields[field_index];
-    if (field.field_type != .f64) return 0.0;
-
-    const offset = entry.base_offset +
-        (instance_index * schema.instance_size) +
-        field.offset;
-
-    const bytes = @as(*const [8]u8, @ptrCast(@alignCast(memory_base + offset)));
-    return @bitCast(std.mem.readInt(u64, bytes, .little));
-}
-
-/// Read a 32-bit float field from a region instance.
-export fn tw_region_get_f32_c(
-    handle: RegionHandle,
-    instance_index: u32,
-    field_index: u16,
-    memory_base: [*]const u8,
-) f32 {
-    const slot = decode_slot(handle) orelse return 0.0;
-    const entry = &registry[slot];
-
-    if (!entry.is_live) return 0.0;
-
-    const schema = entry.schema;
-    if (field_index >= schema.field_count) return 0.0;
-    if (instance_index >= schema.instance_count) return 0.0;
-
-    const field = &schema.fields[field_index];
-    if (field.field_type != .f32) return 0.0;
-
-    const offset = entry.base_offset +
-        (instance_index * schema.instance_size) +
-        field.offset;
-
-    const bytes = @as(*const [4]u8, @ptrCast(@alignCast(memory_base + offset)));
-    return @bitCast(std.mem.readInt(u32, bytes, .little));
-}
-
-// ============================================================================
-// Borrow Tracking (Level 7: Aliasing Safety)
-// ============================================================================
-
-/// Acquire a shared (immutable) borrow on a region.
-/// Multiple shared borrows can coexist. Fails if a mutable borrow is active.
-export fn tw_region_borrow_c(handle: RegionHandle) RegionError {
-    const slot = decode_slot(handle) orelse return .lifetime_expired;
-    var entry = &registry[slot];
-
-    if (!entry.is_live) return .already_freed;
-    if (entry.has_mut_borrow) return .alias_violation;
-
-    entry.ref_count += 1;
-    return .ok;
-}
-
-/// Acquire an exclusive (mutable) borrow on a region.
-/// Fails if any borrows (shared or mutable) are active.
-export fn tw_region_borrow_mut_c(handle: RegionHandle) RegionError {
-    const slot = decode_slot(handle) orelse return .lifetime_expired;
-    var entry = &registry[slot];
-
-    if (!entry.is_live) return .already_freed;
-    if (entry.ref_count > 0) return .alias_violation;
-    if (entry.has_mut_borrow) return .alias_violation;
-
-    entry.has_mut_borrow = true;
-    return .ok;
-}
-
-/// Release a shared borrow.
-export fn tw_region_release_c(handle: RegionHandle) RegionError {
-    const slot = decode_slot(handle) orelse return .lifetime_expired;
-    var entry = &registry[slot];
-
-    if (!entry.is_live) return .already_freed;
-    if (entry.ref_count == 0) return .alias_violation; // no borrow to release
-
-    entry.ref_count -= 1;
-    return .ok;
-}
-
-/// Release a mutable borrow.
-export fn tw_region_release_mut_c(handle: RegionHandle) RegionError {
-    const slot = decode_slot(handle) orelse return .lifetime_expired;
-    var entry = &registry[slot];
-
-    if (!entry.is_live) return .already_freed;
-    if (!entry.has_mut_borrow) return .alias_violation;
-
-    entry.has_mut_borrow = false;
-    return .ok;
-}
-
-// ============================================================================
-// Schema Verification (Multi-Module Type Agreement)
-// ============================================================================
-
-/// Verify that two region schemas are structurally compatible.
-/// This is the core of multi-module type safety: when Module A exports
-/// a region and Module B imports it, this function verifies agreement.
-///
-/// Returns .ok if schemas agree on all fields present in `imported`.
-/// The imported schema may be a subset (fewer fields) of the exported schema.
-export fn tw_schema_verify_c(
-    exported: *const RegionSchema,
-    imported: *const RegionSchema,
-) RegionError {
-    // Instance size must agree
-    if (exported.instance_size != imported.instance_size) return .schema_mismatch;
-
-    // Alignment must agree
-    if (exported.alignment != imported.alignment) return .schema_mismatch;
-
-    // Every field in the import must exist in the export with matching type+offset
-    for (0..imported.field_count) |i| {
-        const imp_field = &imported.fields[i];
-        var found = false;
-
-        for (0..exported.field_count) |j| {
-            const exp_field = &exported.fields[j];
-
-            // Match by name
-            if (std.mem.orderZ(u8, imp_field.name, exp_field.name) == .eq) {
-                // Type must match
-                if (imp_field.field_type != exp_field.field_type) return .type_mismatch;
-                // Offset must match
-                if (imp_field.offset != exp_field.offset) return .schema_mismatch;
-                // Size must match
-                if (imp_field.size != exp_field.size) return .schema_mismatch;
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) return .schema_mismatch;
-    }
-
-    return .ok;
-}
-
-// ============================================================================
-// Simplified Public API (for Zig test modules)
-// ============================================================================
-// The export fn functions use C ABI and require explicit memory_base/memory_size
-// parameters. These pub wrappers manage an internal memory buffer so that Zig
-// test modules can call them with simpler signatures.
-
-/// Internal memory buffer used by the simplified API.
-var internal_memory: [1024 * 1024]u8 = [_]u8{0} ** (1024 * 1024);
-var internal_alloc_offset: u32 = 0;
-
-/// Allocate a region using the internal memory buffer.
-pub fn tw_region_alloc(schema: *const RegionSchema) RegionHandle {
-    const offset = internal_alloc_offset;
-    const size = schema.instance_size * schema.instance_count;
-    // Align offset to schema alignment
-    const aligned_offset = (offset + schema.alignment - 1) & ~(schema.alignment - 1);
-    internal_alloc_offset = aligned_offset + size;
-    return tw_region_alloc_c(schema, &internal_memory, @as(u32, @intCast(internal_memory.len)), aligned_offset);
-}
-
-/// Free a region (delegates to C ABI function).
-pub fn tw_region_free(handle: RegionHandle) RegionError {
-    return tw_region_free_c(handle);
-}
-
-/// Read an i32 field using the internal memory buffer.
-pub fn tw_region_get_i32(handle: RegionHandle, field_index: u16) i32 {
-    return tw_region_get_i32_c(handle, 0, field_index, &internal_memory);
-}
-
-/// Write an i32 field using the internal memory buffer.
-pub fn tw_region_set_i32(handle: RegionHandle, field_index: u16, value: i32) RegionError {
-    return tw_region_set_i32_c(handle, 0, field_index, value, &internal_memory);
-}
-
-/// Acquire a shared borrow (delegates to C ABI function).
-pub fn tw_region_borrow(handle: RegionHandle) RegionError {
-    return tw_region_borrow_c(handle);
-}
-
-/// Acquire an exclusive borrow (delegates to C ABI function).
-pub fn tw_region_borrow_mut(handle: RegionHandle) RegionError {
-    return tw_region_borrow_mut_c(handle);
-}
-
-/// Release a shared borrow (delegates to C ABI function).
-pub fn tw_region_release(handle: RegionHandle) RegionError {
-    return tw_region_release_c(handle);
-}
-
-/// Release a mutable borrow (delegates to C ABI function).
-pub fn tw_region_release_mut(handle: RegionHandle) RegionError {
-    return tw_region_release_mut_c(handle);
-}
-
-/// Verify schema compatibility. Returns 1 if compatible, 0 if not.
-/// Uses positional field matching (by index) which is safe for schemas where
-/// field names may not be unique.
-pub fn tw_schema_verify(exported: *const RegionSchema, imported: *const RegionSchema) i32 {
-    // Instance size and alignment must agree
-    if (exported.instance_size != imported.instance_size) return 0;
-    if (exported.alignment != imported.alignment) return 0;
-
-    // Imported field count must not exceed exported
-    if (imported.field_count > exported.field_count) return 0;
-
-    // Every field in the import must match the export at the same index
-    for (0..imported.field_count) |i| {
-        const imp = &imported.fields[i];
-        const exp = &exported.fields[i];
-
-        if (imp.field_type != exp.field_type) return 0;
-        if (imp.offset != exp.offset) return 0;
-        if (imp.size != exp.size) return 0;
-    }
-
-    return 1;
-}
-
-// ============================================================================
-// Schema Descriptor (simplified type for integration tests)
-// ============================================================================
-
-/// Simplified schema descriptor for integration tests.
-pub const SchemaDescriptor = struct {
-    name: []const u8,
-    field_count: u32,
-    total_size: u32,
-    alignment: u32,
-};
-
-/// Return the byte size for a WASM primitive type.
-pub fn wasmTypeSize(t: FieldType) u32 {
-    return switch (t) {
-        .i8, .u8, .bool_ => 1,
-        .i16, .u16 => 2,
-        .i32, .u32, .f32 => 4,
-        .i64, .u64, .f64, .ptr, .ref_, .unique, .region_ref => 8,
+//==============================================================================
+// Library Lifecycle
+//==============================================================================
+
+/// Initialize the library
+/// Returns a handle, or null on failure
+export fn typed_wasm_init() ?*Handle {
+    const allocator = std.heap.c_allocator;
+
+    const handle = allocator.create(Handle) catch {
+        setError("Failed to allocate handle");
+        return null;
     };
+
+    // Initialize handle
+    handle.* = .{
+        .allocator = allocator,
+        .initialized = true,
+    };
+
+    clearError();
+    return handle;
 }
 
-// ============================================================================
-// Internal Helpers
-// ============================================================================
+/// Free the library handle
+export fn typed_wasm_free(handle: ?*Handle) void {
+    const h = handle orelse return;
+    const allocator = h.allocator;
 
-/// Decode a RegionHandle to a registry slot index.
-/// Returns null if the handle's generation doesn't match (Level 9: lifetime expired).
-fn decode_slot(handle: RegionHandle) ?usize {
-    const base_offset: u32 = @truncate(handle);
-    // Mask out the ownership flag (bit 63) before extracting generation (bits 48-62)
-    const generation: u15 = @truncate(handle >> 48);
+    // Clean up resources
+    h.initialized = false;
 
-    // Linear search for matching entry (could be optimised with a hash map)
-    for (&registry, 0..) |*entry, i| {
-        if (entry.is_live and
-            entry.base_offset == base_offset and
-            entry.generation == generation)
-        {
-            return i;
-        }
+    allocator.destroy(h);
+    clearError();
+}
+
+//==============================================================================
+// Core Operations
+//==============================================================================
+
+/// Process data (example operation)
+export fn typed_wasm_process(handle: ?*Handle, input: u32) Result {
+    const h = handle orelse {
+        setError("Null handle");
+        return .null_pointer;
+    };
+
+    if (!h.initialized) {
+        setError("Handle not initialized");
+        return .@"error";
     }
 
-    return null;
+    // Example processing logic
+    _ = input;
+
+    clearError();
+    return .ok;
 }
 
-// ============================================================================
+//==============================================================================
+// String Operations
+//==============================================================================
+
+/// Get a string result (example)
+/// Caller must free the returned string
+export fn typed_wasm_get_string(handle: ?*Handle) ?[*:0]const u8 {
+    const h = handle orelse {
+        setError("Null handle");
+        return null;
+    };
+
+    if (!h.initialized) {
+        setError("Handle not initialized");
+        return null;
+    }
+
+    // Example: allocate and return a string
+    const result = h.allocator.dupeZ(u8, "Example result") catch {
+        setError("Failed to allocate string");
+        return null;
+    };
+
+    clearError();
+    return result.ptr;
+}
+
+/// Free a string allocated by the library
+export fn typed_wasm_free_string(str: ?[*:0]const u8) void {
+    const s = str orelse return;
+    const allocator = std.heap.c_allocator;
+
+    const slice = std.mem.span(s);
+    allocator.free(slice);
+}
+
+//==============================================================================
+// Array/Buffer Operations
+//==============================================================================
+
+/// Process an array of data
+export fn typed_wasm_process_array(
+    handle: ?*Handle,
+    buffer: ?[*]const u8,
+    len: u32,
+) Result {
+    const h = handle orelse {
+        setError("Null handle");
+        return .null_pointer;
+    };
+
+    const buf = buffer orelse {
+        setError("Null buffer");
+        return .null_pointer;
+    };
+
+    if (!h.initialized) {
+        setError("Handle not initialized");
+        return .@"error";
+    }
+
+    // Access the buffer
+    const data = buf[0..len];
+    _ = data;
+
+    // Process data here
+
+    clearError();
+    return .ok;
+}
+
+//==============================================================================
+// Error Handling
+//==============================================================================
+
+/// Get the last error message
+/// Returns null if no error
+export fn typed_wasm_last_error() ?[*:0]const u8 {
+    const err = last_error orelse return null;
+
+    // Return C string (static storage, no need to free)
+    const allocator = std.heap.c_allocator;
+    const c_str = allocator.dupeZ(u8, err) catch return null;
+    return c_str.ptr;
+}
+
+//==============================================================================
+// Version Information
+//==============================================================================
+
+/// Get the library version
+export fn typed_wasm_version() [*:0]const u8 {
+    return VERSION.ptr;
+}
+
+/// Get build information
+export fn typed_wasm_build_info() [*:0]const u8 {
+    return BUILD_INFO.ptr;
+}
+
+//==============================================================================
+// Callback Support
+//==============================================================================
+
+/// Callback function type (C ABI)
+pub const Callback = *const fn (u64, u32) callconv(.C) u32;
+
+/// Register a callback
+export fn typed_wasm_register_callback(
+    handle: ?*Handle,
+    callback: ?Callback,
+) Result {
+    const h = handle orelse {
+        setError("Null handle");
+        return .null_pointer;
+    };
+
+    const cb = callback orelse {
+        setError("Null callback");
+        return .null_pointer;
+    };
+
+    if (!h.initialized) {
+        setError("Handle not initialized");
+        return .@"error";
+    }
+
+    // Store callback for later use
+    _ = cb;
+
+    clearError();
+    return .ok;
+}
+
+//==============================================================================
+// Utility Functions
+//==============================================================================
+
+/// Check if handle is initialized
+export fn typed_wasm_is_initialized(handle: ?*Handle) u32 {
+    const h = handle orelse return 0;
+    return if (h.initialized) 1 else 0;
+}
+
+//==============================================================================
 // Tests
-// ============================================================================
+//==============================================================================
 
-test "field type size" {
-    try std.testing.expectEqual(@sizeOf(FieldType), 1);
-    try std.testing.expectEqual(@sizeOf(EffectFlags), 1);
+test "lifecycle" {
+    const handle = typed_wasm_init() orelse return error.InitFailed;
+    defer typed_wasm_free(handle);
+
+    try std.testing.expect(typed_wasm_is_initialized(handle) == 1);
 }
 
-test "handle encoding roundtrip" {
-    const handle: RegionHandle = @as(u64, 1024) | // offset
-        (@as(u64, 42) << 32) | // schema_id
-        (@as(u64, 7) << 48) | // generation
-        (@as(u64, 1) << 63); // owning
+test "error handling" {
+    const result = typed_wasm_process(null, 0);
+    try std.testing.expectEqual(Result.null_pointer, result);
 
-    const offset: u32 = @truncate(handle);
-    const schema_id: u16 = @truncate(handle >> 32);
-    const owning: bool = (handle >> 63) == 1;
-    const gen: u15 = @truncate(handle >> 48);
+    const err = typed_wasm_last_error();
+    try std.testing.expect(err != null);
+}
 
-    try std.testing.expectEqual(offset, 1024);
-    try std.testing.expectEqual(schema_id, 42);
-    try std.testing.expectEqual(gen, @as(u15, 7));
-    try std.testing.expect(owning);
+test "version" {
+    const ver = typed_wasm_version();
+    const ver_str = std.mem.span(ver);
+    try std.testing.expectEqualStrings(VERSION, ver_str);
 }
