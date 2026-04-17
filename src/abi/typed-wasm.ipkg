@@ -25,3 +25,4 @@ modules = TypedWasm.ABI.Region
         , Layout.Types
         , Layout.ABI
         , Layout.Stdlib
+        , Layout.AirborneSubmarineSquadron

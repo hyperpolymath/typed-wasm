@@ -100,6 +100,9 @@ test *args:
     rescript build
     node tests/parser/ParserTests.mjs
     @echo ""
+    @echo "Running contract tests..."
+    node tests/contracts/airborne-step-state-contract.mjs
+    @echo ""
     @echo "Running Zig FFI tests..."
     cd ffi/zig && zig build test
     @echo ""
@@ -118,6 +121,11 @@ test-smoke:
     @echo "Running E2E smoke test..."
     rescript build
     node tests/smoke/e2e-smoke.mjs
+
+# ABI contract tests
+test-contract:
+    @echo "Running ABI contract tests..."
+    node tests/contracts/airborne-step-state-contract.mjs
 
 # End-to-end test surface
 test-e2e:
