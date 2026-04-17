@@ -1,1 +1,13 @@
 = Contracts Unit
+
+This unit stores executable/consumable contract artifacts that pin
+cross-repo integration boundaries.
+
+Current contract:
+
+- `airborne-submarine-squadron.snapshot-abi.v1.json`
+  - Versioned JS↔WASM `init_state`/`step_state` boundary.
+  - Canonical 29-field snapshot + 5-field input mapping.
+  - Integration boundary note: gameplay/HUD events remain authoritative in
+    game/Gossamer, while Burble can consume mirrored events over
+    Groove/API/FFI for voice/LLM/RTSM workflows.

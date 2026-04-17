@@ -136,3 +136,11 @@ sync_report*.txt
 *.run.xml
 *-blx.bib
 _minted-*/
+target/
+node_modules/
+_build/
+deps/
+.elixir_ls/
+.cache/
+build/
+dist/
