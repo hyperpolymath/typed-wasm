@@ -1,0 +1,113 @@
+{
+  "id": "airborne-submarine-squadron.step_state.snapshot",
+  "version": "1.0.0",
+  "encoding": {
+    "word_size_bits": 32,
+    "endianness": "little",
+    "header_words": 2,
+    "header_layout": ["tag", "length"]
+  },
+  "exports": {
+    "init_state": {
+      "params": [],
+      "result": "ptr<i32>"
+    },
+    "step_state": {
+      "params": [
+        "state_tick",
+        "state_env",
+        "state_sub_x",
+        "state_sub_y",
+        "state_sub_vx",
+        "state_sub_vy",
+        "state_sub_hp",
+        "state_sub_ammo",
+        "state_sub_cooldown",
+        "state_proj_a_alive",
+        "state_proj_a_x",
+        "state_proj_a_y",
+        "state_proj_b_alive",
+        "state_proj_b_x",
+        "state_proj_b_y",
+        "state_enemy1_alive",
+        "state_enemy1_x",
+        "state_enemy1_y",
+        "state_enemy1_hp",
+        "state_enemy2_alive",
+        "state_enemy2_x",
+        "state_enemy2_y",
+        "state_enemy2_hp",
+        "state_score",
+        "state_kills",
+        "state_mission_total",
+        "state_mission_ticks",
+        "state_mission_complete",
+        "state_mission_failed",
+        "input_thrust_x",
+        "input_thrust_y",
+        "input_fire",
+        "input_fire_alt",
+        "input_toggle_env"
+      ],
+      "result": "ptr<i32>"
+    }
+  },
+  "snapshot": {
+    "state_field_count": 29,
+    "fields": [
+      "tick",
+      "env",
+      "sub_x",
+      "sub_y",
+      "sub_vx",
+      "sub_vy",
+      "sub_hp",
+      "sub_ammo",
+      "sub_cooldown",
+      "proj_a_alive",
+      "proj_a_x",
+      "proj_a_y",
+      "proj_b_alive",
+      "proj_b_x",
+      "proj_b_y",
+      "enemy1_alive",
+      "enemy1_x",
+      "enemy1_y",
+      "enemy1_hp",
+      "enemy2_alive",
+      "enemy2_x",
+      "enemy2_y",
+      "enemy2_hp",
+      "score",
+      "kills",
+      "mission_total",
+      "mission_ticks",
+      "mission_complete",
+      "mission_failed"
+    ],
+    "indexes": {
+      "tick": 0,
+      "score": 23,
+      "kills": 24
+    }
+  },
+  "input": {
+    "field_count": 5,
+    "fields": [
+      "thrust_x",
+      "thrust_y",
+      "fire",
+      "fire_alt",
+      "toggle_env"
+    ]
+  },
+  "integration_boundaries": {
+    "gossamer_event_bus": "authoritative gameplay/HUD event channel",
+    "burble_channels": {
+      "voice": "primary",
+      "llm": "ops and support orchestration",
+      "rtsm": "high-bandwidth offload"
+    },
+    "rule": "Burble may consume mirrored events over Groove/API/FFI, but gameplay event state ownership remains in the game/Gossamer loop."
+  }
+}
