@@ -1,7 +1,11 @@
 // TYPED_WASM FFI Implementation
 //
-// This module implements the C-compatible FFI declared in src/abi/Foreign.idr
-// All types and layouts must match the Idris2 ABI definitions.
+// This module is the C-compatible Zig FFI surface. Types and result codes
+// are hand-maintained in parallel with the Idris2 ABI spread across
+// src/abi/{Region,TypedAccess,Pointer,Effects,Lifetime,Linear,
+// MultiModule}.idr and src/abi/Layout/*.idr. There is no automated
+// Idris2 -> C header pipeline yet; see generated/abi/README.adoc for the
+// gap analysis and the plan for closing it.
 //
 // SPDX-License-Identifier: PMPL-1.0-or-later
 
