@@ -103,6 +103,9 @@ test *args:
     @echo "Running contract tests..."
     node tests/contracts/airborne-step-state-contract.mjs
     @echo ""
+    @echo "Running E2E driver (parse + check every example)..."
+    node tests/e2e/e2e-driver.mjs
+    @echo ""
     @echo "Running Zig FFI tests..."
     cd ffi/zig && zig build test
     @echo ""

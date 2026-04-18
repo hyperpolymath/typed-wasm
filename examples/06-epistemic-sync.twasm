@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
+// E2E: skip reason=L12-epistemic-grammar-not-in-v1.5-parser
+//
 // Example 06: Epistemic Safety (Level 12)
 //
 // Demonstrates how the type checker tracks each module's KNOWLEDGE of shared

@@ -45,6 +45,8 @@ erl_crash.dump
 *.mjs
 !tests/smoke/*.mjs
 !tests/echidna/*.mjs
+!tests/e2e/*.mjs
+!tests/contracts/*.mjs
 *.cmi
 *.cmj
 *.cmt
