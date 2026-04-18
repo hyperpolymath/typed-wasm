@@ -93,6 +93,27 @@ outlivesTransitive FnOutlivesNamed (NamedNesting _) = FnOutlivesNamed
 outlivesTransitive (NamedNesting p1) (NamedNesting p2) =
   NamedNesting (transitive p1 p2)
 
+-- ---- Preorder laws (PROOF-NEEDS §P0.3) ----
+
+||| Reflexivity of the outlives preorder: every lifetime outlives itself.
+|||
+||| This is the first of the two preorder laws for Outlives; the second
+||| is `outlivesTrans` below.  Together they make Outlives a preorder on
+||| Lifetime, which is the structural precondition for the load-safety
+||| theorem (`loadSafe`).
+public export
+outlivesRefl : (l : Lifetime) -> Outlives l l
+outlivesRefl _ = OutlivesSelf
+
+||| Transitivity of the outlives preorder.
+|||
+||| Matches PROOF-NEEDS §P0.3 naming; thin alias over the existing
+||| `outlivesTransitive` which carries the case analysis.
+public export
+outlivesTrans : {a, b, c : Lifetime} ->
+                Outlives a b -> Outlives b c -> Outlives a c
+outlivesTrans = outlivesTransitive
+
 -- ============================================================================
 -- Reference Validity
 -- ============================================================================
@@ -190,3 +211,54 @@ weakenLifetime : Outlives long short
               -> LiveRef long a
               -> LiveRef short a
 weakenLifetime _ (MkLiveRef off) = MkLiveRef off
+
+-- ============================================================================
+-- L9 Load-Safety Theorem (PROOF-NEEDS §P0.3)
+-- ============================================================================
+
+||| Load-safety theorem: dereferencing a reference is safe when the
+||| reference's lifetime outlives the scope it is used in.
+|||
+||| Given:
+|||   - `ref   : LiveRef refLife a` — reference tagged with lifetime refLife,
+|||   - `proof : Outlives refLife scopeLife` — refLife outlives the scope,
+|||
+||| `loadSafe` produces the reference's stored offset, witnessing that
+||| the dereference is type-safe in this scope.  The Level 9 invariant is
+||| "use-after-free cannot type-check"; this theorem is its proof-term
+||| form — you cannot call `loadSafe` without first producing an Outlives
+||| witness.
+|||
+||| The existing `useRef` combinator is the operational form (same
+||| content, packaged via `ValidIn`); `loadSafe` is the propositional
+||| form asked for in PROOF-NEEDS.
+public export
+loadSafe : {0 refLife, scopeLife : Lifetime}
+        -> (ref : LiveRef refLife a)
+        -> (outlives : Outlives refLife scopeLife)
+        -> Nat
+loadSafe ref _ = refOffset ref
+
+||| Behavioural lemma: `loadSafe` returns the reference's stored offset
+||| and nothing more.  Reading: the load-safety proof does not fabricate
+||| data; it only checks the outlives precondition and returns the
+||| underlying offset.
+public export
+loadSafeOffset : {0 refLife, scopeLife : Lifetime}
+              -> (ref : LiveRef refLife a)
+              -> (outlives : Outlives refLife scopeLife)
+              -> loadSafe ref outlives = refOffset ref
+loadSafeOffset _ _ = Refl
+
+||| `loadSafe` is stable under weakening of the outlives witness: any
+||| two outlives proofs at the same indices produce the same offset
+||| (proof irrelevance at the value level).  This is the lemma that
+||| lets the compiler erase the outlives argument without changing the
+||| load result.
+public export
+loadSafeIrrelevant :
+     {0 refLife, scopeLife : Lifetime}
+  -> (ref : LiveRef refLife a)
+  -> (p, q : Outlives refLife scopeLife)
+  -> loadSafe ref p = loadSafe ref q
+loadSafeIrrelevant _ _ _ = Refl

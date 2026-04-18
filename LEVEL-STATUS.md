@@ -50,7 +50,7 @@ the remaining v1.1 work.**
 | 6 | Result-type | TypedAccess.idr | Type flow | ECHIDNA 10^5 | **E2E complete** |
 | 7 | Aliasing safety | Pointer.idr (Unique) | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased** |
 | 8 | Effect-tracking | Effects.idr | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased** |
-| 9 | Lifetime safety | Lifetime.idr | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased** |
+| 9 | Lifetime safety | Lifetime.idr | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased.  Preorder + load-safety theorems added A4 (2026-04-18): `outlivesRefl`, `outlivesTrans` (alias of pre-existing `outlivesTransitive` with 7-constructor case analysis), `loadSafe` proof-term, behavioural lemmas `loadSafeOffset` and `loadSafeIrrelevant` (proof irrelevance at the value level).** |
 | 10 | Linearity | Linear.idr (QTT q=1) | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased.  Propositional state-machine theorems added A3 (2026-04-18): distinctUsage, consumePreservesData, noReuse, noReuseEcho — usage-indexed handle `LinHandleU Fresh/Consumed tok` with `consume` state transition, alongside the QTT structural layer.** |
 | 11 | Tropical cost-tracking | Tropical.idr | Not yet | None | **In package (A1, 2026-04-18).  Commutative-semiring closure PROVEN (A2, 2026-04-18): all 12 axioms — tropAddLeftId/RightId/Comm/Assoc, tropMulLeftId/RightId/Comm/Assoc, tropMulLeftAnn/RightAnn, tropMulDistrib/DistribR.  Uses structural `tropMin` (007-lang template).  Zero dangerous patterns.** |
 | 12 | Epistemic safety | Epistemic.idr | Not yet | None | **In package (A1, 2026-04-18); `writerKnowsFresh`, `freshOrStale`, `syncRestoresFresh` theorems live.  Full freshness propagation under concurrent writes deferred.** |
