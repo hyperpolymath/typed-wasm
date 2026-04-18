@@ -96,7 +96,7 @@ toolchain remains future work.
 | SessionProtocol.idr | 0 | 0 | 0 | In package (v1.3 / L14) |
 | ResourceCapabilities.idr | 0 | 0 | 0 | In package (v1.4 / L15) |
 | Choreography.idr | 0 | 0 | 0 | In package (v1.5 / L16) |
-| Proofs.idr | 0 | 0 | 0 | In package |
+| Proofs.idr | 0 | 0 | 0 | In package.  Attestation API hardened A7 (2026-04-18): every L1-L10 attestation now requires a witness from its level module (Schema / FieldIn / WasmTypeCompat / Ptr-NonNull / InBounds / AccessResult / ExclusiveWitness / EffectSubsumes / Lifetime.Outlives / CompletedProtocol).  `simpleReadCert` / `fullCert12` / `fullCert15` thread witnesses per level; the certificate cannot be constructed without real proof artefacts. |
 | Tropical.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Epistemic.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Echo.idr | 0 | 0 | 0 | In package (A0, 2026-04-18) |

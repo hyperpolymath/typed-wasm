@@ -122,6 +122,12 @@ public export
 attestL13_Isolated : IsolatedModule -> LevelAttestation
 attestL13_Isolated _ = MkAttestation 13 Proven
 
+-- Note on qualification: `Lifetime` names must be qualified as
+-- `Lifetime.Lifetime` / `Lifetime.Outlives` in this module because
+-- `Levels.idr` also defines a `Lifetime` type and an `Outlives`
+-- relation.  The qualification picks the authoritative
+-- propositional forms from `Lifetime.idr`.
+
 ||| Construct a Level 14 attestation from a well-formed session protocol.
 ||| Requires a WellFormedProtocol witness proving type-state transition safety.
 public export
@@ -150,58 +156,124 @@ composeCertificates (MkCertificate ls1 h1 mm1) (MkCertificate ls2 h2 mm2) =
   MkCertificate (ls1 ++ ls2) (min h1 h2) (mm1 ++ mm2)
 
 -- ============================================================================
--- Level-Specific Certificate Constructors
+-- Level-Specific Certificate Constructors (PROOF-NEEDS §P1.1 — A7)
 -- ============================================================================
+--
+-- Every attestation below REQUIRES a matching witness from the level's
+-- proof module.  Passing `Proven` is not enough; the caller must produce
+-- the structural evidence the level is about.  The witnesses are
+-- compile-time-only (erased) — they do not cost anything at runtime —
+-- but they cannot be conjured from thin air.  If the level does not
+-- hold, the corresponding witness type is uninhabited and the
+-- attestation cannot be constructed.
+--
+-- L8 was already witness-consuming (EffectSubsumes); the other nullary
+-- attestations from the pre-A7 revision have been promoted.  The
+-- witness types are drawn from the relevant level module:
+--
+--   L1  — a Schema that type-checked (Region.idr)
+--   L2  — FieldIn (Region.idr)
+--   L3  — WasmTypeCompat (MultiModule.idr)
+--   L4  — Ptr k s l NonNull (Pointer.idr)
+--   L5  — InBounds (Region.idr)
+--   L6  — AccessResult (TypedAccess.idr)
+--   L7  — ExclusiveWitness (Pointer.idr)
+--   L8  — EffectSubsumes (Effects.idr) — unchanged from pre-A7
+--   L9  — Outlives (Lifetime.idr)
+--   L10 — CompletedProtocol (Linear.idr)
 
-||| Construct a Level 1 attestation from a successful parse.
+||| Construct a Level 1 attestation.  The witness is the Schema itself
+||| — producing a well-typed `Schema` value requires the parser and
+||| type-checker to have succeeded, which is what L1 attests.
 public export
-attestL1_InstructionValid : LevelAttestation
-attestL1_InstructionValid = MkAttestation 1 Proven
+attestL1_InstructionValid : (s : Schema) -> LevelAttestation
+attestL1_InstructionValid _ = MkAttestation 1 Proven
 
-||| Construct a Level 2 attestation from successful region resolution.
+||| Construct a Level 2 attestation from a region-binding witness.
+||| `FieldIn name schema` proves that the referenced field genuinely
+||| lives in the declared schema — i.e. the region binding resolved.
 public export
-attestL2_RegionBound : LevelAttestation
-attestL2_RegionBound = MkAttestation 2 Proven
+attestL2_RegionBound : {0 name : String}
+                    -> {0 schema : Schema}
+                    -> FieldIn name schema
+                    -> LevelAttestation
+attestL2_RegionBound _ = MkAttestation 2 Proven
 
-||| Construct a Level 3 attestation from type unification success.
+||| Construct a Level 3 attestation from a WasmTypeCompat witness.
+||| Types are compatible iff they are identical (`TypeCompat` is
+||| the only constructor), so the witness transports the type
+||| equality explicitly.
 public export
-attestL3_TypeCompat : LevelAttestation
-attestL3_TypeCompat = MkAttestation 3 Proven
+attestL3_TypeCompat : {0 a, b : WasmType}
+                   -> WasmTypeCompat a b
+                   -> LevelAttestation
+attestL3_TypeCompat _ = MkAttestation 3 Proven
 
-||| Construct a Level 4 attestation from null-safety analysis.
+||| Construct a Level 4 attestation from a non-null pointer.
+||| The `NonNull` nullability index is the compile-time evidence
+||| that this pointer cannot be null; dereferencing is safe.
 public export
-attestL4_NullSafe : LevelAttestation
-attestL4_NullSafe = MkAttestation 4 Proven
+attestL4_NullSafe : {0 k : PtrKind}
+                 -> {0 s : Schema}
+                 -> {0 l : Levels.Lifetime}
+                 -> Pointer.Ptr k s l NonNull
+                 -> LevelAttestation
+attestL4_NullSafe _ = MkAttestation 4 Proven
 
-||| Construct a Level 5 attestation from bounds proof.
+||| Construct a Level 5 attestation from a bounds proof.
+||| `InBounds idx count` proves `idx < count`, so the access
+||| stays inside the region's allocated slots.
 public export
-attestL5_BoundsProof : LevelAttestation
-attestL5_BoundsProof = MkAttestation 5 Proven
+attestL5_BoundsProof : {0 idx, count : Nat}
+                    -> InBounds idx count
+                    -> LevelAttestation
+attestL5_BoundsProof _ = MkAttestation 5 Proven
 
-||| Construct a Level 6 attestation from result-type inference.
+||| Construct a Level 6 attestation from an `AccessResult`.
+||| The result type `ty` is fixed by the access operation's type
+||| index, so holding an `AccessResult ty` is evidence that the
+||| result type is both known and consistent with the schema.
 public export
-attestL6_ResultType : LevelAttestation
-attestL6_ResultType = MkAttestation 6 Proven
+attestL6_ResultType : {0 ty : WasmType}
+                   -> AccessResult ty
+                   -> LevelAttestation
+attestL6_ResultType _ = MkAttestation 6 Proven
 
-||| Construct a Level 7 attestation from aliasing analysis.
+||| Construct a Level 7 attestation from an exclusivity witness.
+||| `ExclusiveWitness s` records the scope in which a pointer was
+||| checked to be the unique reference into its schema.
 public export
-attestL7_AliasFree : LevelAttestation
-attestL7_AliasFree = MkAttestation 7 Proven
+attestL7_AliasFree : {0 s : Schema}
+                  -> ExclusiveWitness s
+                  -> LevelAttestation
+attestL7_AliasFree _ = MkAttestation 7 Proven
 
-||| Construct a Level 8 attestation from effect subsumption proof.
+||| Construct a Level 8 attestation from an effect subsumption proof.
+||| (This was already witness-consuming pre-A7; kept for reference.)
 public export
-attestL8_EffectSafe : EffectSubsumes declared actual -> LevelAttestation
+attestL8_EffectSafe : {0 declared, actual : EffectSet}
+                   -> EffectSubsumes declared actual
+                   -> LevelAttestation
 attestL8_EffectSafe _ = MkAttestation 8 Proven
 
-||| Construct a Level 9 attestation from lifetime validity proof.
+||| Construct a Level 9 attestation from an `Outlives` proof.
+||| `Lifetime.Outlives rl sl` is the lifetime-safety witness: the referent's
+||| lifetime outlives the scope of use, so the reference cannot
+||| dangle.
 public export
-attestL9_LifetimeSafe : LevelAttestation
-attestL9_LifetimeSafe = MkAttestation 9 Proven
+attestL9_LifetimeSafe : {0 rl, sl : Lifetime.Lifetime}
+                     -> Lifetime.Outlives rl sl
+                     -> LevelAttestation
+attestL9_LifetimeSafe _ = MkAttestation 9 Proven
 
-||| Construct a Level 10 attestation from linearity proof.
+||| Construct a Level 10 attestation from a `CompletedProtocol`
+||| witness — evidence that the linear allocation protocol was
+||| closed (allocated → freed exactly once).
 public export
-attestL10_Linear : LevelAttestation
-attestL10_Linear = MkAttestation 10 Proven
+attestL10_Linear : {0 tok : Nat}
+                -> CompletedProtocol tok
+                -> LevelAttestation
+attestL10_Linear _ = MkAttestation 10 Proven
 
 -- ============================================================================
 -- Full Certificate Construction
@@ -226,15 +298,35 @@ buildCertificate checks multiMod =
 ||| Most memory accesses in practice achieve L6 and exit — they don't
 ||| need aliasing, effect, lifetime, or linearity proofs because the
 ||| access is a simple read with no ownership transfer.
+|||
+||| The function requires one witness per attested level.  The
+||| witnesses are compile-time-only (erased at runtime) but cannot
+||| be conjured without a genuine proof artefact — the whole point
+||| of PROOF-NEEDS §P1.1.
 public export
-simpleReadCert : ProofCertificate
-simpleReadCert = MkCertificate
-  [ attestL1_InstructionValid
-  , attestL2_RegionBound
-  , attestL3_TypeCompat
-  , attestL4_NullSafe
-  , attestL5_BoundsProof
-  , attestL6_ResultType
+simpleReadCert : {0 nameL2    : String}
+              -> {0 schemaL2  : Schema}
+              -> {0 tyL3      : WasmType}
+              -> {0 kindL4    : PtrKind}
+              -> {0 schemaL4  : Schema}
+              -> {0 lifeL4    : Levels.Lifetime}
+              -> {0 idxL5     : Nat}
+              -> {0 countL5   : Nat}
+              -> {0 tyL6      : WasmType}
+              -> (l1 : Schema)
+              -> (l2 : FieldIn nameL2 schemaL2)
+              -> (l3 : WasmTypeCompat tyL3 tyL3)
+              -> (l4 : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+              -> (l5 : InBounds idxL5 countL5)
+              -> (l6 : AccessResult tyL6)
+              -> ProofCertificate
+simpleReadCert l1 l2 l3 l4 l5 l6 = MkCertificate
+  [ attestL1_InstructionValid l1
+  , attestL2_RegionBound l2
+  , attestL3_TypeCompat l3
+  , attestL4_NullSafe l4
+  , attestL5_BoundsProof l5
+  , attestL6_ResultType l6
   ] 6 []
 
 -- ============================================================================
@@ -248,22 +340,51 @@ simpleReadCert = MkCertificate
 ||| with full cost and knowledge accounting.  In practice, most functions
 ||| will exit at L6 (simpleReadCert); L11-L12 are activated only when
 ||| cost_bound and region.sync annotations are present.
+|||
+||| Every level requires its own witness (A7 / PROOF-NEEDS §P1.1).
+||| The L8 witness is the caller-supplied `EffectSubsumes`; pre-A7
+||| this was hard-coded to `SubNil` for the vacuous empty-actual
+||| case, which the caller can still pass explicitly if they want
+||| that semantics.
 public export
-fullCert12 : {n : Nat} -> AllPairsCosts n -> Level12Proof -> ProofCertificate
-fullCert12 costProof epistemicProof = MkCertificate
-  [ attestL1_InstructionValid
-  , attestL2_RegionBound
-  , attestL3_TypeCompat
-  , attestL4_NullSafe
-  , attestL5_BoundsProof
-  , attestL6_ResultType
-  , attestL7_AliasFree
-  , attestL8_EffectSafe SubNil            -- SubNil : EffectSubsumes declared [] holds vacuously
-  , attestL9_LifetimeSafe
-  , attestL10_Linear
-  , attestL11_CostBounded costProof
-  , attestL12_EpistemicFresh epistemicProof
-  ] 12 []
+fullCert12 : {0 nameL2    : String} -> {0 schemaL2 : Schema}
+          -> {0 tyL3      : WasmType}
+          -> {0 kindL4    : PtrKind} -> {0 schemaL4 : Schema} -> {0 lifeL4 : Levels.Lifetime}
+          -> {0 idxL5     : Nat} -> {0 countL5 : Nat}
+          -> {0 tyL6      : WasmType}
+          -> {0 schemaL7  : Schema}
+          -> {0 declared, actual : EffectSet}
+          -> {0 rl, sl    : Lifetime.Lifetime}
+          -> {0 tokL10    : Nat}
+          -> {n           : Nat}
+          -> (l1          : Schema)
+          -> (l2          : FieldIn nameL2 schemaL2)
+          -> (l3          : WasmTypeCompat tyL3 tyL3)
+          -> (l4          : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+          -> (l5          : InBounds idxL5 countL5)
+          -> (l6          : AccessResult tyL6)
+          -> (l7          : ExclusiveWitness schemaL7)
+          -> (l8          : EffectSubsumes declared actual)
+          -> (l9          : Lifetime.Outlives rl sl)
+          -> (l10         : CompletedProtocol tokL10)
+          -> (costProof       : AllPairsCosts n)
+          -> (epistemicProof  : Level12Proof)
+          -> ProofCertificate
+fullCert12 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof =
+  MkCertificate
+    [ attestL1_InstructionValid  l1
+    , attestL2_RegionBound       l2
+    , attestL3_TypeCompat        l3
+    , attestL4_NullSafe          l4
+    , attestL5_BoundsProof       l5
+    , attestL6_ResultType        l6
+    , attestL7_AliasFree         l7
+    , attestL8_EffectSafe        l8
+    , attestL9_LifetimeSafe      l9
+    , attestL10_Linear           l10
+    , attestL11_CostBounded      costProof
+    , attestL12_EpistemicFresh   epistemicProof
+    ] 12 []
 
 -- ============================================================================
 -- Full 15-Level Certificate
@@ -273,34 +394,55 @@ fullCert12 costProof epistemicProof = MkCertificate
 ||| L11-L12 for shared memory, L13-L15 for agent-style isolation and protocols.
 |||
 ||| This is the highest-tier certificate for multi-agent, effectful,
-||| protocol-driven typed-wasm modules.
+||| protocol-driven typed-wasm modules.  Every level requires its own
+||| witness (A7 / PROOF-NEEDS §P1.1).
 public export
-fullCert15 : {n : Nat}
-          -> {p : Protocol}
-          -> {owner : ModuleCaps}
-          -> AllPairsCosts n
-          -> Level12Proof
-          -> IsolatedModule
-          -> WellFormedProtocol p
-          -> FunctionCaps owner
+fullCert15 : {0 nameL2    : String} -> {0 schemaL2 : Schema}
+          -> {0 tyL3      : WasmType}
+          -> {0 kindL4    : PtrKind} -> {0 schemaL4 : Schema} -> {0 lifeL4 : Levels.Lifetime}
+          -> {0 idxL5     : Nat} -> {0 countL5 : Nat}
+          -> {0 tyL6      : WasmType}
+          -> {0 schemaL7  : Schema}
+          -> {0 declared, actual : EffectSet}
+          -> {0 rl, sl    : Lifetime.Lifetime}
+          -> {0 tokL10    : Nat}
+          -> {n           : Nat}
+          -> {p           : Protocol}
+          -> {owner       : ModuleCaps}
+          -> (l1          : Schema)
+          -> (l2          : FieldIn nameL2 schemaL2)
+          -> (l3          : WasmTypeCompat tyL3 tyL3)
+          -> (l4          : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+          -> (l5          : InBounds idxL5 countL5)
+          -> (l6          : AccessResult tyL6)
+          -> (l7          : ExclusiveWitness schemaL7)
+          -> (l8          : EffectSubsumes declared actual)
+          -> (l9          : Lifetime.Outlives rl sl)
+          -> (l10         : CompletedProtocol tokL10)
+          -> (costProof       : AllPairsCosts n)
+          -> (epistemicProof  : Level12Proof)
+          -> (isoMod          : IsolatedModule)
+          -> (wfProto         : WellFormedProtocol p)
+          -> (fc              : FunctionCaps owner)
           -> ProofCertificate
-fullCert15 costProof epistemicProof isoMod wfProto fc = MkCertificate
-  [ attestL1_InstructionValid
-  , attestL2_RegionBound
-  , attestL3_TypeCompat
-  , attestL4_NullSafe
-  , attestL5_BoundsProof
-  , attestL6_ResultType
-  , attestL7_AliasFree
-  , attestL8_EffectSafe SubNil
-  , attestL9_LifetimeSafe
-  , attestL10_Linear
-  , attestL11_CostBounded costProof
-  , attestL12_EpistemicFresh epistemicProof
-  , attestL13_Isolated isoMod
-  , attestL14_SessionSafe wfProto
-  , attestL15_CapsSafe fc
-  ] 15 []
+fullCert15 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof isoMod wfProto fc =
+  MkCertificate
+    [ attestL1_InstructionValid  l1
+    , attestL2_RegionBound       l2
+    , attestL3_TypeCompat        l3
+    , attestL4_NullSafe          l4
+    , attestL5_BoundsProof       l5
+    , attestL6_ResultType        l6
+    , attestL7_AliasFree         l7
+    , attestL8_EffectSafe        l8
+    , attestL9_LifetimeSafe      l9
+    , attestL10_Linear           l10
+    , attestL11_CostBounded      costProof
+    , attestL12_EpistemicFresh   epistemicProof
+    , attestL13_Isolated         isoMod
+    , attestL14_SessionSafe      wfProto
+    , attestL15_CapsSafe         fc
+    ] 15 []
 
 -- ============================================================================
 -- Proof Erasure Guarantee

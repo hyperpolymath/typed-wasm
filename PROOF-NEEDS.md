@@ -233,7 +233,36 @@ to sanity-check the statement before proving it.
 ### P1 — Security (the parts where ceremony ≠ evidence)
 
 **P1.1. Replace every ceremonial attestation in `Proofs.idr` with
-evidence-consuming versions.** Current state:
+evidence-consuming versions. ✅ DONE 2026-04-18 (A7).**
+
+Every nullary attestation in `Proofs.idr` has been promoted to require
+a witness from its level's proof module:
+
+| Attestation | Witness type | Source module |
+|---|---|---|
+| `attestL1_InstructionValid` | `Schema` | Region.idr |
+| `attestL2_RegionBound` | `FieldIn name schema` | Region.idr |
+| `attestL3_TypeCompat` | `WasmTypeCompat a b` | MultiModule.idr |
+| `attestL4_NullSafe` | `Pointer.Ptr k s l NonNull` | Pointer.idr |
+| `attestL5_BoundsProof` | `InBounds idx count` | Region.idr |
+| `attestL6_ResultType` | `AccessResult ty` | TypedAccess.idr |
+| `attestL7_AliasFree` | `ExclusiveWitness s` | Pointer.idr |
+| `attestL8_EffectSafe` | `EffectSubsumes declared actual` | Effects.idr (pre-existing) |
+| `attestL9_LifetimeSafe` | `Lifetime.Outlives rl sl` | Lifetime.idr |
+| `attestL10_Linear` | `CompletedProtocol tok` | Linear.idr |
+
+`simpleReadCert`, `fullCert12`, and `fullCert15` now thread each of the
+required witnesses through their signatures.  The top-level certificate
+cannot be constructed without a proof term for every level it claims.
+
+Qualification note: `Lifetime` and `Outlives` are resolved as
+`Lifetime.Lifetime` / `Lifetime.Outlives` (from Lifetime.idr), while
+`Pointer.Ptr`'s lifetime parameter takes `Levels.Lifetime` (which is
+what Pointer.idr itself imports from Levels.idr).  A small comment in
+Proofs.idr explains the qualification; both `Lifetime` types remain
+in the codebase for now.
+
+**Original task description preserved for history:** Current state:
 
 ```
 attestL10_Linear : LevelAttestation
