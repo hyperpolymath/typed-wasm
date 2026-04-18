@@ -19,6 +19,9 @@ module TypedWasm.ABI.Tropical
 
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.Levels
+import Data.Nat
+import Data.Fin
+import Data.List
 
 %default total
 
@@ -85,7 +88,8 @@ public export
 data CostBounded : (cost : TropCost) -> (bound : Nat) -> Type where
   ||| Finite cost within bound.
   BoundedFinite : LTE n bound -> CostBounded (Finite n) bound
-  ||| Infinity is never bounded (this constructor is impossible to inhabit).
+  -- Infinity is never bounded: there is no constructor for that case, so
+  -- `CostBounded Infinity _` is uninhabited by construction.
 
 ||| Level 11 proof obligation: the total cost of an access path is bounded.
 ||| A function that accesses shared memory must prove its access pattern
@@ -93,6 +97,8 @@ data CostBounded : (cost : TropCost) -> (bound : Nat) -> Type where
 public export
 record Level11Proof where
   constructor MkLevel11
+  ||| The accumulated cost along the path (existential).
+  totalCost : TropCost
   ||| The access path with accumulated cost.
   path : AccessPath totalCost
   ||| The declared cost bound for this function.
@@ -104,21 +110,22 @@ record Level11Proof where
 -- Tropical semiring laws (for proof composition)
 -- ============================================================================
 
-||| tropAdd is commutative.
-export
-tropAddComm : (a, b : TropCost) -> tropAdd a b = tropAdd b a
-tropAddComm Infinity Infinity = Refl
-tropAddComm Infinity (Finite _) = Refl
-tropAddComm (Finite _) Infinity = Refl
-tropAddComm (Finite a) (Finite b) = cong Finite (minCommutative a b)
+-- The full commutative-semiring proof (eight axioms including
+-- commutativity, associativity, annihilation, distributivity) is deferred
+-- to A2: port from 007-lang/proofs/idris2/TropicalSemiring.idr which uses
+-- a structural `tropMin` because Prelude.min does not reduce under pattern
+-- matching in Idris2 0.8.  See PROOF-NEEDS.md §P0.1.
+--
+-- The two identity theorems below go through directly because they do not
+-- touch `min` on the Finite/Finite case.
 
-||| Infinity is the identity for tropAdd (zero element).
+||| Infinity is the right identity for tropAdd (zero element).
 export
 tropAddIdentity : (a : TropCost) -> tropAdd a Infinity = a
 tropAddIdentity Infinity = Refl
 tropAddIdentity (Finite _) = Refl
 
-||| Finite 0 is the identity for tropMul (one element).
+||| Finite 0 is the left identity for tropMul (one element).
 export
 tropMulIdentity : (a : TropCost) -> tropMul (Finite 0) a = a
 tropMulIdentity Infinity = Refl
@@ -161,10 +168,11 @@ costMatAdd m1 m2 i j = tropAdd (m1 i j) (m2 i j)
 ||| (m1 · m2)(i,j) = min_k { m1(i,k) + m2(k,j) }.
 public export
 costMatMul : {n : Nat} -> CostMatrix n -> CostMatrix n -> CostMatrix n
-costMatMul {n} m1 m2 i j =
-  foldr (\k, acc => tropAdd acc (tropMul (m1 i k) (m2 k j)))
-        Infinity
-        (allFins n)
+costMatMul {n} m1 m2 i j = go (List.allFins n)
+  where
+    go : List (Fin n) -> TropCost
+    go [] = Infinity
+    go (k :: ks) = tropAdd (go ks) (tropMul (m1 i k) (m2 k j))
 
 ||| Identity cost matrix: 0 on the diagonal (free self-access), Infinity off.
 public export
@@ -185,10 +193,11 @@ costMatPow m (S k) = costMatMul m (costMatPow m k)
 public export
 costMatStar : {n : Nat} -> CostMatrix n -> CostMatrix n
 costMatStar {n = Z}   _ = costMatId
-costMatStar {n = S m} a =
-  foldr (\k, acc => costMatAdd acc (costMatPow a k))
-        costMatId
-        (allFins (S m))
+costMatStar {n = S m} a = go (List.allFins (S m))
+  where
+    go : List (Fin (S m)) -> CostMatrix (S m)
+    go [] = costMatId
+    go (k :: ks) = costMatAdd (go ks) (costMatPow a (finToNat k))
 
 -- ============================================================================
 -- All-Pairs Cost Proof

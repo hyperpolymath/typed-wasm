@@ -21,6 +21,8 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.ResourceCapabilities
         , TypedWasm.ABI.Choreography
         , TypedWasm.ABI.Echo
+        , TypedWasm.ABI.Tropical
+        , TypedWasm.ABI.Epistemic
         , TypedWasm.ABI.Proofs
         -- Cross-language layout contracts (aggregate library role, ADR-004)
         , Layout.Types

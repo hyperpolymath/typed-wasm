@@ -20,6 +20,7 @@ module TypedWasm.ABI.Epistemic
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.MultiModule
 import TypedWasm.ABI.Levels
+import Data.Nat
 
 %default total
 
@@ -120,31 +121,20 @@ writerKnowsFresh : (writer : ModuleId) -> (field : String) -> (ver : Nat) ->
                    Fresh writer field ver ver
 writerKnowsFresh _ _ _ = MkFresh Refl
 
-||| Staleness is decidable: given two versions, knowledge is either fresh or stale.
-||| Uses Nat ordering directly and keeps the comparison explicit.
+||| Staleness is decidable: given two versions, knowledge is either fresh,
+||| stale-forward (known < current), or stale-backward (current < known).
+||| Direct structural recursion on both Nats — avoids relying on the
+||| Ordering proof witness machinery.
 export
 freshOrStale : (known, current : Nat) ->
-               Either (known = current) (LT known current `Either` LT current known)
-freshOrStale known current with (compare known current) proof prf
-  freshOrStale known current | EQ with (compareEq known current prf)
-    freshOrStale current current | EQ | Refl = Left Refl
-  freshOrStale known current | LT =
-    Right (Left (compareLT known current prf))
-  freshOrStale known current | GT =
-    Right (Right (compareGT known current prf))
-  where
-    -- Extract LT proof from Ordering witness
-    compareLT : (a, b : Nat) -> compare a b = LT -> LT a b
-    compareLT Z (S _) _ = LTESucc LTEZero
-    compareLT (S a) (S b) prf = LTESucc (compareLT a b prf)
-    -- Extract GT proof from Ordering witness (GT a b means LT b a)
-    compareGT : (a, b : Nat) -> compare a b = GT -> LT b a
-    compareGT (S _) Z _ = LTESucc LTEZero
-    compareGT (S a) (S b) prf = LTESucc (compareGT a b prf)
-    -- Extract equality from EQ ordering
-    compareEq : (a, b : Nat) -> compare a b = EQ -> a = b
-    compareEq Z Z _ = Refl
-    compareEq (S a) (S b) prf = cong S (compareEq a b prf)
+               Either (known = current) (Either (LT known current) (LT current known))
+freshOrStale Z     Z     = Left Refl
+freshOrStale Z     (S c) = Right (Left  (LTESucc LTEZero))
+freshOrStale (S k) Z     = Right (Right (LTESucc LTEZero))
+freshOrStale (S k) (S c) = case freshOrStale k c of
+  Left  eq          => Left (cong S eq)
+  Right (Left  lt)  => Right (Left  (LTESucc lt))
+  Right (Right gt)  => Right (Right (LTESucc gt))
 
 ||| Sync restores freshness.
 export
