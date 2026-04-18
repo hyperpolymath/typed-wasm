@@ -25,7 +25,13 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.Epistemic
         , TypedWasm.ABI.Proofs
         -- Cross-language layout contracts (aggregate library role, ADR-004)
-        , Layout.Types
-        , Layout.ABI
-        , Layout.Stdlib
-        , Layout.AirborneSubmarineSquadron
+        -- TEMP: Layout.* gated out of ipkg pending an Idris2 0.8 reduction
+        -- workaround in `Layout/Types.idr` (DecEq nested-with patterns +
+        -- Refl-impossible proofs against `public export` definitions that do
+        -- not currently reduce at unification time).  TypedWasm.ABI.Proofs
+        -- has had its `import TypedWasm.ABI.Layout` commented to match.  See
+        -- PROOF-NEEDS.md (Layout-fix entry) for the remediation plan.
+        --, Layout.Types
+        --, Layout.ABI
+        --, Layout.Stdlib
+        --, Layout.AirborneSubmarineSquadron

@@ -483,6 +483,49 @@ After each session: run `idris2 --check` on every file in
 adjacent code (no new unsafe code should land), update this file's
 inventory table, commit.
 
+## Outstanding infrastructure work — Layout module fix (added 2026-04-18)
+
+`Layout/Types.idr` was never compiling cleanly under this Idris2 0.8
+build.  The directory rename `layout/` → `Layout/` (filesystem case
+matching the `Layout.*` module names) and the `import layout.Types`
+→ `import Layout.Types` typo fix in `TypedWasm/ABI/Layout.idr` were
+made on 2026-04-18, which surfaced the underlying issues:
+
+  1. **Mutual recursion not declared.**  `WasmHeapType` references
+     `WasmValType` (line 65) but `WasmValType` is declared later
+     (line 73).  Wrapping both in `mutual` is needed.
+  2. **Visibility annotations missing.**  `data WasmPrimitive` /
+     `WasmHeapType` / `WasmValType` and the layout values
+     (`stringLayout`, `optionLayout`, `resultLayout`, `enumLayout`,
+     `recordLayout`) all lack `public export`, so downstream
+     constructors are not visible and `Refl`-based proofs do not
+     unify.
+  3. **Imports missing.**  `Decidable.Equality` is used (`DecEq`,
+     `Yes`, `No`, `decEq`) but never imported; `Data.List` similarly.
+  4. **Nested `with` block patterns** in the `DecEq WasmHeapType`
+     instance (lines 178-234) trigger pattern-variable unification
+     errors under this Idris2 build.
+  5. **Refl-impossible patterns** (`stringOptionDistinct _ Refl
+     impossible` etc.) need the layout values to reduce at unification
+     time — even with `public export` the reduction does not happen
+     under this build, so a different proof strategy is needed
+     (probably explicit `case ... of` with constructor mismatch).
+
+**Current gating (2026-04-18):** the four `Layout.*` modules are
+commented out of `typed-wasm.ipkg` and the `import TypedWasm.ABI.Layout`
+line in `TypedWasm/ABI/Proofs.idr` is gated.  This unblocks the full
+ipkg build for the typed-wasm core (TypedWasm.ABI.* modules) — which
+is the primary purpose of typed-wasm.  The aggregate-library Layout
+contracts remain in the tree for restoration once the issues above
+are addressed.
+
+**Remediation plan:** add `public export` to every Layout type/value;
+add `import Decidable.Equality, Data.List`; rewrite the `DecEq
+WasmHeapType` and `DecEq WasmValType` instances without nested `with`
+(use case-of or explicit witness construction); replace the
+Refl-impossible patterns with `case ... of` + constructor analysis.
+Estimated effort: one focused session.
+
 ## Pre-existing notes (preserved from prior revision)
 
 ### Template ABI Cleanup (2026-03-29)

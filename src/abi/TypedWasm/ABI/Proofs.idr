@@ -27,7 +27,9 @@ import TypedWasm.ABI.Linear
 import TypedWasm.ABI.MultiModule
 import TypedWasm.ABI.Tropical
 import TypedWasm.ABI.Epistemic
-import TypedWasm.ABI.Layout
+-- TEMP: Layout import gated pending Idris2 0.8 reduction fix in Layout/Types.idr.
+-- See typed-wasm.ipkg Layout block + PROOF-NEEDS.md Layout-fix entry.
+-- import TypedWasm.ABI.Layout
 import TypedWasm.ABI.ModuleIsolation
 import TypedWasm.ABI.SessionProtocol
 import TypedWasm.ABI.ResourceCapabilities

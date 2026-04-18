@@ -12,7 +12,7 @@
 
 module TypedWasm.ABI.Layout
 
-import layout.Types
+import Layout.Types
 import Data.List
 import Data.List.Elem
 
