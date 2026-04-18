@@ -66,17 +66,23 @@ expectOk(
 
 // ── Negative: canonical syntax errors ────────────────────────────────
 
-// Finding 2026-04-18: parser is lenient about the semicolon between
-// the last field and `align`. Grammar EBNF requires `;` after every
-// field_decl, so this is a parser looseness worth flagging in a
-// future parser-tightness pass. Not exercised here to keep L1 tests
-// aligned with current parser behaviour rather than the EBNF spec.
+// Parser now enforces the trailing `;` on every field_decl per
+// grammar.ebnf §field_decl. A missing `;` between the last field and
+// the region's `align` line is rejected rather than silently accepted.
 
 expectErr(
   `region Bad { n: u32;
     align ;
   }`,
   "align with missing integer literal",
+);
+
+expectErr(
+  `region Bad {
+    n: u32
+    align 4;
+  }`,
+  "field decl missing trailing semicolon",
 );
 
 expectErr(

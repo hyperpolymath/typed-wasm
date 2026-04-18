@@ -1331,8 +1331,14 @@ let parseFieldDecl = (p: parserState): result<Ast.located<Ast.fieldDecl>> => {
           | Error(_) => ()
           }
         }
-        let _ = expect(p, Semicolon)
-        Ok({node: {name, fieldType: ty, constraints}, loc: startLoc})
+        // EBNF grammar.ebnf §field_decl requires the trailing semicolon.
+        // Older fixtures relied on a silent `let _ = expect(...)` that
+        // discarded the error; enforce it now so parse-time L1 coverage
+        // matches the spec.
+        switch expect(p, Semicolon) {
+        | Ok() => Ok({node: {name, fieldType: ty, constraints}, loc: startLoc})
+        | Error(e) => Error(e)
+        }
       | Error(e) => Error(e)
       }
     | Error(e) => Error(e)
