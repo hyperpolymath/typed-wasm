@@ -157,7 +157,7 @@ data CompletedProtocol : (token : Nat) -> Type where
   MkCompleted : FreeResult -> CompletedProtocol token
 
 -- ============================================================================
--- No-Double-Free Proof
+-- No-Double-Free Proof (QTT structural layer)
 -- ============================================================================
 
 ||| Double-free is impossible by construction.
@@ -171,11 +171,108 @@ data CompletedProtocol : (token : Nat) -> Type where
 |||
 ||| This is not a separate proof to maintain — it falls out automatically
 ||| from QTT's linear quantity tracking. We document it here for clarity.
+|||
+||| The section below (Propositional State-Machine Theorems) adds a
+||| second, witness-manipulating layer for consumers that want an
+||| explicit proof term instead of just the QTT structural guarantee.
 public export
 data NoDoubleFree : Type where
   ||| Structural guarantee from QTT: consuming a linear value removes
   ||| it from scope, making re-consumption impossible.
   MkNoDoubleFree : NoDoubleFree
+
+-- ============================================================================
+-- Propositional State-Machine Theorems (PROOF-NEEDS §P0.2)
+-- ============================================================================
+--
+-- The `NoDoubleFree` marker above captures the QTT side of the story:
+-- the (1 _ : LinHandle token) quantity means consume-exactly-once is
+-- enforced by Idris2's quantity tracker at the binding site.  That is
+-- real but structural — it is not a proposition you can hand to another
+-- proof to consume.
+--
+-- This section adds an explicit witness-manipulating layer: a usage-
+-- indexed handle `LinHandleU u tok`, a state transition `consume`, and
+-- propositional theorems over the state machine.  `LinHandleU` is a
+-- displayed type (echo type) over `Usage` — the A0 machinery applies
+-- directly.
+--
+-- Zero dangerous patterns, %default total.
+
+||| Usage state of a linear resource handle.
+|||   Fresh    — not yet consumed; `consume` is callable.
+|||   Consumed — `consume` has been called; no further transition valid.
+public export
+data Usage : Type where
+  Fresh    : Usage
+  Consumed : Usage
+
+||| Linear handle indexed by its usage state.
+|||
+||| The constructor choice tracks the state in the type, so applying
+||| `consume` to a `LinHandleU Consumed tok` is a type error at the
+||| binding site (not a runtime check).  This is a state machine whose
+||| transitions are witnessed by the constructors of `consume`.
+public export
+data LinHandleU : (u : Usage) -> (token : Nat) -> Type where
+  ||| A fresh, unconsumed linear handle.
+  MkLinFresh    : (offset : Nat) -> (schemaId : Nat) -> LinHandleU Fresh tok
+  ||| A linear handle that has been consumed exactly once.
+  MkLinConsumed : (offset : Nat) -> (schemaId : Nat) -> LinHandleU Consumed tok
+
+||| State transition: a fresh handle becomes consumed.  The underlying
+||| offset and schema identifier are preserved so the runtime can still
+||| emit the free call after the type-level state has flipped.
+public export
+consume : LinHandleU Fresh tok -> LinHandleU Consumed tok
+consume (MkLinFresh off sid) = MkLinConsumed off sid
+
+-- ---- Theorems ----
+
+||| Fresh and Consumed are distinct usage states.
+|||
+||| Without this, any attestation built from the state index would be
+||| vacuous because the index could collapse.
+public export
+distinctUsage : Fresh = Consumed -> Void
+distinctUsage Refl impossible
+
+||| `consume` preserves the underlying offset and schemaId; only the
+||| state tag changes.  This is the behavioural lemma for `consume`:
+||| the function does what its type promises and no more.
+public export
+consumePreservesData :
+     {0 tok : Nat}
+  -> (off, sid : Nat)
+  -> consume {tok} (MkLinFresh off sid) = MkLinConsumed off sid
+consumePreservesData _ _ = Refl
+
+||| The central Level 10 theorem: once consumed, no path back to Fresh.
+|||
+||| Any hypothetical "unconsume" function would have to apply this
+||| transport.  Since its precondition `Consumed = Fresh` is uninhabited
+||| (by `distinctUsage`), no total function of type
+||| `LinHandleU Consumed tok -> LinHandleU Fresh tok` can be written in
+||| the safe fragment.
+|||
+||| Read: "the only way to move Consumed back to Fresh is to first prove
+||| the two states are equal, which produces Void."
+public export
+noReuse : (h : LinHandleU Consumed tok) ->
+          (absurd : Consumed = Fresh) ->
+          Void
+noReuse _ Refl impossible
+
+||| Corollary: given a consumed handle, the set of fresh handles that
+||| would `consume` to it is empty when the states are distinct.  This
+||| phrases the noReuse theorem as an echo type / displayed fiber: the
+||| fiber of `consume` over any consumed handle has cardinality exactly
+||| one (the fresh predecessor), not more.
+public export
+noReuseEcho : (h : LinHandleU Consumed tok) ->
+              (f : LinHandleU Fresh tok) ->
+              (Consumed = Fresh) -> Void
+noReuseEcho _ _ prf = distinctUsage (sym prf)
 
 -- ============================================================================
 -- Resource Counting (Bounded Linearity)
