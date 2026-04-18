@@ -28,15 +28,16 @@ natural home for "striation is cheaper" proofs once it lands.
 
 | Feature | Grammar | AST | Lexer | Parser | Checker | Tests |
 |---------|---------|-----|-------|--------|---------|-------|
-| `const` top-level | spec/grammar.ebnf | Ast.ConstDecl | Const | **TODO** parseConstDecl | Checker.constValueIsLiteral | TODO |
-| `match` on union | spec/grammar.ebnf | Ast.MatchStmt | Match | **TODO** parseMatchStmt | Checker.matchIsExhaustive | TODO |
-| Block-expr `if` | spec/grammar.ebnf | Ast.BlockIfExpr | Yield | **TODO** parseBlockIfExpr | Checker.blockIfBranchesAgree | TODO |
-| Split `effects` | spec/grammar.ebnf | functionDecl.caps | (contextual) | **TODO** parseSplitEffects | (opaque until L15) | TODO |
-| `striated` regions | spec/grammar.ebnf | regionDecl.layout | Striated | **DONE** | Checker.striatedLayoutIsWellFormed | TODO |
-| Reserved keywords (L13-L16) | spec/L13-L16-reserved-syntax.adoc | — | ReservedKeyword | **TODO** reject at parser | — | TODO |
+| `const` top-level | spec/grammar.ebnf | Ast.ConstDecl | Const | **DONE** parseConstDecl (Parser.res:2088) | Checker.constValueIsLiteral | **DONE** |
+| `match` on union | spec/grammar.ebnf | Ast.MatchStmt | Match | **DONE** (Parser.res:1191) | Checker.matchIsExhaustive | **DONE** |
+| Block-expr `if` | spec/grammar.ebnf | Ast.BlockIfExpr | Yield | **DONE** (Parser.res:529) | Checker.blockIfBranchesAgree | **DONE** |
+| Split `effects` | spec/grammar.ebnf | functionDecl.caps | (contextual) | **DONE** parseEffectsClause (Parser.res:1554) | (opaque until L15) | **DONE** |
+| `striated` regions | spec/grammar.ebnf | regionDecl.layout | Striated | **DONE** | Checker.striatedLayoutIsWellFormed | **DONE** |
+| Reserved keywords (L13-L16) | spec/L13-L16-reserved-syntax.adoc | — | contextual (per-block) | **DONE** (Parser.res:2685-2718) | — | **DONE** (v1.4/v1.5 rejection tests) |
 
-**AST and lexer tokens landed 2026-04-13. Parser rules and Checker module are
-the remaining v1.1 work.**
+**v1.1 surface sugar fully landed: parser, checker, tests all live.
+88/88 parser tests pass (verified 2026-04-18). LEVEL-STATUS table was stale
+between 2026-04-13 (AST landed) and 2026-04-18 (verification).**
 
 ## Current: checked core = L1-10 + L13-L16, L11-L12 = draft
 
