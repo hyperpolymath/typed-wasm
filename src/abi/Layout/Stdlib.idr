@@ -43,39 +43,47 @@ import Layout.Types
 --   field "tail" : (ref null self)  — the rest; null = end of list
 
 ||| The head field: holds one element of the list.
+public export
 listHeadField : WasmHeapType -> (String, WasmValType)
 listHeadField elem = ("head", WVT_Ref elem)
 
 ||| The tail field: a nullable self-reference.
 ||| WHT_Var 0 is the de Bruijn index for the enclosing WHT_Rec binder.
 ||| Under `WHT_Rec body`, every `WHT_Var 0` in `body` refers to the list node itself.
+public export
 listTailField : (String, WasmValType)
 listTailField = ("tail", WVT_RefNull (WHT_Var 0))
 
 ||| The agreed WasmGC heap type for `List elem`.
 ||| This is the μ-binder: the self-reference in `listTailField` resolves to this node.
+public export
 listHeapType : WasmHeapType -> WasmHeapType
 listHeapType elem = WHT_Rec (WHT_Struct [listHeadField elem, listTailField])
 
 ||| The agreed WasmGC value type for `List elem` — a non-nullable struct reference.
 ||| Empty lists are represented as the null tail of a containing node, not as
 ||| a nullable `List` reference.  This matches Ephapax's linear list design.
+public export
 listLayout : WasmHeapType -> WasmValType
 listLayout elem = WVT_Ref (listHeapType elem)
 
 ||| List values are non-nullable references.
-listLayoutNonNull : (elem : WasmHeapType) -> IsNonNull (listLayout elem)
+public export
+listLayoutNonNull : (elem : WasmHeapType) -> IsNonNull (Layout.Stdlib.listLayout elem)
 listLayoutNonNull _ = RefIsNonNull
 
 ||| The tail field's self-reference is exactly WHT_Var 0.
 ||| Proof that `listTailField` encodes the correct recursive back-reference.
-listTailIsVar0 : listTailField = ("tail", WVT_RefNull (WHT_Var 0))
+public export
+listTailIsVar0 : Layout.Stdlib.listTailField = ("tail", WVT_RefNull (WHT_Var 0))
 listTailIsVar0 = Refl
 
 ||| The list heap type is wrapped in exactly one WHT_Rec binder.
 ||| This witnesses that `listHeapType` is a proper isorecursive type, not a plain struct.
+public export
 listHeapTypeIsRec : (elem : WasmHeapType)
-    -> listHeapType elem = WHT_Rec (WHT_Struct [listHeadField elem, listTailField])
+    -> Layout.Stdlib.listHeapType elem
+     = WHT_Rec (WHT_Struct [Layout.Stdlib.listHeadField elem, Layout.Stdlib.listTailField])
 listHeapTypeIsRec _ = Refl
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -86,15 +94,18 @@ listHeapTypeIsRec _ = Refl
 -- All fields are non-nullable; tuples are always fully initialised.
 
 ||| The agreed WasmGC heap type for a pair (T1, T2).
+public export
 pairHeapType : WasmValType -> WasmValType -> WasmHeapType
 pairHeapType t1 t2 = WHT_Struct [("fst", t1), ("snd", t2)]
 
 ||| The agreed WasmGC value type for a pair.
+public export
 pairLayout : WasmValType -> WasmValType -> WasmValType
 pairLayout t1 t2 = WVT_Ref (pairHeapType t1 t2)
 
 ||| Pair values are non-nullable.
-pairLayoutNonNull : (t1 t2 : WasmValType) -> IsNonNull (pairLayout t1 t2)
+public export
+pairLayoutNonNull : (t1, t2 : WasmValType) -> IsNonNull (Layout.Stdlib.pairLayout t1 t2)
 pairLayoutNonNull _ _ = RefIsNonNull
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -105,13 +116,15 @@ pairLayoutNonNull _ _ = RefIsNonNull
 -- WasmGC function references are typed by their signature.
 
 ||| The agreed WasmGC value type for a function with given param/result types.
+public export
 funcRefLayout : List WasmValType -> List WasmValType -> WasmValType
 funcRefLayout params results = WVT_Ref (WHT_Func params results)
 
 ||| Function references are non-nullable.
+public export
 funcRefLayoutNonNull
-    : (ps rs : List WasmValType)
-    -> IsNonNull (funcRefLayout ps rs)
+    : (ps, rs : List WasmValType)
+    -> IsNonNull (Layout.Stdlib.funcRefLayout ps rs)
 funcRefLayoutNonNull _ _ = RefIsNonNull
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -119,13 +132,22 @@ funcRefLayoutNonNull _ _ = RefIsNonNull
 -- ─────────────────────────────────────────────────────────────────────────────
 
 ||| List layouts are distinct from String layout (different element types and structure).
-listNotString : (elem : WasmHeapType) -> listLayout elem = stringLayout -> Void
-listNotString _ Refl impossible
+public export
+listNotString : (elem : WasmHeapType)
+             -> Layout.Stdlib.listLayout elem = Layout.Types.stringLayout
+             -> Void
+listNotString _ prf = case prf of Refl impossible
 
 ||| Pair layouts are distinct from String layout.
-pairNotString : (t1 t2 : WasmValType) -> pairLayout t1 t2 = stringLayout -> Void
-pairNotString _ _ Refl impossible
+public export
+pairNotString : (t1, t2 : WasmValType)
+             -> Layout.Stdlib.pairLayout t1 t2 = Layout.Types.stringLayout
+             -> Void
+pairNotString _ _ prf = case prf of Refl impossible
 
 ||| Function-reference layouts are distinct from String layout.
-funcRefNotString : (ps rs : List WasmValType) -> funcRefLayout ps rs = stringLayout -> Void
-funcRefNotString _ _ Refl impossible
+public export
+funcRefNotString : (ps, rs : List WasmValType)
+                -> Layout.Stdlib.funcRefLayout ps rs = Layout.Types.stringLayout
+                -> Void
+funcRefNotString _ _ prf = case prf of Refl impossible

@@ -16,21 +16,27 @@ module Layout.AirborneSubmarineSquadron
 
 import Layout.Types
 import Layout.ABI
+import Data.List
 
 %default total
 
+public export
 snapshotAbiVersion : String
 snapshotAbiVersion = "airborne-submarine-squadron.step_state.v1"
 
+public export
 snapshotFieldCount : Nat
 snapshotFieldCount = 29
 
+public export
 inputFieldCount : Nat
 inputFieldCount = 5
 
+public export
 stepStateArity : Nat
 stepStateArity = snapshotFieldCount + inputFieldCount
 
+public export
 snapshotFieldNames : List String
 snapshotFieldNames =
   [ "tick"
@@ -64,6 +70,7 @@ snapshotFieldNames =
   , "mission_failed"
   ]
 
+public export
 inputFieldNames : List String
 inputFieldNames =
   [ "thrust_x"
@@ -73,35 +80,54 @@ inputFieldNames =
   , "toggle_env"
   ]
 
-snapshotFieldCountProof : length snapshotFieldNames = snapshotFieldCount
+public export
+snapshotFieldCountProof
+    : length Layout.AirborneSubmarineSquadron.snapshotFieldNames
+    = Layout.AirborneSubmarineSquadron.snapshotFieldCount
 snapshotFieldCountProof = Refl
 
-inputFieldCountProof : length inputFieldNames = inputFieldCount
+public export
+inputFieldCountProof
+    : length Layout.AirborneSubmarineSquadron.inputFieldNames
+    = Layout.AirborneSubmarineSquadron.inputFieldCount
 inputFieldCountProof = Refl
 
+public export
 snapshotResultHeap : WasmHeapType
 snapshotResultHeap = WHT_Array (WVT_Prim WasmI32)
 
+public export
 snapshotResultConvention : PassingConvention
 snapshotResultConvention = ByRef snapshotResultHeap
 
+public export
 i32Convention : PassingConvention
 i32Convention = ByValue (WVT_Prim WasmI32)
 
+public export
 stepStateParams : List PassingConvention
 stepStateParams = replicate stepStateArity i32Convention
 
-stepStateArityProof : length stepStateParams = stepStateArity
+public export
+stepStateArityProof
+    : length Layout.AirborneSubmarineSquadron.stepStateParams
+    = Layout.AirborneSubmarineSquadron.stepStateArity
 stepStateArityProof = Refl
 
+public export
 initStateSig : CrossLangSig
 initStateSig = MkCrossLangSig [] [snapshotResultConvention]
 
+public export
 stepStateSig : CrossLangSig
 stepStateSig = MkCrossLangSig stepStateParams [snapshotResultConvention]
 
-initStateNoParams : params initStateSig = []
+public export
+initStateNoParams : params Layout.AirborneSubmarineSquadron.initStateSig = []
 initStateNoParams = Refl
 
-stepStateReturnsSnapshot : returns stepStateSig = [snapshotResultConvention]
+public export
+stepStateReturnsSnapshot
+    : returns Layout.AirborneSubmarineSquadron.stepStateSig
+    = [Layout.AirborneSubmarineSquadron.snapshotResultConvention]
 stepStateReturnsSnapshot = Refl

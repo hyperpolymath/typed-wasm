@@ -23,15 +23,18 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.Echo
         , TypedWasm.ABI.Tropical
         , TypedWasm.ABI.Epistemic
+        , TypedWasm.ABI.Layout
         , TypedWasm.ABI.Proofs
-        -- Cross-language layout contracts (aggregate library role, ADR-004)
-        -- TEMP: Layout.* gated out of ipkg pending an Idris2 0.8 reduction
-        -- workaround in `Layout/Types.idr` (DecEq nested-with patterns +
-        -- Refl-impossible proofs against `public export` definitions that do
-        -- not currently reduce at unification time).  TypedWasm.ABI.Proofs
-        -- has had its `import TypedWasm.ABI.Layout` commented to match.  See
-        -- PROOF-NEEDS.md (Layout-fix entry) for the remediation plan.
-        --, Layout.Types
-        --, Layout.ABI
-        --, Layout.Stdlib
-        --, Layout.AirborneSubmarineSquadron
+        -- Cross-language layout contracts (aggregate library role, ADR-004).
+        -- Restored 2026-04-18 after fixing the Idris2 0.8 reduction + parsing
+        -- issues in `Layout/Types.idr` and siblings: added public export to
+        -- all data/values, wrapped the mutually recursive WasmHeapType /
+        -- WasmValType in a single `mutual` block, rewrote the DecEq instances
+        -- as plain mutual functions with thin interface wrappers, replaced
+        -- Refl-impossible patterns with `case … of Refl impossible`, and
+        -- qualified lowercase layout identifiers to suppress Idris2's
+        -- auto-bound-implicit shadowing warning.
+        , Layout.Types
+        , Layout.ABI
+        , Layout.Stdlib
+        , Layout.AirborneSubmarineSquadron
