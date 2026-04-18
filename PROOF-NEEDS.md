@@ -168,8 +168,51 @@ not.
 constructors, hard if it has to be redesigned.
 
 **P0.5. MultiModule.idr — CompatCertificate reflexivity + transitivity
-+ composition.** File has 12 `data` declarations describing
-cross-module memory compatibility. Prove:
++ composition. ✅ DONE 2026-04-18 (A6).**
+
+The strengthened propositional layer was added to MultiModule.idr alongside
+the existing data declarations (none of which were rewritten).  The new
+relation `ModuleCompat` is indexed by both modules *and* schemas, which
+avoids the "compatCommute implicit bidirectionality" question: the schema
+order pins the direction of the subschema witness.
+
+Proved:
+
+```
+compatRefl  : (m : ModuleId) -> (s : Schema) -> ModuleCompat m m s s
+compatTrans : ModuleCompat m1 m2 s1 s2 -> ModuleCompat m2 m3 s2 s3
+           -> ModuleCompat m1 m3 s1 s3
+```
+
+plus the flagship no-spoofing theorem:
+
+```
+noSpoofing : ModuleCompat from to imp exp
+          -> (f : Field) -> FieldMatches f imp
+          -> FieldMatches f exp
+```
+
+and a type-preservation corollary `noTypeSpoofing` at a known
+`(name, ty)` pair.  The work-horse lemma is `fieldMatchesLift :
+FieldMatches f y -> SchemaSub y z -> FieldMatches f z`, which walks
+the SchemaSub witness field-by-field — so the proof is not vacuous.
+
+Sanity-checked with a worked Rust-exports / ReScript-imports example
+(4-field export `[id: U64, age: U8, score: F32, banned: WBool]`,
+2-field subset import `[id: U64, age: U8]`) that constructs a live
+`ModuleCompat` certificate and applies `noSpoofing` to it.  Zero
+`believe_me` / `assert_total` / `postulate` / `sorry`; `%default
+total` preserved.
+
+`compatCommute` is NOT proven because it only holds when the two
+subschema relations are mutually witnessed — at that point the two
+schemas are equal up to reordering and the commutativity is a
+one-line corollary of `noSpoofing` in both directions.  Left as
+future work only if a downstream consumer actually needs it.
+
+**Original task description preserved for history:** File has 12
+`data` declarations describing cross-module memory compatibility.
+Prove:
 
 ```
 compatRefl   : (m : ModuleId) -> Compat m m

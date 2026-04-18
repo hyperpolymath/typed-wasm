@@ -91,7 +91,7 @@ toolchain remains future work.
 | Effects.idr | 0 | 0 | 0 | In package |
 | Lifetime.idr | 0 | 0 | 0 | In package |
 | Linear.idr | 0 | 0 | 0 | In package |
-| MultiModule.idr | 0 | 0 | 0 | In package |
+| MultiModule.idr | 0 | 0 | 0 | In package.  Flagship no-spoofing theorem proven A6 (2026-04-18): `FieldMatches`, `SchemaSub` preorder (`schemaSubRefl`, `schemaSubTrans`), `ModuleCompat` indexed on modules + schemas (`compatRefl`, `compatTrans`), and the flagship `noSpoofing : ModuleCompat from to imp exp -> FieldMatches f imp -> FieldMatches f exp`.  Worked Rust-exports / ReScript-imports example (4-field export, 2-field import subset) constructs a live certificate and applies the theorem. |
 | ModuleIsolation.idr | 0 | 0 | 0 | In package (v1.2 / L13) |
 | SessionProtocol.idr | 0 | 0 | 0 | In package (v1.3 / L14) |
 | ResourceCapabilities.idr | 0 | 0 | 0 | In package (v1.4 / L15) |
