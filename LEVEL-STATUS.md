@@ -52,7 +52,7 @@ the remaining v1.1 work.**
 | 8 | Effect-tracking | Effects.idr | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased** |
 | 9 | Lifetime safety | Lifetime.idr | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased** |
 | 10 | Linearity | Linear.idr (QTT q=1) | Erased (QTT) | ECHIDNA 10^4 | **Proven [sfap], erased** |
-| 11 | Tropical cost-tracking | Tropical.idr | Not yet | None | **In package (A1, 2026-04-18); semiring laws not yet proven (commutativity/associativity/distributivity deferred to A2 port from 007-lang/proofs/idris2/TropicalSemiring.idr).  Two identity theorems (`tropAddIdentity`, `tropMulIdentity`) live.** |
+| 11 | Tropical cost-tracking | Tropical.idr | Not yet | None | **In package (A1, 2026-04-18).  Commutative-semiring closure PROVEN (A2, 2026-04-18): all 12 axioms — tropAddLeftId/RightId/Comm/Assoc, tropMulLeftId/RightId/Comm/Assoc, tropMulLeftAnn/RightAnn, tropMulDistrib/DistribR.  Uses structural `tropMin` (007-lang template).  Zero dangerous patterns.** |
 | 12 | Epistemic safety | Epistemic.idr | Not yet | None | **In package (A1, 2026-04-18); `writerKnowsFresh`, `freshOrStale`, `syncRestoresFresh` theorems live.  Full freshness propagation under concurrent writes deferred.** |
 | 13 | Module isolation | ModuleIsolation.idr | (per-module handles, future) | 12 parser/Checker tests | **v1.2 — Idris2 proof + surface checker live; 007 lowering DONE (task #5)** |
 | 14 | Session protocols | SessionProtocol.idr | (typed-state handles, future) | 13 parser/Checker tests | **v1.3 — Idris2 proof + surface checker live; 007 send/receive lowering DONE (task #7)** |

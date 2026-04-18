@@ -38,12 +38,29 @@ data TropCost : Type where
   ||| Infinite cost — unreachable or unbounded.
   Infinity : TropCost
 
-||| Tropical addition: min of two costs.
+||| Structural minimum for Nat (proof-friendly).
+|||
+||| Idris2 0.8's Prelude.min is defined via comparison
+||| (`if x < y then x else y`) and does not reduce under pattern matching
+||| on variables in proofs.  This equivalent definition by structural
+||| recursion does, which is what makes the semiring proofs below go
+||| through without holes.
+|||
+||| Extensionally equal to Prelude.min on Nat (ported from
+||| 007-lang/proofs/idris2/TropicalSemiring.idr).
+private
+tropMin : Nat -> Nat -> Nat
+tropMin Z     _     = Z
+tropMin (S _) Z     = Z
+tropMin (S m) (S n) = S (tropMin m n)
+
+||| Tropical addition: min of two costs.  Uses structural `tropMin` so
+||| the semiring laws below reduce cleanly.
 public export
 tropAdd : TropCost -> TropCost -> TropCost
 tropAdd Infinity b = b
 tropAdd a Infinity = a
-tropAdd (Finite a) (Finite b) = Finite (min a b)
+tropAdd (Finite a) (Finite b) = Finite (tropMin a b)
 
 ||| Tropical multiplication: sum of two costs (path composition).
 public export
@@ -107,29 +124,191 @@ record Level11Proof where
   bounded : CostBounded totalCost bound
 
 -- ============================================================================
--- Tropical semiring laws (for proof composition)
+-- Tropical semiring laws — all twelve axioms
 -- ============================================================================
-
--- The full commutative-semiring proof (eight axioms including
--- commutativity, associativity, annihilation, distributivity) is deferred
--- to A2: port from 007-lang/proofs/idris2/TropicalSemiring.idr which uses
--- a structural `tropMin` because Prelude.min does not reduce under pattern
--- matching in Idris2 0.8.  See PROOF-NEEDS.md §P0.1.
 --
--- The two identity theorems below go through directly because they do not
--- touch `min` on the Finite/Finite case.
+-- Ported 2026-04-18 from 007-lang/proofs/idris2/TropicalSemiring.idr.
+-- (TropCost, tropAdd, tropMul, Infinity, Finite 0) is a proven commutative
+-- semiring.  Zero dangerous patterns, %default total, mechanically checked
+-- by idris2 --check.
 
-||| Infinity is the right identity for tropAdd (zero element).
+-- ---- Private Nat lemmas (structural, used to close the Finite cases) ----
+
+||| Right identity for Nat addition.
+private
+plusZeroRightNeutral' : (n : Nat) -> n + 0 = n
+plusZeroRightNeutral' Z = Refl
+plusZeroRightNeutral' (S k) = cong S (plusZeroRightNeutral' k)
+
+||| Nat addition: m + S n = S (m + n).
+private
+plusSuccRight' : (m, n : Nat) -> m + S n = S (m + n)
+plusSuccRight' Z n = Refl
+plusSuccRight' (S k) n = cong S (plusSuccRight' k n)
+
+||| Nat addition is commutative.
+private
+plusComm' : (m, n : Nat) -> m + n = n + m
+plusComm' Z Z = Refl
+plusComm' Z (S k) = cong S (plusComm' Z k)
+plusComm' (S k) Z = cong S (plusComm' k Z)
+plusComm' (S k) (S j) =
+  rewrite plusSuccRight' k j in
+  rewrite plusSuccRight' j k in
+  cong S (cong S (plusComm' k j))
+
+||| Nat addition is associative.
+private
+plusAssoc' : (m, n, p : Nat) -> m + (n + p) = (m + n) + p
+plusAssoc' Z n p = Refl
+plusAssoc' (S m) n p = cong S (plusAssoc' m n p)
+
+||| Structural minimum is commutative.
+private
+tropMinComm : (m, n : Nat) -> tropMin m n = tropMin n m
+tropMinComm Z Z = Refl
+tropMinComm Z (S _) = Refl
+tropMinComm (S _) Z = Refl
+tropMinComm (S m) (S n) = cong S (tropMinComm m n)
+
+||| Structural minimum is associative.
+private
+tropMinAssoc : (m, n, p : Nat) -> tropMin m (tropMin n p) = tropMin (tropMin m n) p
+tropMinAssoc Z _ _ = Refl
+tropMinAssoc (S _) Z _ = Refl
+tropMinAssoc (S _) (S _) Z = Refl
+tropMinAssoc (S m) (S n) (S p) = cong S (tropMinAssoc m n p)
+
+||| Addition distributes over structural minimum from the left:
+||| a + tropMin m n = tropMin (a + m) (a + n).
+private
+plusDistribOverTropMin : (a, m, n : Nat) -> a + tropMin m n = tropMin (a + m) (a + n)
+plusDistribOverTropMin Z m n = Refl
+plusDistribOverTropMin (S a) m n = cong S (plusDistribOverTropMin a m n)
+
+-- ---- Additive monoid: (TropCost, tropAdd, Infinity) ----
+
+||| Left identity: tropAdd Infinity a = a.
+public export
+tropAddLeftId : (a : TropCost) -> tropAdd Infinity a = a
+tropAddLeftId Infinity = Refl
+tropAddLeftId (Finite _) = Refl
+
+||| Right identity: tropAdd a Infinity = a.
+public export
+tropAddRightId : (a : TropCost) -> tropAdd a Infinity = a
+tropAddRightId Infinity = Refl
+tropAddRightId (Finite _) = Refl
+
+||| Commutativity: tropAdd a b = tropAdd b a.
+|||
+||| The order of two branch alternatives does not affect which one wins.
+public export
+tropAddComm : (a, b : TropCost) -> tropAdd a b = tropAdd b a
+tropAddComm Infinity Infinity = Refl
+tropAddComm Infinity (Finite _) = Refl
+tropAddComm (Finite _) Infinity = Refl
+tropAddComm (Finite m) (Finite n) = cong Finite (tropMinComm m n)
+
+||| Associativity: tropAdd a (tropAdd b c) = tropAdd (tropAdd a b) c.
+|||
+||| Grouping three branch alternatives does not affect the minimum outcome.
+public export
+tropAddAssoc : (a, b, c : TropCost) ->
+               tropAdd a (tropAdd b c) = tropAdd (tropAdd a b) c
+tropAddAssoc Infinity _ _ = Refl
+tropAddAssoc (Finite _) Infinity _ = Refl
+tropAddAssoc (Finite _) (Finite _) Infinity = Refl
+tropAddAssoc (Finite m) (Finite n) (Finite p) = cong Finite (tropMinAssoc m n p)
+
+-- ---- Multiplicative monoid: (TropCost, tropMul, Finite 0) ----
+
+||| Left identity: tropMul (Finite 0) a = a.
+public export
+tropMulLeftId : (a : TropCost) -> tropMul (Finite 0) a = a
+tropMulLeftId Infinity = Refl
+tropMulLeftId (Finite _) = Refl
+
+||| Right identity: tropMul a (Finite 0) = a.
+public export
+tropMulRightId : (a : TropCost) -> tropMul a (Finite 0) = a
+tropMulRightId Infinity = Refl
+tropMulRightId (Finite n) = cong Finite (plusZeroRightNeutral' n)
+
+||| Commutativity: tropMul a b = tropMul b a.
+|||
+||| Sequential costs compose the same in either order.
+public export
+tropMulComm : (a, b : TropCost) -> tropMul a b = tropMul b a
+tropMulComm Infinity Infinity = Refl
+tropMulComm Infinity (Finite _) = Refl
+tropMulComm (Finite _) Infinity = Refl
+tropMulComm (Finite m) (Finite n) = cong Finite (plusComm' m n)
+
+||| Associativity: tropMul a (tropMul b c) = tropMul (tropMul a b) c.
+|||
+||| Parenthesisation does not affect the cost of a sequential chain.
+public export
+tropMulAssoc : (a, b, c : TropCost) ->
+               tropMul a (tropMul b c) = tropMul (tropMul a b) c
+tropMulAssoc Infinity _ _ = Refl
+tropMulAssoc (Finite _) Infinity _ = Refl
+tropMulAssoc (Finite _) (Finite _) Infinity = Refl
+tropMulAssoc (Finite m) (Finite n) (Finite p) = cong Finite (plusAssoc' m n p)
+
+-- ---- Annihilation: Infinity annihilates tropMul ----
+
+||| Left annihilation: tropMul Infinity a = Infinity.
+public export
+tropMulLeftAnn : (a : TropCost) -> tropMul Infinity a = Infinity
+tropMulLeftAnn _ = Refl
+
+||| Right annihilation: tropMul a Infinity = Infinity.
+public export
+tropMulRightAnn : (a : TropCost) -> tropMul a Infinity = Infinity
+tropMulRightAnn Infinity = Refl
+tropMulRightAnn (Finite _) = Refl
+
+-- ---- Distributivity ----
+
+||| Left distributivity:
+||| tropMul a (tropAdd b c) = tropAdd (tropMul a b) (tropMul a c).
+|||
+||| A constant sequential prefix does not change which branch is cheaper.
+public export
+tropMulDistrib : (a, b, c : TropCost) ->
+                 tropMul a (tropAdd b c) = tropAdd (tropMul a b) (tropMul a c)
+tropMulDistrib Infinity _ _ = Refl
+tropMulDistrib (Finite _) Infinity _ = Refl
+tropMulDistrib (Finite _) (Finite _) Infinity = Refl
+tropMulDistrib (Finite m) (Finite n) (Finite p) =
+  cong Finite (plusDistribOverTropMin m n p)
+
+||| Right distributivity (derived from left distributivity + tropMulComm):
+||| tropMul (tropAdd a b) c = tropAdd (tropMul a c) (tropMul b c).
+public export
+tropMulDistribR : (a, b, c : TropCost) ->
+                  tropMul (tropAdd a b) c = tropAdd (tropMul a c) (tropMul b c)
+tropMulDistribR a b c =
+  let step1 = tropMulComm (tropAdd a b) c
+      step2 = tropMulDistrib c a b
+      swapA = tropMulComm c a
+      swapB = tropMulComm c b
+      rwA   = cong (\x => tropAdd x (tropMul c b)) swapA
+      rwB   = cong (\x => tropAdd (tropMul a c) x) swapB
+  in trans step1 (trans step2 (trans rwA rwB))
+
+-- ---- Legacy aliases (kept so earlier consumers keep compiling) ----
+
+||| Alias for tropAddRightId — kept for legacy callers.
 export
 tropAddIdentity : (a : TropCost) -> tropAdd a Infinity = a
-tropAddIdentity Infinity = Refl
-tropAddIdentity (Finite _) = Refl
+tropAddIdentity = tropAddRightId
 
-||| Finite 0 is the left identity for tropMul (one element).
+||| Alias for tropMulLeftId — kept for legacy callers.
 export
 tropMulIdentity : (a : TropCost) -> tropMul (Finite 0) a = a
-tropMulIdentity Infinity = Refl
-tropMulIdentity (Finite _) = Refl
+tropMulIdentity = tropMulLeftId
 
 -- ============================================================================
 -- All-Pairs Cost Matrix (Kleene Star / Floyd-Warshall)
