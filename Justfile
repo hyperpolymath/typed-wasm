@@ -106,10 +106,17 @@ test *args:
     @echo "Running E2E driver (parse + check every example)..."
     node tests/e2e/e2e-driver.mjs
     @echo ""
-    @echo "Running per-level test suites (L1-L3)..."
+    @echo "Running per-level test suites (L1-L10)..."
     node tests/levels/L1.mjs
     node tests/levels/L2.mjs
     node tests/levels/L3.mjs
+    node tests/levels/L4.mjs
+    node tests/levels/L5.mjs
+    node tests/levels/L6.mjs
+    node tests/levels/L7.mjs
+    node tests/levels/L8.mjs
+    node tests/levels/L9.mjs
+    node tests/levels/L10.mjs
     @echo ""
     @echo "Running Zig FFI tests..."
     cd ffi/zig && zig build test
