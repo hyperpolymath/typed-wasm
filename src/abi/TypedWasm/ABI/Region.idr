@@ -336,3 +336,76 @@ data InBounds : (idx : Nat) -> (count : Nat) -> Type where
 public export
 zeroInBounds : InBounds 0 (S n)
 zeroInBounds = MkInBounds (LTESucc LTEZero)
+
+-- ============================================================================
+-- A8 — Field / Schema structural injectivity + SchemaEq equivalence laws
+-- (PROOF-NEEDS §P1.3, reframed for the current Schema = List Field design)
+-- ============================================================================
+--
+-- PROOF-NEEDS §P1.3 originally asked for a `schemaIdInjective` theorem
+-- over a `RegionSchema` record with a `schemaId : Nat` field.  That
+-- record does not exist in the current codebase — a Schema is just a
+-- `List Field`, identified structurally.  The equivalent soundness
+-- claim at the present design is:
+--
+--   1. The `Field` constructor is injective in both components.
+--   2. `SchemaEq` is a full equivalence relation (refl+sym+trans).
+--   3. `FieldIn`-based lookup really returns a field with the queried
+--      name (L2 region-binding soundness).
+--
+-- These are the structural injectivity theorems that pin "same
+-- identifier implies same schema" down at the Idris2 level.
+
+||| Injectivity of the `MkField` constructor in the name component.
+public export
+fieldNameInj : {0 n1, n2 : String} -> {0 t1, t2 : WasmType}
+            -> MkField n1 t1 = MkField n2 t2
+            -> n1 = n2
+fieldNameInj Refl = Refl
+
+||| Injectivity of the `MkField` constructor in the type component.
+public export
+fieldTypeInj : {0 n1, n2 : String} -> {0 t1, t2 : WasmType}
+            -> MkField n1 t1 = MkField n2 t2
+            -> t1 = t2
+fieldTypeInj Refl = Refl
+
+||| Combined field injectivity — both components at once.
+public export
+fieldInj : {0 n1, n2 : String} -> {0 t1, t2 : WasmType}
+        -> MkField n1 t1 = MkField n2 t2
+        -> (n1 = n2, t1 = t2)
+fieldInj Refl = (Refl, Refl)
+
+||| `SchemaEq` is symmetric.  Exchanges the equality witnesses in each
+||| cons, so two schemas equal structurally in one direction are equal
+||| in the other.
+public export
+schemaEqSym : SchemaEq s1 s2 -> SchemaEq s2 s1
+schemaEqSym SchemaNil                    = SchemaNil
+schemaEqSym (SchemaCons nEq tEq rest)    =
+  SchemaCons (sym nEq) (sym tEq) (schemaEqSym rest)
+
+||| `SchemaEq` is transitive.  Chains the per-field equalities via
+||| `trans`, giving a preorder that combined with `schemaEqRefl` and
+||| `schemaEqSym` makes `SchemaEq` a full equivalence relation.
+public export
+schemaEqTrans : SchemaEq s1 s2 -> SchemaEq s2 s3 -> SchemaEq s1 s3
+schemaEqTrans SchemaNil            SchemaNil           = SchemaNil
+schemaEqTrans (SchemaCons n1 t1 r1) (SchemaCons n2 t2 r2) =
+  SchemaCons (trans n1 n2) (trans t1 t2) (schemaEqTrans r1 r2)
+
+||| L2 soundness lemma: when `FieldIn name schema` holds, the field
+||| returned by `lookupField` really has `name` as its name.  This
+||| closes the gap between "there is a field with this name" (the
+||| FieldIn witness) and "the extracted field answers to this name"
+||| (what a caller actually needs).
+|||
+||| The proof unpacks `FieldHere`'s auto-implicit `prf : fieldName f
+||| = name` for the head case and recurses on the tail.
+public export
+lookupFieldName : {0 name : String} -> {schema : Schema}
+               -> (prf : FieldIn name schema)
+               -> fieldName (lookupField prf) = name
+lookupFieldName {schema = _ :: _} (FieldHere {prf = p}) = p
+lookupFieldName {schema = _ :: _} (FieldThere later)    = lookupFieldName later

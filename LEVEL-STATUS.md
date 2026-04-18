@@ -84,7 +84,7 @@ toolchain remains future work.
 
 | File | believe_me | postulate | assert_total | Checked status |
 |------|-----------|-----------|--------------|----------------|
-| Region.idr | 0 | 0 | 0 | In package |
+| Region.idr | 0 | 0 | 0 | In package.  Structural injectivity added A8 (2026-04-18): `fieldNameInj` / `fieldTypeInj` / `fieldInj` (MkField constructor injectivity), `schemaEqSym` / `schemaEqTrans` (making SchemaEq a full equivalence relation with the pre-existing `schemaEqRefl`), `lookupFieldName` (L2 soundness — `FieldIn name schema` implies `fieldName (lookupField prf) = name`). |
 | TypedAccess.idr | 0 | 0 | 0 | In package |
 | Levels.idr | 0 | 0 | 0 | In package |
 | Pointer.idr | 0 | 0 | 0 | In package |
@@ -96,7 +96,7 @@ toolchain remains future work.
 | SessionProtocol.idr | 0 | 0 | 0 | In package (v1.3 / L14) |
 | ResourceCapabilities.idr | 0 | 0 | 0 | In package (v1.4 / L15) |
 | Choreography.idr | 0 | 0 | 0 | In package (v1.5 / L16) |
-| Proofs.idr | 0 | 0 | 0 | In package.  Attestation API hardened A7 (2026-04-18): every L1-L10 attestation now requires a witness from its level module (Schema / FieldIn / WasmTypeCompat / Ptr-NonNull / InBounds / AccessResult / ExclusiveWitness / EffectSubsumes / Lifetime.Outlives / CompletedProtocol).  `simpleReadCert` / `fullCert12` / `fullCert15` thread witnesses per level; the certificate cannot be constructed without real proof artefacts. |
+| Proofs.idr | 0 | 0 | 0 | In package.  Attestation API hardened A7 (2026-04-18): every L1-L10 attestation now requires a witness from its level module (Schema / FieldIn / WasmTypeCompat / Ptr-NonNull / InBounds / AccessResult / ExclusiveWitness / EffectSubsumes / Lifetime.Outlives / CompletedProtocol).  `simpleReadCert` / `fullCert12` / `fullCert15` thread witnesses per level; the certificate cannot be constructed without real proof artefacts.  Level-achievement layer added A8 (2026-04-18): `LevelAchievedIn` predicate, `achievedAppendL` / `achievedAppendR` list-append preservation, `LevelAchieved n cert` lifted to certificates, `composeAchievedL` / `composeAchievedR` proving any level achieved in either component of `composeCertificates` is still achieved in the composition. |
 | Tropical.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Epistemic.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Echo.idr | 0 | 0 | 0 | In package (A0, 2026-04-18) |

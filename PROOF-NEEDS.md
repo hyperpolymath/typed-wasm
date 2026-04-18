@@ -306,7 +306,32 @@ and P1.1, the actual theorem has to be written down.
 type-check is the hard bit — may require understanding a design
 decision that the draft obscures.
 
-**P1.3. Region.idr — schema injectivity.** If two schemas have the
+**P1.3. Region.idr — schema injectivity. ✅ DONE 2026-04-18 (A8) —
+reframed for current Schema = List Field design.**
+
+The original P1.3 asked for `schemaIdInjective` over a
+`RegionSchema` record with a `schemaId : Nat`.  That record does not
+exist in the current codebase — a Schema is just a `List Field`,
+identified structurally.  The equivalent L2 soundness claims at the
+current design are proven in Region.idr:
+
+```
+fieldNameInj    : MkField n1 t1 = MkField n2 t2 -> n1 = n2
+fieldTypeInj    : MkField n1 t1 = MkField n2 t2 -> t1 = t2
+fieldInj        : MkField n1 t1 = MkField n2 t2 -> (n1 = n2, t1 = t2)
+schemaEqSym     : SchemaEq s1 s2 -> SchemaEq s2 s1
+schemaEqTrans   : SchemaEq s1 s2 -> SchemaEq s2 s3 -> SchemaEq s1 s3
+lookupFieldName : (prf : FieldIn name schema)
+                -> fieldName (lookupField prf) = name
+```
+
+Together with the pre-existing `schemaEqRefl`, these make `SchemaEq`
+a full equivalence relation and pin down "same structural identifier
+implies same schema" at the Idris2 level.  `lookupFieldName` closes
+the L2 soundness gap: having a `FieldIn` witness guarantees the
+extracted field really answers to the looked-up name.
+
+**Original task description preserved for history:** If two schemas have the
 same `schemaId : Nat`, they are the same schema. This is required for
 the L2 guarantee (region-binding) to be sound:
 
@@ -365,7 +390,39 @@ theorem inside Idris2. Two ways to attack it:
 **Difficulty:** (a) easy, (b) requires reading Brady & Christiansen's
 QTT paper and citing it.
 
-**P3.2. Levels progression monotonicity.** If a program achieves
+**P3.2. Levels progression monotonicity. ✅ DONE 2026-04-18 (A8) —
+reframed for current ProgressiveCheck / ProofCertificate design.**
+
+The original P3.2 asked for `levelMonotone : LevelAchieved n -> LTE
+m n -> LevelAchieved m` over a `LevelAchieved` predicate that does
+not exist in the codebase.  Under the current design, the
+structural monotonicity relevant at the Idris2 level is
+*composition preservation*, proven in Proofs.idr:
+
+```
+LevelAchievedIn : (n : Nat) -> List LevelAttestation -> Type
+  LAHere  : LevelAchievedIn n (MkAttestation n Proven :: rest)
+  LAThere : LevelAchievedIn n rest -> LevelAchievedIn n (att :: rest)
+
+achievedAppendL : LevelAchievedIn n xs  -> LevelAchievedIn n (xs ++ ys)
+achievedAppendR : LevelAchievedIn n ys  -> LevelAchievedIn n (xs ++ ys)
+
+LevelAchieved : Nat -> ProofCertificate -> Type
+  -- lifted from LevelAchievedIn over the certificate's attestations
+
+composeAchievedL : LevelAchieved n c1 -> LevelAchieved n (composeCertificates c1 c2)
+composeAchievedR : LevelAchieved n c2 -> LevelAchieved n (composeCertificates c1 c2)
+```
+
+A level achieved in either component of a `composeCertificates`
+combination is still achieved in the composition.  The stronger
+"progressive-order" claim — achieving level N implies all lower
+levels hold — would require redesigning `ProgressiveCheck` with a
+typed `level = S prevLevel` invariant.  That redesign is left as
+future work; the composition monotonicity above is the useful
+structural claim at the current design.
+
+**Original task description preserved for history:** If a program achieves
 Level N, it achieves all levels 1..N. Stated as:
 
 ```

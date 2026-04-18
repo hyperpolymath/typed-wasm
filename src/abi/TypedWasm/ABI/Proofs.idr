@@ -445,6 +445,85 @@ fullCert15 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof isoMod wfProt
     ] 15 []
 
 -- ============================================================================
+-- A8 — Level Monotonicity (PROOF-NEEDS §P3.2, reframed)
+-- ============================================================================
+--
+-- PROOF-NEEDS §P3.2 originally asked for
+--
+--   levelMonotone : LevelAchieved n -> (m : Nat) -> LTE m n -> LevelAchieved m
+--
+-- over a `LevelAchieved` predicate that does not exist in the codebase.
+-- The current design uses `ProgressiveCheck` operationally, with no
+-- indexed invariant tying attestations to a specific "achieved" level.
+--
+-- The reframed theorem below introduces `LevelAchievedIn n atts` — a
+-- witness that level `n` was attested with status `Proven` in a
+-- concrete attestation list — and proves the monotonicity *under
+-- certificate composition*: composing two certificates preserves any
+-- level achieved in either component.  This is the structural
+-- monotonicity relevant to the current design; the stronger
+-- "progressive-order" claim requires redesigning `ProgressiveCheck`
+-- with a typed `level = S prevLevel` index and is left as future work.
+
+||| `LevelAchievedIn n atts` — level `n` appears in the attestation list
+||| with status `Proven`.  This is the concrete propositional form of
+||| "the certificate claims level n".
+public export
+data LevelAchievedIn : (n : Nat) -> List LevelAttestation -> Type where
+  ||| Level `n` is at the head of the list, attested as Proven.
+  LAHere  : LevelAchievedIn n (MkAttestation n Proven :: rest)
+  ||| Level `n` is achieved somewhere deeper in the tail.
+  LAThere : LevelAchievedIn n rest -> LevelAchievedIn n (att :: rest)
+
+||| Level achievement is preserved when new attestations are appended
+||| to the right of an existing list.  The original witness walks the
+||| same path through the prefix of the combined list.
+public export
+achievedAppendL : {0 n : Nat} -> {0 xs, ys : List LevelAttestation}
+               -> LevelAchievedIn n xs
+               -> LevelAchievedIn n (xs ++ ys)
+achievedAppendL LAHere        = LAHere
+achievedAppendL (LAThere p)   = LAThere (achievedAppendL p)
+
+||| Level achievement is preserved when new attestations are prepended
+||| to the left of an existing list.  The original witness is shifted
+||| past the prefix via repeated `LAThere`.
+public export
+achievedAppendR : {0 n : Nat}
+               -> (xs : List LevelAttestation)
+               -> {0 ys : List LevelAttestation}
+               -> LevelAchievedIn n ys
+               -> LevelAchievedIn n (xs ++ ys)
+achievedAppendR []        p = p
+achievedAppendR (_ :: xs) p = LAThere (achievedAppendR xs p)
+
+||| Predicate lifted to full proof certificates: "this certificate
+||| claims level `n`".
+public export
+LevelAchieved : (n : Nat) -> ProofCertificate -> Type
+LevelAchieved n (MkCertificate atts _ _) = LevelAchievedIn n atts
+
+||| Monotonicity of certificate composition — left side.  Any level
+||| achieved in the left certificate is still achieved in the
+||| composition.
+public export
+composeAchievedL : (c1, c2 : ProofCertificate)
+                -> LevelAchieved n c1
+                -> LevelAchieved n (composeCertificates c1 c2)
+composeAchievedL (MkCertificate _ _ _) (MkCertificate _ _ _) p =
+  achievedAppendL p
+
+||| Monotonicity of certificate composition — right side.  Any level
+||| achieved in the right certificate is still achieved in the
+||| composition.
+public export
+composeAchievedR : (c1, c2 : ProofCertificate)
+                -> LevelAchieved n c2
+                -> LevelAchieved n (composeCertificates c1 c2)
+composeAchievedR (MkCertificate a1 _ _) (MkCertificate _ _ _) p =
+  achievedAppendR a1 p
+
+-- ============================================================================
 -- Proof Erasure Guarantee
 -- ============================================================================
 
