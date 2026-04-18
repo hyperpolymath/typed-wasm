@@ -204,6 +204,115 @@ effectSubsumesRefl [] = SubNil
 effectSubsumesRefl (x :: rest) =
   SubCons EffHere (effectWeaken (effectSubsumesRefl rest))
 
+||| PROOF-NEEDS §P0.4 alias for `effectSubsumesRefl`.
+public export
+subsumeRefl : (xs : EffectSet) -> EffectSubsumes xs xs
+subsumeRefl = effectSubsumesRefl
+
+-- ============================================================================
+-- Transitivity + Composition (PROOF-NEEDS §P0.4)
+-- ============================================================================
+--
+-- The reflexivity and weakening lemmas above together with `combineSub`
+-- give a partial story.  This block adds the remaining two preorder /
+-- composition theorems requested by PROOF-NEEDS §P0.4:
+--
+--   subsumeTrans    — transitivity of subsumption.
+--   subsumeCompose  — when two operations are sequenced, their combined
+--                     actual effects are subsumed by the combined
+--                     declared effects.
+--
+-- Both are used by the attestation layer in Proofs.idr so that an L8
+-- attestation can be built compositionally from per-operation proofs
+-- rather than re-verifying the monolithic set each time.
+
+||| Membership-lifting lemma: if `e` is in `ys` and `ys` is subsumed by
+||| `xs`, then `e` is in `xs`.  This is the step that makes subsumption
+||| transitive: a membership proof in the middle set gets lifted by the
+||| per-element witnesses stored in the subsumption chain.
+public export
+hasEffectTrans : {ys : EffectSet} ->
+                 HasEffect e ys ->
+                 EffectSubsumes xs ys ->
+                 HasEffect e xs
+hasEffectTrans EffHere (SubCons h _)         = h
+hasEffectTrans (EffThere p) (SubCons _ s)    = hasEffectTrans p s
+
+||| Subsumption is transitive: if zs ⊆ ys and ys ⊆ xs, then zs ⊆ xs.
+|||
+||| Together with `subsumeRefl`, this makes `EffectSubsumes` a preorder
+||| on `EffectSet`.
+public export
+subsumeTrans : {ys : EffectSet} ->
+               EffectSubsumes xs ys ->
+               EffectSubsumes ys zs ->
+               EffectSubsumes xs zs
+subsumeTrans _   SubNil              = SubNil
+subsumeTrans sxy (SubCons hez syz)   =
+  SubCons (hasEffectTrans hez sxy) (subsumeTrans sxy syz)
+
+-- ---- Append-preservation for HasEffect ----
+
+||| Membership on the left: if `e` is in `xs`, then `e` is in
+||| `combineEffects xs ys`.
+public export
+hasEffectCombineL : {xs : EffectSet} ->
+                    HasEffect e xs ->
+                    HasEffect e (combineEffects xs ys)
+hasEffectCombineL {xs = (_ :: _)} EffHere      = EffHere
+hasEffectCombineL {xs = (_ :: _)} (EffThere p) = EffThere (hasEffectCombineL p)
+
+||| Membership on the right: if `e` is in `ys`, then `e` is in
+||| `combineEffects xs ys`.
+public export
+hasEffectCombineR : {xs : EffectSet} ->
+                    HasEffect e ys ->
+                    HasEffect e (combineEffects xs ys)
+hasEffectCombineR {xs = []}        p = p
+hasEffectCombineR {xs = (_ :: _)} p = EffThere (hasEffectCombineR p)
+
+-- ---- Compositional weakening ----
+
+||| Prepending declared effects preserves subsumption of the actual set.
+||| If `actual ⊆ d2`, then `actual ⊆ (d1 ++ d2)`.
+public export
+subsumePrepend : {d1 : EffectSet} ->
+                 EffectSubsumes d2 actual ->
+                 EffectSubsumes (combineEffects d1 d2) actual
+subsumePrepend SubNil           = SubNil
+subsumePrepend (SubCons h rest) =
+  SubCons (hasEffectCombineR h) (subsumePrepend rest)
+
+||| Appending declared effects preserves subsumption of the actual set.
+||| If `actual ⊆ d1`, then `actual ⊆ (d1 ++ d2)`.
+public export
+subsumeAppend : {d1 : EffectSet} ->
+                EffectSubsumes d1 actual ->
+                EffectSubsumes (combineEffects d1 d2) actual
+subsumeAppend SubNil           = SubNil
+subsumeAppend (SubCons h rest) =
+  SubCons (hasEffectCombineL h) (subsumeAppend rest)
+
+||| The composition theorem: when two operations are sequenced, the
+||| combined actual effects are subsumed by the combined declared
+||| effects.
+|||
+||| PROOF-NEEDS §P0.4 stated as:
+|||   EffectSubsumes d1 a1 -> EffectSubsumes d2 a2 ->
+|||   EffectSubsumes (d1 ++ d2) (a1 ++ a2)
+|||
+||| Without this the L8 attestation would have to re-verify the whole
+||| effect set for every compound operation.  With it, attestations
+||| compose.
+public export
+subsumeCompose : {d1 : EffectSet} ->
+                 EffectSubsumes d1 a1 ->
+                 EffectSubsumes d2 a2 ->
+                 EffectSubsumes (combineEffects d1 d2) (combineEffects a1 a2)
+subsumeCompose SubNil           s2 = subsumePrepend s2
+subsumeCompose (SubCons h r) s2 =
+  SubCons (hasEffectCombineL h) (subsumeCompose r s2)
+
 -- ============================================================================
 -- Effectful Operation Type
 -- ============================================================================
