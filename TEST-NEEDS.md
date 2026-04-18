@@ -46,16 +46,16 @@
 - [ ] No type system self-consistency check
 
 ## FLAGGED ISSUES
-- **Type safety system with no safety-level-specific tests** -- 10 levels claimed, 0 level-specific test suites
-- **11 Idris2 proof modules with 0 proof verification tests** -- "proven" is unproven
-- **Tropical.idr and Epistemic.idr (novel type features) have 0 tests** -- research features untested
-- **ECHIDNA harness is 7 assertions** -- token gesture, not real verification
+- **Type safety system with no safety-level-specific tests** -- 10 levels claimed, 0 level-specific test suites (IN PROGRESS 2026-04-18 — L1-L3 pilot + agent handoff for L4-L10)
+- **11 Idris2 proof modules with 0 proof verification tests** -- "proven" is unproven. Update 2026-04-18: A3-A9 theorems landed in commits 987930c, c896a44, 3097b50, 9ebe867 (injectivity, level-achievement monotonicity, erasure P3.1, QTT witness, witness-requiring attestations). L7-L10 preorder + composition lemmas now live. Full per-level Idris2 test files still absent.
+- **Tropical.idr and Epistemic.idr (novel type features) have 0 tests** -- research features untested (L11 semiring closure proven A2 2026-04-18 but no dedicated test suite)
+- ~~**ECHIDNA harness is 7 assertions** -- token gesture, not real verification~~ SUPERSEDED 2026-04-18: tests/echidna/echidna-harness.mjs is now 659 LOC with a random-program generator, 36 proof obligations per run, and parse-rate measurement.
 - **arXiv potential claimed** -- paper-worthy claims need paper-worthy evidence
 
 ## Priority: P0 (CRITICAL)
 
-## FAKE-FUZZ ALERT
+## FAKE-FUZZ ALERT — RESOLVED 2026-04-18
 
-- `tests/fuzz/placeholder.txt` is a scorecard placeholder inherited from rsr-template-repo — it does NOT provide real fuzz testing
+- ~~`tests/fuzz/placeholder.txt` is a scorecard placeholder inherited from rsr-template-repo — it does NOT provide real fuzz testing~~ RESOLVED. The placeholder file is gone; `tests/fuzz/README.adoc` is now an honest status marker pointing at `tests/echidna/echidna-harness.mjs` (659 LOC, real random-program fuzz) and `ffi/zig/test/`. A dedicated retained fuzz corpus is still future work.
 - Replace with an actual fuzz harness (see rsr-template-repo/tests/fuzz/README.adoc) or remove the file
 - Priority: P2 — creates false impression of fuzz coverage
