@@ -524,26 +524,76 @@ composeAchievedR (MkCertificate a1 _ _) (MkCertificate _ _ _) p =
   achievedAppendR a1 p
 
 -- ============================================================================
--- Proof Erasure Guarantee
+-- Proof Erasure Guarantee (PROOF-NEEDS §P3.1)
 -- ============================================================================
+--
+-- The erasure guarantee has TWO faces:
+--
+-- 1. **Meta-theoretic (appeals to QTT, Brady & Christiansen 2021).**
+--    Idris2 is based on Quantitative Type Theory.  A function argument
+--    bound at multiplicity 0 is statically guaranteed to have NO runtime
+--    representation — QTT's type system rejects any program that tries
+--    to inspect a 0-bound value at runtime.  Therefore a function
+--    `f : (0 cert : ProofCertificate) -> a -> b` is semantically
+--    equivalent to `g : a -> b` after compilation: the certificate is
+--    not in the runtime closure.
+--
+--    typed-wasm's checker-facing attestations already use this shape:
+--    see `attestL9_LifetimeSafe`, `attestL10_Linear`, etc. — each takes
+--    its witness at quantity 0 (`{0 rl, sl : Lifetime.Lifetime}`,
+--    `{0 tok : Nat}`).  The certificate layer is QTT-erased by construction.
+--
+-- 2. **Operational (parser-level property test, P3.1(a) approximation).**
+--    A random `.twasm` program P with `effects { ... }` clauses, parsed
+--    alongside a textually-stripped P_bare, yields ASTs that differ ONLY
+--    in the `effects` / `caps` fields.  This is tested in
+--    `tests/echidna/echidna-harness.mjs` (Property 5).  The full
+--    byte-equality-of-compiled-wasm property is blocked pending an
+--    `.twasm`→`.wasm` emitter and is noted as deferred in PROOF-NEEDS.md.
 
-||| All proofs in typed-wasm are erased at compile time.
+||| Witness that a computation of type `b` does not depend on a proof
+||| certificate: the certificate is bound at multiplicity 0, so QTT
+||| erasure removes it from the runtime closure.
 |||
-||| This is the zero-overhead guarantee: the ProofCertificate, all
-||| LevelAttestations, all CompatCertificates, all Outlives proofs,
-||| all EffectSubsumes proofs — ALL of them exist only in the type
-||| checker. The compiled WASM output contains none of this machinery.
+||| Using this witness means "by QTT, the function's behaviour is the
+||| same whether called with certificate `c` or certificate `c'` —
+||| because at runtime it is called with neither."
 |||
-||| The output is bare i32.load, i64.store, etc. — exactly what a
-||| hand-written WASM module would contain, but proven safe.
-|||
-||| This is achieved through Idris2's erasure mechanism:
-|||   - Types with quantity 0 are erased
-|||   - Proof terms used only in types are erased
-|||   - The runtime representation is the same as untyped WASM
+||| `Erases f` replaces the old nullary `ProofErasureGuarantee` with
+||| a type-level statement that actually binds `f` and constrains its
+||| argument's multiplicity.  Constructing `MkErases f` is only
+||| possible when `f`'s first argument is 0-bound — which is checked
+||| by the typechecker, not asserted by documentation.
+public export
+data Erases : (f : (0 _ : ProofCertificate) -> a -> b) -> Type where
+  ||| Build the erasure witness for a cert-irrelevant function `f`.
+  |||
+  ||| The constructor's signature forces `f`'s first argument to be
+  ||| quantity-0 — QTT then guarantees that `f c x = f c' x` for any
+  ||| two certificates `c`, `c'`, because `f` cannot observe `c`.
+  MkErases : (0 f : (0 _ : ProofCertificate) -> a -> b) -> Erases f
+
+||| Legacy alias retained for callers that built the old nullary witness.
+||| Prefer `Erases` for new code; this is kept to avoid churning the
+||| downstream attestation ceremony until A9 rewires it.
 public export
 data ProofErasureGuarantee : Type where
-  ||| Witness that all proof terms are compile-time-only.
-  ||| At runtime, a typed-wasm program is indistinguishable from
-  ||| a hand-written WASM program — same bytes, same performance.
+  ||| The legacy nullary witness.  Its only content is a reference to
+  ||| the QTT meta-theorem above — the stronger per-function witness
+  ||| is `Erases f`.
   MkErasure : ProofErasureGuarantee
+
+||| Example: a function `g` that takes a 0-quantity certificate and a
+||| payload, returning just the payload.  `Erases g` is constructible
+||| because `g`'s first argument is 0-bound; this serves as a
+||| machine-checked witness that cert-irrelevant functions exist.
+public export
+dropCert : (0 _ : ProofCertificate) -> (x : Nat) -> Nat
+dropCert _ x = x
+
+||| `dropCert` is cert-irrelevant — the cert is erased at runtime.
+||| This constructs `Erases dropCert` and therefore type-checks only
+||| if the 0-quantity discipline is preserved end-to-end.
+public export
+dropCertErases : Erases Proofs.dropCert
+dropCertErases = MkErases Proofs.dropCert

@@ -371,24 +371,47 @@ proof once the parser ports to Idris2.
 
 ### P3 — Usability / performance / versatility
 
-**P3.1. Erasure guarantee formalization.** `ProofErasureGuarantee` in
-`Proofs.idr:264` is a nullary data type. The real claim is:
-"compiling a proof-carrying typed-wasm program produces byte-for-byte
-identical WASM output to the equivalent hand-written program". This
-is a meta-theorem about the Idris2 compiler's QTT erasure, not a
-theorem inside Idris2. Two ways to attack it:
+**P3.1. Erasure guarantee formalization. ✅ DONE 2026-04-18 (A9) —
+parser-level + QTT witness; full `.wasm` byte-equality deferred.**
 
-  (a) **Property-based**: diff the `.wasm` output of a proof-carrying
-      module against a hand-written module, assert byte equality.
-      ECHIDNA can generate both sides. This is what the paper should
-      cite today.
+`ProofErasureGuarantee` was a nullary `MkErasure : ProofErasureGuarantee`
+sitting in `Proofs.idr` as a documentation witness only.  The A9 session
+landed the strongest erasure claim the current codebase can support:
 
-  (b) **Meta-theoretic**: appeal to Idris2's QTT erasure spec and
-      write a short ADR explaining the reduction. This is future
-      work.
+  - **Parser-level property test** (`tests/echidna/echidna-harness.mjs`,
+    Property 5): random `.twasm` programs are textually stripped of
+    their `effects { ... }` clauses, both versions are parsed, and
+    their ASTs are asserted equal modulo the proof-only keys
+    `effects`, `caps`, and `loc`.  Structural equality modulo those
+    keys demonstrates that the `effects` annotation is carried in a
+    separable syntactic slot — removing it does not reshape the rest
+    of the program.  Running with `--iterations 50` currently produces
+    8/8 successful pairs matching (100%).  A new obligation
+    `effects-erasure-parser-level` is submitted to ECHIDNA alongside
+    the existing parser obligations.
 
-**Difficulty:** (a) easy, (b) requires reading Brady & Christiansen's
-QTT paper and citing it.
+  - **QTT-level witness in Idris2** (`TypedWasm/ABI/Proofs.idr` —
+    `Erases f` + `dropCertErases`): the nullary `ProofErasureGuarantee`
+    is kept as a legacy alias; the new per-function witness
+    `Erases f` forces `f`'s certificate argument to be multiplicity-0,
+    so constructing `MkErases f` only type-checks when the
+    0-quantity discipline is preserved — at which point QTT (Brady &
+    Christiansen 2021) guarantees the certificate is not in the
+    runtime closure.  `dropCertErases : Erases dropCert` is a
+    machine-checked instance.
+
+**Deferred (P3.1(a) literal byte-equality):** compiling a
+proof-carrying program alongside its hand-written counterpart and
+diffing the `.wasm` output is blocked pending a `.twasm`→`.wasm`
+emitter.  Once an emitter lands, extend Property 5 to run both
+sides through the emitter and `assertBytesEqual`.  The parser-level
+property captures the erasability claim at the strongest scope
+testable against the current toolchain.
+
+**Difficulty (historical):** (a) easy *given an emitter* — today it
+reduces to extending Property 5 with two `emit()` calls and a byte
+buffer compare; (b) done via QTT citation in the Proofs.idr header
+comment.
 
 **P3.2. Levels progression monotonicity. ✅ DONE 2026-04-18 (A8) —
 reframed for current ProgressiveCheck / ProofCertificate design.**

@@ -352,6 +352,98 @@ for (let i = 0; i < Math.min(iterations, 50); i++) {
 }
 
 // ============================================================================
+// Property 5: Effects erasure (P3.1 — erasability of proof annotations)
+// ============================================================================
+//
+// Claim: the `effects { ... }` clause on a function is a proof annotation
+// (it witnesses an L8 effect-subsumption obligation to the checker).  Stripping
+// it from the source text should produce a program whose AST differs from the
+// original ONLY in the `effects`/`caps` fields — no other structural change.
+//
+// This is the parser-level approximation of PROOF-NEEDS §P3.1(a).  The full
+// byte-equality property over compiled `.wasm` output is blocked until a
+// `.twasm`→`.wasm` emitter lands; this property is the strongest erasure
+// claim testable against the current parser.
+
+/**
+ * Strip `effects { ... }` clauses from `.twasm` source text.
+ *
+ * Matches a single non-nested `{ ... }` block after the `effects` keyword.
+ * The generator only emits flat-form effects (`ReadRegion(X), WriteRegion(Y)`)
+ * whose bodies contain no braces, so a single-line regex is sufficient.  The
+ * v1.1 split form (`effects { memory: { ... }, caps: { ... } }`) is NOT
+ * emitted by the generator and is intentionally out-of-scope here.
+ */
+function stripEffects(source) {
+  return source.replace(/\s*effects\s*\{[^}]*\}/g, "");
+}
+
+/**
+ * Structural AST equality that ignores fields we consider proof-only.
+ *
+ *   - `effects` / `caps` — L8/L15 proof annotations (runtime-erased)
+ *   - `loc` — source locations diverge between stripped/unstripped text and
+ *     are not part of the program semantics
+ *
+ * Returns true iff every non-ignored field matches recursively.
+ */
+const PROOF_ONLY_KEYS = new Set(["effects", "caps", "loc"]);
+
+function astEqualModuloProofs(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null) return a === b;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== "object") return a === b;
+
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((x, i) => astEqualModuloProofs(x, b[i]));
+  }
+
+  const aKeys = Object.keys(a).filter((k) => !PROOF_ONLY_KEYS.has(k));
+  const bKeys = Object.keys(b).filter((k) => !PROOF_ONLY_KEYS.has(k));
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (!bKeys.includes(k)) return false;
+    if (!astEqualModuloProofs(a[k], b[k])) return false;
+  }
+  return true;
+}
+
+console.log("\nProperty 5: Effects erasure (parser-level P3.1)");
+let erasurePairs = 0;      // (full, bare) pairs where both parsed successfully
+let erasureMatched = 0;    // ASTs equal modulo proof-only keys
+
+for (let i = 0; i < Math.min(iterations, 50); i++) {
+  const rng      = new RNG(i + 40000);
+  const progFull = genProgram(rng);
+  const progBare = stripEffects(progFull);
+  const rFull    = parseModule(progFull);
+  const rBare    = parseModule(progBare);
+
+  if (rFull.TAG === "Ok" && rBare.TAG === "Ok") {
+    erasurePairs++;
+    property(`effects-erasure seed=${i}`, () => {
+      if (!astEqualModuloProofs(rFull._0, rBare._0)) {
+        throw new Error(
+          `Stripping effects at seed ${i} changed non-proof AST structure ` +
+          `(proof annotations must be runtime-erasable)`,
+        );
+      }
+      erasureMatched++;
+    });
+  }
+}
+
+const erasureRate = erasurePairs > 0
+  ? erasureMatched / erasurePairs
+  : 0;
+console.log(
+  `  Erasure pairs: ${erasureMatched}/${erasurePairs} matched ` +
+  `(${(erasureRate * 100).toFixed(1)}%)`,
+);
+
+// ============================================================================
 // Layout Proof Static Checks
 // ============================================================================
 //
@@ -367,8 +459,10 @@ import { fileURLToPath as _fileURLToPath } from "node:url";
 
 // _thisFile is the path to this harness file, not a directory.
 // The resolve chain strips the filename (first ..) then navigates to the layout dir.
+// Directory renamed `layout/` → `Layout/` on 2026-04-18 to match the `Layout.*`
+// Idris2 module names; update this path in lockstep.
 const _thisFile  = _fileURLToPath(import.meta.url);
-const _layoutDir = _resolve(_thisFile, "..", "..", "..", "src", "abi", "layout");
+const _layoutDir = _resolve(_thisFile, "..", "..", "..", "src", "abi", "Layout");
 
 /**
  * Scan an Idris2 source file for banned safety patterns.
@@ -466,7 +560,7 @@ console.log(listCheck.ok ? "  ✓ Stdlib.idr: List uses WHT_Var 0 (no placeholde
 // ECHIDNA Submission
 // ============================================================================
 
-console.log(`\nSubmitting ${passed + failed + 5} proof obligations to ECHIDNA at ${echidnaUrl}...`);
+console.log(`\nSubmitting ${passed + failed + 6} proof obligations to ECHIDNA at ${echidnaUrl}...`);
 
 try {
   const response = await fetch(`${echidnaUrl}/api/submit`, {
@@ -513,6 +607,22 @@ try {
           detail: listCheck.ok
             ? "List tail uses WHT_Var 0 under WHT_Rec — no WHT_Struct [] placeholder"
             : listCheck.reason,
+        },
+        // ── Proof-annotation erasure (PROOF-NEEDS §P3.1 parser-level) ───────
+        // Full .wasm byte-equality is deferred pending an emitter; this is the
+        // strongest erasure obligation testable against the current parser.
+        {
+          name: "effects-erasure-parser-level",
+          status: erasurePairs > 0 && erasureMatched === erasurePairs
+            ? "proved"
+            : erasurePairs === 0 ? "info" : "failed",
+          pairs: erasurePairs,
+          matched: erasureMatched,
+          detail: erasurePairs === 0
+            ? "No (full, bare) pairs where both parsed — no evidence either way"
+            : `Stripping effects from .twasm source left the AST structurally ` +
+              `unchanged modulo proof-only keys (effects, caps, loc) in ` +
+              `${erasureMatched}/${erasurePairs} successful pairs.`,
         },
       ],
     }),
