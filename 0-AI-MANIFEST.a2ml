@@ -23,6 +23,13 @@ abi_proofs = "src/abi/"
 zig_ffi    = "ffi/zig/"
 examples   = "examples/"
 
+[echidna_invocation]
+# All ECHIDNA calls go through the echidna-llm-mcp BoJ cartridge. Never call ECHIDNA directly.
+# Tools: echidna_list_provers (discovery), echidna_prove (file), echidna_verify (inline),
+#        echidna_search (corpus), echidna_suggest_tactics (advisory), echidna_rank_provers (advisory)
+# Example: { "tool": "echidna_prove", "args": { "file": "/path/proof.lean", "prover": "Lean" } }
+# Full protocol: boj-server/cartridges/echidna-llm-mcp/docs/CALL-PROTOCOL.adoc
+
 [invariants]
 no-partial-proofs    = "NO believe_me, assert_total, unsafePerformIO in Idris2 code"
 no-raw-memory        = "NO raw memory access — all access through typed region operations"
