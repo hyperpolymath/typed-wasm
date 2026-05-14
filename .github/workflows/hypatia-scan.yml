@@ -53,6 +53,9 @@ jobs:
 
       - name: Run Hypatia scan
         id: scan
+        env:
+          # Suppress the Dependabot "GITHUB_TOKEN not set" warning.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Scanning repository: ${{ github.repository }}"
 
