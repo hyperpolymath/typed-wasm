@@ -91,17 +91,26 @@ impl Frame {
 }
 
 /// Predicate distinguishing the operator we're counting from everything
-/// else. C3 uses one of these (`local_get == local_idx`); C4 will use a
-/// `Call`-based one (`call == import_idx`).
-trait OpCounter {
+/// else. Intra-function L7+L10 (this module) uses `LocalGetOf(local_idx)`;
+/// cross-module boundary verification (the `cross` module) uses
+/// `CallOf(import_idx)`.
+pub(crate) trait OpCounter {
     fn matches(&self, op: &Operator<'_>) -> bool;
 }
 
-struct LocalGetOf(u32);
+pub(crate) struct LocalGetOf(pub u32);
 
 impl OpCounter for LocalGetOf {
     fn matches(&self, op: &Operator<'_>) -> bool {
         matches!(op, Operator::LocalGet { local_index } if *local_index == self.0)
+    }
+}
+
+pub(crate) struct CallOf(pub u32);
+
+impl OpCounter for CallOf {
+    fn matches(&self, op: &Operator<'_>) -> bool {
+        matches!(op, Operator::Call { function_index } if *function_index == self.0)
     }
 }
 
@@ -112,7 +121,7 @@ impl OpCounter for LocalGetOf {
 /// reader must yield every operator in order including the final `End`
 /// (which is what `wasmparser::FunctionBody::get_operators_reader`
 /// produces).
-fn count_op_range<C: OpCounter>(
+pub(crate) fn count_op_range<C: OpCounter>(
     body: FunctionBody<'_>,
     counter: &C,
 ) -> Result<(u32, u32), BinaryReaderError> {
