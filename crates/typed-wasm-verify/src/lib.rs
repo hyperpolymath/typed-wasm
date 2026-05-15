@@ -17,7 +17,9 @@
 use thiserror::Error;
 
 pub mod section;
+pub mod verify;
 pub use section::{build_ownership_section_payload, parse_ownership_section_payload, OwnershipEntry};
+pub use verify::{count_uses_range, verify_function};
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
 /// Wire encoding in the `affinescript.ownership` custom section: a single
@@ -111,8 +113,8 @@ pub const OWNERSHIP_SECTION_NAME: &str = "affinescript.ownership";
 /// no violations are found; modules without the section verify trivially.
 ///
 /// Rust port of OCaml `Tw_verify.verify_from_module`.
-pub fn verify_from_module(_wasm_bytes: &[u8]) -> Result<(), VerifyError> {
-    todo!("C3: implement intra-function verifier")
+pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
+    verify::verify_from_module(wasm_bytes)
 }
 
 /// Extract ownership-annotated export interfaces from a wasm module.
