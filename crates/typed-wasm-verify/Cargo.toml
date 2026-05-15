@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+[package]
+name = "typed-wasm-verify"
+version = "0.1.0"
+edition = "2021"
+license = "PMPL-1.0-or-later"
+description = "Post-codegen verifier for typed-wasm L7 (aliasing) and L10 (linearity) constraints on emitted wasm modules"
+repository = "https://github.com/hyperpolymath/typed-wasm"
+readme = "README.md"
+
+[dependencies]
+wasmparser = "0.221"
+thiserror = "2"
+
+[dev-dependencies]
+wasm-encoder = "0.221"
