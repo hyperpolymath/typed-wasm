@@ -16,6 +16,9 @@
 
 use thiserror::Error;
 
+pub mod section;
+pub use section::{build_ownership_section_payload, parse_ownership_section_payload, OwnershipEntry};
+
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
 /// Wire encoding in the `affinescript.ownership` custom section: a single
 /// u8 per kind, values 0/1/2/3 as below.
@@ -37,6 +40,11 @@ impl OwnershipKind {
             3 => OwnershipKind::ExclBorrow,
             _ => OwnershipKind::Unrestricted,
         }
+    }
+
+    /// Encode to the single-byte wire value.
+    pub fn to_byte(self) -> u8 {
+        self as u8
     }
 }
 
