@@ -16,8 +16,10 @@
 
 use thiserror::Error;
 
+pub mod cross;
 pub mod section;
 pub mod verify;
+pub use cross::{extract_exports, verify_cross_module};
 pub use section::{build_ownership_section_payload, parse_ownership_section_payload, OwnershipEntry};
 pub use verify::{count_uses_range, verify_function};
 
@@ -115,26 +117,6 @@ pub const OWNERSHIP_SECTION_NAME: &str = "affinescript.ownership";
 /// Rust port of OCaml `Tw_verify.verify_from_module`.
 pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
     verify::verify_from_module(wasm_bytes)
-}
-
-/// Extract ownership-annotated export interfaces from a wasm module.
-/// Returns one entry per exported function; non-function exports are
-/// filtered out.
-///
-/// Rust port of OCaml `Tw_interface.extract_exports`.
-pub fn extract_exports(_wasm_bytes: &[u8]) -> Result<Vec<FuncInterface>, VerifyError> {
-    todo!("C4: implement export interface extraction")
-}
-
-/// Verify that a caller module's local function bodies respect the
-/// ownership annotations of a callee's exported interface.
-///
-/// Rust port of OCaml `Tw_interface.verify_cross_module`.
-pub fn verify_cross_module(
-    _callee_iface: &[FuncInterface],
-    _caller_bytes: &[u8],
-) -> Result<(), VerifyError> {
-    todo!("C4: implement cross-module boundary verifier")
 }
 
 /// Ownership-annotated signature for one exported function.
