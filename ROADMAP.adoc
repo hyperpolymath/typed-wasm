@@ -62,6 +62,7 @@ Known audit constraints:
 * [x] TypedQLiser plugin (WASM as a "query target") — typedqliser/src/plugins/wasm.rs (541 lines)
 * [ ] VCL-total sibling integration (same levels, different domain)
 * [ ] GraalVM/Truffle target (multi-language shared state type safety)
+* [x] `typed-wasm-verify` Rust crate (`crates/typed-wasm-verify/`) — post-codegen L7+L10 verifier. Consumed by `hyperpolymath/ephapax` as of 2026-05-15 (`compile --verify-ownership`); `hyperpolymath/affinescript` migration from its in-tree OCaml verifier deferred to v1.0.
 
 == v1.0.0 -- Stable Release
 
@@ -71,6 +72,8 @@ Known audit constraints:
 * [ ] CI/CD with proof validation
 * [ ] De-template release/build/container surfaces
 * [ ] Real benchmark and aspect-test evidence
+* [x] Post-codegen verifier in Rust (`crates/typed-wasm-verify/`) — partial v1.0 deliverable, the verifier side of the pipeline. Parser/checker for `.twasm` source remains the open work.
+* [ ] Cross-compat parity proof against `hyperpolymath/affinescript:lib/{tw_verify,tw_interface}.ml` — real OCaml-emitted .wasm fixtures alongside the existing synthetic ones (deferred to "C5.1").
 
 == Language Identity & Linguist Classification
 

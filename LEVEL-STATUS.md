@@ -101,3 +101,39 @@ toolchain remains future work.
 | Tropical.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Epistemic.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Echo.idr | 0 | 0 | 0 | In package (A0, 2026-04-18) |
+
+## Post-codegen verifier (Rust)
+
+The Idris2 proofs above establish that **the type discipline is sound** —
+L1-L10 (and L13-L16) are mechanically verified at the spec level. They
+say nothing about whether a particular wasm module out of a particular
+codegen actually obeys the discipline.
+
+`crates/typed-wasm-verify/` (added 2026-05-15) closes that loop on the
+**post-codegen** side. Given a wasm module plus an
+`affinescript.ownership` custom section, the crate runs a per-path
+`(min, max)` use-range analysis over every function body and reports
+L7 (aliasing) + L10 (linearity) violations. It's a second line of
+defence: the source-level checker enforces the rules during compilation;
+this crate re-checks them on the emitted IR to catch codegen bugs.
+
+| Layer | What it proves | Where |
+|-------|----------------|-------|
+| Idris2 proofs | Type discipline is sound (spec-level) | `src/abi/TypedWasm/ABI/*.idr` |
+| Source checker | Source program respects discipline | `hyperpolymath/affinescript:lib/codegen.ml` (QTT pass), upcoming `.twasm` parser/checker |
+| **Post-codegen verifier** | **Emitted wasm respects discipline** | **`crates/typed-wasm-verify/` (Rust)** + `hyperpolymath/affinescript:lib/{tw_verify,tw_interface}.ml` (OCaml, reference impl) |
+
+The Rust crate is a faithful port of the OCaml reference; the OCaml
+files remain the spec of record until the cross-compat suite at
+`crates/typed-wasm-verify/tests/cross_compat.rs` is supplemented with
+real affinescript-emitted fixtures (deferred work, "C5.1").
+
+**Coverage:** L7 (ExclBorrow) + L10 (Linear) only.
+L1-L6, L13-L16 enforcement on emitted wasm is future work.
+
+**Consumers** (live as of 2026-05-15):
+
+- `hyperpolymath/ephapax:src/ephapax-wasm/` — emits the
+  `affinescript.ownership` section on every compile
+- `hyperpolymath/ephapax:src/ephapax-cli/` — exposes the verifier via
+  `ephapax compile --verify-ownership`

@@ -11,7 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **typed-wasm-verify** Rust crate (`crates/typed-wasm-verify/`) — post-codegen verifier for L7 (aliasing) + L10 (linearity) on emitted wasm modules. Rust port of `hyperpolymath/affinescript:lib/{tw_verify,tw_interface}.ml`. 50/50 tests pass (40 unit + 10 cross-compat integration). Replaces the ReScript verifier path which is on its way out.
+  - C1 (#19) — Scaffold: crate skeleton, public types (`OwnershipKind`, `OwnershipError`, `CrossError`, `FuncInterface`, `VerifyError`), `OWNERSHIP_SECTION_NAME` constant, stubbed entry points.
+  - C2 (#20) — `affinescript.ownership` custom-section codec (parse + encode), 11 unit tests covering wire-format round-trip and OCaml-parity leniency.
+  - C3 (#21) — Per-path `(min, max)` use-range analysis with a control-flow frame stack over wasmparser's operator stream. `verify_function` + `verify_from_module` implement the intra-fn L7+L10 rules. 9 algorithmic + 9 end-to-end tests.
+  - C4 (#22) — Cross-module boundary verifier (`extract_exports`, `verify_cross_module`). 3 + 8 tests. Reuses C3's frame stack via a `CallOf(import_idx)` counter.
+  - C5 (#23) — Cross-compat integration suite (`tests/cross_compat.rs`), 10 fixtures modelling realistic affinescript-shaped modules. Each fixture documents the conceptual AffineScript source and the expected OCaml verdict — divergence on either side is a parity bug.
 - ECHIDNA prover oracle JS harness (tests/echidna/echidna-harness.mjs) — random .twasm generator, 4 property tests, optional ECHIDNA submission
 - arXiv-ready LaTeX paper (docs/arxiv/typed-wasm.tex) — ACM sigplan format, 851 lines
 - BibTeX bibliography (docs/arxiv/typed-wasm.bib) — 15 references
 - TypedQLiser plugin exists at typedqliser/src/plugins/wasm.rs (541 lines, 9 tests)
+
+### Changed
+- Repo is now polyglot Idris2 + Zig + Rust (added a Cargo workspace at the root, `crates/typed-wasm-verify/` is its first member). ReScript files in `src/parser/*.res` remain in tree as the v1.1 surface parser, but the post-codegen verifier no longer depends on them.
