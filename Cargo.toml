@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+[workspace]
+resolver = "2"
+members = [
+    "crates/typed-wasm-verify",
+]
