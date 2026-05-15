@@ -15,13 +15,14 @@ id = "typed-wasm-root-manifest"
 level = 0
 
 [canonical_locations]
-state      = ".machine_readable/6a2/STATE.a2ml"
-meta       = ".machine_readable/6a2/META.a2ml"
-ecosystem  = ".machine_readable/6a2/ECOSYSTEM.a2ml"
-grammar    = "spec/grammar.ebnf"
-abi_proofs = "src/abi/"
-zig_ffi    = "ffi/zig/"
-examples   = "examples/"
+state         = ".machine_readable/6a2/STATE.a2ml"
+meta          = ".machine_readable/6a2/META.a2ml"
+ecosystem     = ".machine_readable/6a2/ECOSYSTEM.a2ml"
+grammar       = "spec/grammar.ebnf"
+abi_proofs    = "src/abi/"
+zig_ffi       = "ffi/zig/"
+verify_rust   = "crates/typed-wasm-verify/"
+examples      = "examples/"
 
 [echidna_invocation]
 # All ECHIDNA calls go through the echidna-llm-mcp BoJ cartridge. Never call ECHIDNA directly.
