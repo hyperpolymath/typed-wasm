@@ -502,7 +502,7 @@ operationally but does not prove the monotonicity as a theorem.
    (P2.1, P2.2), Levels monotonicity (P3.2). Cleanup session.
 
 After each session: run `idris2 --check` on every file in
-`typed-wasm.ipkg`, run `panic-attack assail` on the Rust/ReScript
+`typed-wasm.ipkg`, run `panic-attack assail` on the Rust/AffineScript
 adjacent code (no new unsafe code should land), update this file's
 inventory table, commit.
 
