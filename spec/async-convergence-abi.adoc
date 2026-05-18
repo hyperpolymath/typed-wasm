@@ -148,12 +148,12 @@ guest mapping, constraining neither language's error model.
 
 == Status
 
-PROPOSED for joint sign-off (typed-wasm#31). AffineScript side is proven
-end-to-end (#225 PR 1, merged: Thenable foundation + wasm e2e round-trip).
-Ephapax side: adopt-when-implemented; this document is the contract its
-async lowering must meet. On explicit co-stakeholder agreement this becomes
-ACCEPTED and AffineScript #225 PR 2–4 (the CPS transform proper) are
-unblocked.
+ACCEPTED 2026-05-18 (co-stakeholder sign-off, typed-wasm#31 / PR #32).
+AffineScript side is proven end-to-end (#225 PR 1, merged: Thenable
+foundation + wasm e2e round-trip). Ephapax side: adopt-when-implemented —
+this document is the contract its async lowering must meet (no divergence:
+the closure ABI already converges byte-identically). AffineScript #225
+PR 2–4 (the CPS transform proper) are unblocked.
 
 == References
 

@@ -140,7 +140,7 @@ consequences = """
 
 [[adr]]
 id = "ADR-005"
-status = "proposed"
+status = "accepted"
 date = "2026-05-18"
 title = "Async-over-WasmGC convergence ABI: Thenable handle + shared closure-ABI continuation protocol"
 context = """
@@ -173,8 +173,8 @@ consequences = """
   one-shot resume(once) aligns with the once-settle guarantee; the {__error}
   envelope is a boundary convention that does not constrain Ephapax's native
   sum-type error model.
-- Status PROPOSED; on explicit co-stakeholder sign-off it becomes ACCEPTED
-  and AffineScript #225 PR 2-4 (the CPS transform proper) are unblocked.
+- ACCEPTED 2026-05-18 on explicit co-stakeholder sign-off (typed-wasm#31 /
+  PR #32); AffineScript #225 PR 2-4 (the CPS transform proper) unblocked.
 - spec/async-convergence-abi.adoc is the contract Ephapax's future async
   lowering must meet (adopt-when-implemented).
 """
