@@ -179,6 +179,10 @@ will be the upstream of this pipeline.
 == Related Documents
 
 * `docs/architecture/THREAT-MODEL.adoc` — security model for cross-module calls
-* `.machine_readable/6a2/META.a2ml` — ADR-004: dual-role architecture decision
+* `spec/async-convergence-abi.adoc` — ADR-005: shared async-over-WasmGC
+  boundary protocol (Thenable handle + closure-ABI continuation; Ephapax
+  co-stakeholder review, typed-wasm#31)
+* `.machine_readable/6a2/META.a2ml` — ADR-004: dual-role architecture decision;
+  ADR-005: async convergence ABI
 * AffineScript repo: `docs/DESIGN-VISION.adoc`
 * Ephapax repo: `docs/specs/DYADIC-VISION.adoc`
