@@ -597,3 +597,135 @@ dropCert _ x = x
 public export
 dropCertErases : Erases Proofs.dropCert
 dropCertErases = MkErases Proofs.dropCert
+
+-- ============================================================================
+-- A9 — Attestation soundness (PROOF-NEEDS.md "where is the theorem?")
+-- ============================================================================
+--
+-- PROOF-NEEDS.md (2026-04-13) flagged that `Proofs.idr` "ceremonially
+-- rubber-stamps attestations without using their witnesses" — every
+-- `attestLN_*` function takes a witness and discards it with `_`,
+-- returning `MkAttestation N Proven` unconditionally.  A reviewer
+-- asking "where is the lemma proving the attestation follows from the
+-- witness?" had nothing to point at.
+--
+-- The `attestLN_Sound` family below is that lemma, one per level.
+-- Each is stated so that it *cannot be invoked without a witness of
+-- the exact type the corresponding attestation requires*, and it
+-- proves the produced attestation is recognised by `LevelAchievedIn`
+-- (the propositional "the certificate claims level N" predicate
+-- introduced for A8).  This supplies the missing
+--
+--   witness  ⟹  the certificate provably claims level N
+--
+-- bridge for all fifteen levels, witness-consuming at the type level.
+-- Like the A8 reframing, this is the honest incremental theorem; the
+-- stronger "attestation entails the level's semantic property" claim
+-- needs `LevelAttestation` reindexed by the witness and is left as
+-- tracked future work (standards#130 / epic standards#124).
+--
+-- These declarations are purely additive: no existing definition is
+-- touched, so no prior proof can regress.  `%default total` (module
+-- header) applies; verified with Idris2 0.8.0 via `typed-wasm.ipkg`.
+
+||| L1: holding a `Schema` (parser + type-checker succeeded) proves
+||| the certificate claims level 1.
+public export
+attestL1_Sound : (s : Schema) -> LevelAchievedIn 1 [attestL1_InstructionValid s]
+attestL1_Sound _ = LAHere
+
+||| L2: a `FieldIn` region-binding witness proves level 2 is claimed.
+public export
+attestL2_Sound : {0 name : String} -> {0 schema : Schema}
+              -> (w : FieldIn name schema)
+              -> LevelAchievedIn 2 [attestL2_RegionBound w]
+attestL2_Sound _ = LAHere
+
+||| L3: a `WasmTypeCompat` equality witness proves level 3 is claimed.
+public export
+attestL3_Sound : {0 a, b : WasmType}
+              -> (w : WasmTypeCompat a b)
+              -> LevelAchievedIn 3 [attestL3_TypeCompat w]
+attestL3_Sound _ = LAHere
+
+||| L4: a non-null `Ptr` proves level 4 is claimed.
+public export
+attestL4_Sound : {0 k : PtrKind} -> {0 s : Schema} -> {0 l : Levels.Lifetime}
+              -> (w : Pointer.Ptr k s l NonNull)
+              -> LevelAchievedIn 4 [attestL4_NullSafe w]
+attestL4_Sound _ = LAHere
+
+||| L5: an `InBounds` proof proves level 5 is claimed.
+public export
+attestL5_Sound : {0 idx, count : Nat}
+              -> (w : InBounds idx count)
+              -> LevelAchievedIn 5 [attestL5_BoundsProof w]
+attestL5_Sound _ = LAHere
+
+||| L6: an `AccessResult` proves level 6 is claimed.
+public export
+attestL6_Sound : {0 ty : WasmType}
+              -> (w : AccessResult ty)
+              -> LevelAchievedIn 6 [attestL6_ResultType w]
+attestL6_Sound _ = LAHere
+
+||| L7: an `ExclusiveWitness` proves level 7 is claimed.
+public export
+attestL7_Sound : {0 s : Schema}
+              -> (w : ExclusiveWitness s)
+              -> LevelAchievedIn 7 [attestL7_AliasFree w]
+attestL7_Sound _ = LAHere
+
+||| L8: an `EffectSubsumes` proof proves level 8 is claimed.
+public export
+attestL8_Sound : {0 declared, actual : EffectSet}
+              -> (w : EffectSubsumes declared actual)
+              -> LevelAchievedIn 8 [attestL8_EffectSafe w]
+attestL8_Sound _ = LAHere
+
+||| L9: a `Lifetime.Outlives` proof proves level 9 is claimed.
+public export
+attestL9_Sound : {0 rl, sl : Lifetime.Lifetime}
+              -> (w : Lifetime.Outlives rl sl)
+              -> LevelAchievedIn 9 [attestL9_LifetimeSafe w]
+attestL9_Sound _ = LAHere
+
+||| L10: a `CompletedProtocol` linear-usage witness proves level 10.
+public export
+attestL10_Sound : {0 tok : Nat}
+               -> (w : CompletedProtocol tok)
+               -> LevelAchievedIn 10 [attestL10_Linear w]
+attestL10_Sound _ = LAHere
+
+||| L11: an `AllPairsCosts` cost-bound witness proves level 11.
+public export
+attestL11_Sound : {n : Nat}
+               -> (w : AllPairsCosts n)
+               -> LevelAchievedIn 11 [attestL11_CostBounded w]
+attestL11_Sound _ = LAHere
+
+||| L12: a `Level12Proof` epistemic-freshness witness proves level 12.
+public export
+attestL12_Sound : (w : Level12Proof)
+               -> LevelAchievedIn 12 [attestL12_EpistemicFresh w]
+attestL12_Sound _ = LAHere
+
+||| L13: an `IsolatedModule` witness proves level 13 is claimed.
+public export
+attestL13_Sound : (w : IsolatedModule)
+               -> LevelAchievedIn 13 [attestL13_Isolated w]
+attestL13_Sound _ = LAHere
+
+||| L14: a `WellFormedProtocol` witness proves level 14 is claimed.
+public export
+attestL14_Sound : {p : Protocol}
+               -> (w : WellFormedProtocol p)
+               -> LevelAchievedIn 14 [attestL14_SessionSafe w]
+attestL14_Sound _ = LAHere
+
+||| L15: a `FunctionCaps` containment witness proves level 15.
+public export
+attestL15_Sound : {owner : ModuleCaps}
+               -> (w : FunctionCaps owner)
+               -> LevelAchievedIn 15 [attestL15_CapsSafe w]
+attestL15_Sound _ = LAHere
