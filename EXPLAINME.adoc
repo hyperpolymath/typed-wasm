@@ -37,7 +37,7 @@ ____
 
 **Evidence**: `examples/02-multi-module.twasm` demonstrates: Module A exports a `region Entity` with fields (pos_x, pos_y, hp); Module B imports the same region and defines typed load/store operations. `src/abi/Proofs.idr` proves field offset and alignment agreement.
 
-**Caveat**: Schema agreement proof is _type-level_ (compile-time). Does NOT verify that actual Rust/ReScript compiled code respects field layout — correspondence is manual. Runtime behavior depends on correct field packing across compilers.
+**Caveat**: Schema agreement proof is _type-level_ (compile-time). Does NOT verify that actual Rust/AffineScript compiled code respects field layout — correspondence is manual. Runtime behavior depends on correct field packing across compilers.
 
 === Claim 3: "Checked L1-L10 Proof Core — All 10 Levels Integrated"
 
