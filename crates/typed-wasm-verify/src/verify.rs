@@ -278,6 +278,13 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
     let mut ownership_payload: Option<Vec<u8>> = None;
     let mut bodies: Vec<FunctionBody<'_>> = Vec::new();
     let mut import_count: u32 = 0;
+    // L13 module-isolation (negative form): a module that owns linear
+    // memory yet imports a memory/table has a cross-module shared-state
+    // channel outside the declared function-import boundary. Mirrors
+    // OCaml `Tw_verify.verify_module_isolation` (affinescript PR #280,
+    // issue #35). Carrier-free — standard import/memory sections only.
+    let mut imported_shared: Option<String> = None;
+    let mut has_own_memory = false;
 
     let parser = Parser::new(0);
     for payload in parser.parse_all(wasm_bytes) {
@@ -288,9 +295,35 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
                 // wasmparser yields imports of every kind; filter to functions.
                 for import in reader {
                     let import = import?;
-                    if matches!(import.ty, wasmparser::TypeRef::Func(_)) {
-                        import_count += 1;
+                    match import.ty {
+                        wasmparser::TypeRef::Func(_) => import_count += 1,
+                        wasmparser::TypeRef::Memory(_)
+                            if imported_shared.is_none() =>
+                        {
+                            imported_shared = Some(format!(
+                                "module owns linear memory yet imports \
+                                 memory '{}.{}' (cross-module shared memory \
+                                 breaks L13 isolation)",
+                                import.module, import.name
+                            ));
+                        }
+                        wasmparser::TypeRef::Table(_)
+                            if imported_shared.is_none() =>
+                        {
+                            imported_shared = Some(format!(
+                                "module owns linear memory yet imports table \
+                                 '{}.{}' (externally-backed table breaks L13 \
+                                 isolation)",
+                                import.module, import.name
+                            ));
+                        }
+                        _ => {}
                     }
+                }
+            }
+            Payload::MemorySection(reader) => {
+                if reader.count() > 0 {
+                    has_own_memory = true;
                 }
             }
             Payload::CustomSection(reader) if reader.name() == OWNERSHIP_SECTION_NAME => {
@@ -310,6 +343,15 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
     let entries = parse_ownership_section_payload(&payload);
 
     let mut all_errors = Vec::new();
+
+    // L13 module isolation, gated behind the ownership section just
+    // like the OCaml port (preserves "no section ⇒ Ok").
+    if has_own_memory {
+        if let Some(reason) = imported_shared {
+            all_errors.push(OwnershipError::ModuleNotIsolated { reason });
+        }
+    }
+
     for OwnershipEntry { func_idx, param_kinds, .. } in entries {
         // Global func index → body index: skip imports.
         let Some(body_idx) = func_idx.checked_sub(import_count) else {
@@ -669,5 +711,100 @@ mod tests {
     fn empty_module_is_trivially_clean() {
         let module = Module::new().finish();
         assert!(verify_from_module(&module).is_ok());
+    }
+
+    // ------------------------------------------------------------------
+    // L13 module isolation (negative form) — parity with OCaml
+    // Tw_verify.verify_module_isolation (affinescript PR #280, #35).
+    // ------------------------------------------------------------------
+
+    /// Module owning its own memory, optionally also importing a memory.
+    /// Always carries an (empty) ownership section so the isolation
+    /// check is reached (gated behind it, like the OCaml port).
+    fn isolation_module(import_memory: bool) -> Vec<u8> {
+        use wasm_encoder::{
+            EntityType, MemorySection, MemoryType,
+        };
+        let mut module = Module::new();
+
+        if import_memory {
+            let mut imports = ImportSection::new();
+            imports.import(
+                "Host",
+                "memory",
+                EntityType::Memory(MemoryType {
+                    minimum: 1,
+                    maximum: None,
+                    memory64: false,
+                    shared: false,
+                    page_size_log2: None,
+                }),
+            );
+            module.section(&imports);
+        }
+
+        let mut mems = MemorySection::new();
+        mems.memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        module.section(&mems);
+
+        // count=0 ownership payload — present so verify_from_module
+        // does not short-circuit on "no ownership section ⇒ Ok".
+        let payload = build_ownership_section_payload(&[]);
+        module.section(&CustomSection {
+            name: OWNERSHIP_SECTION_NAME.into(),
+            data: payload.as_slice().into(),
+        });
+        module.finish()
+    }
+
+    #[test]
+    fn isolated_own_memory_module_is_ok() {
+        assert!(verify_from_module(&isolation_module(false)).is_ok());
+    }
+
+    #[test]
+    fn own_memory_plus_imported_memory_violates_l13() {
+        match verify_from_module(&isolation_module(true)) {
+            Err(VerifyError::Ownership(errs)) => assert!(errs
+                .iter()
+                .any(|e| matches!(e, OwnershipError::ModuleNotIsolated { .. }))),
+            other => panic!("expected ModuleNotIsolated, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn imported_memory_without_ownership_section_is_ok() {
+        // Contract: no ownership section ⇒ Ok even if it would violate.
+        use wasm_encoder::{EntityType, MemorySection, MemoryType};
+        let mut module = Module::new();
+        let mut imports = ImportSection::new();
+        imports.import(
+            "Host",
+            "memory",
+            EntityType::Memory(MemoryType {
+                minimum: 1,
+                maximum: None,
+                memory64: false,
+                shared: false,
+                page_size_log2: None,
+            }),
+        );
+        module.section(&imports);
+        let mut mems = MemorySection::new();
+        mems.memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        module.section(&mems);
+        assert!(verify_from_module(&module.finish()).is_ok());
     }
 }
