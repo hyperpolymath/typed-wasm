@@ -1,0 +1,241 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= Async-over-WasmGC Convergence ABI
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc: preamble
+:icons: font
+:sectnums:
+
+This document fixes the *shared async boundary protocol* for languages that
+target typed WasmGC through this repository — currently AffineScript and
+Ephapax (typed-wasm ADR-004). It is the convergence-ABI section asked for by
+typed-wasm#31, surfaced by AffineScript #225 / ADR-013.
+
+It is a *binary-level* contract only. It does not couple AffineScript to
+typed-wasm, nor constrain Ephapax's design. Each language keeps its own
+surface syntax and effect discipline; they agree only on what crosses the
+WASM boundary so a module compiled by one can interoperate with a host (or
+module) serving the other.
+
+== Problem
+
+The WASM boundary is synchronous and i32-only. An async host operation
+(e.g. `fetch`) cannot return its result across that boundary directly. A
+shared convention is needed so that both languages' backends — and any
+host that serves them — speak the same async protocol without per-language
+FFI shims.
+
+== The protocol
+
+=== Thenable handle (synchronous return)
+
+An async host import returns a *`Thenable` handle* (an `i32`) synchronously.
+The host registers the pending `Promise`/future in a per-instance handle
+table keyed by that `i32`. The handle is opaque to the guest.
+
+An async *guest* function likewise returns a `Thenable` handle representing
+its own eventual completion. The protocol therefore *composes up the call
+chain*: a backend may present a transparent value-returning surface (e.g.
+AffineScript ADR-013's CPS transform) by threading handles internally, with
+no JSPI and no stack switching.
+
+=== Continuation registration
+
+The guest registers a continuation with:
+
+----
+thenableThen(handle: i32, closure: i32) -> i32   // returns a new Thenable
+----
+
+`closure` is a function value in the *shared closure ABI*:
+
+[cols="1,3", options="header"]
+|===
+| Offset | Field
+
+| `@0` | `i32` — function table index (`funcref` in the module's single
+         indirect-call table; AffineScript: `__indirect_function_table`)
+| `@4` | `i32` — environment pointer (captured-locals block, fields at
+         `i*4`); `0` when there are no captures
+|===
+
+Continuation invocation, performed by the host on settlement, is an indirect
+call through that table with signature:
+
+----
+(env_ptr: i32) -> i32
+----
+
+The settled value is *not* passed as an argument. The continuation obtains
+it by calling the result accessor (see <<settlement>>) keyed by the
+`Thenable` handle, which the backend captures into the continuation
+environment reachable through `env_ptr` (AffineScript: the handle is the
+sole live local at the async split, captured via the #199 closure env).
+This is the *accessor model* (ratified 2026-05-19, resolving an earlier
+two-arg `(env_ptr, settled)` ambiguity in favour of the accessor form that
+both the host re-entry primitive `#205` and AffineScript #225 PR 2
+implement; see <<conformance>>). The result is the handle the continuation
+itself completes with (enabling chaining).
+
+NOTE: This is the *only* hard convergence requirement and it is *already
+satisfied on both sides*. AffineScript #199 marshals `[fnId@0, envPtr@4]`
+through `__indirect_function_table`. Ephapax `ephapax-wasm` emits a closure
+cell `[table_idx@0, env_ptr@4]` (8-byte `CLOSURE_SIZE`) called via
+`call_indirect` with `(env_ptr, param) -> i32`. These are byte-identical;
+no reconciliation is required.
+
+[[settlement]]
+=== Settlement re-entry and result read
+
+When the underlying `Promise`/future settles, the host re-enters the guest
+by invoking the registered continuation closure exactly once (with
+`env_ptr` only — the settled value is not an argument, per the accessor
+model above). The settled value is read by the guest via a result
+accessor:
+
+----
+thenableResultJson(handle: i32) -> i32   // pointer to a UTF-8 JSON string
+----
+
+A typed reader specialised to a known result shape MAY be used instead of
+the JSON accessor where the shape is fixed (AffineScript ADR-013 introduces
+a minimal typed `Response` reader); the JSON accessor remains the general
+fallback and the interop default.
+
+=== Reject / error shape
+
+A rejected/failed settlement is delivered, at the *host-JSON boundary*, as:
+
+----
+{ "__error": "<message string>" }
+----
+
+i.e. a JSON object carrying a single `__error` string field. This is the
+shared *boundary* envelope only. Each language maps it to its native error
+type on the guest side: AffineScript to its `Result`/`Option`-shaped reader,
+Ephapax to a sum-type injection (`inr` of its `[tag@0, value@4]` encoding).
+The boundary envelope is fixed; the guest-side mapping is each language's
+own concern and is explicitly *not* constrained here.
+
+=== Once-settle guarantee
+
+A `Thenable` settles *exactly once*. `thenableThen` fires its continuation
+*at most once*. Backends MUST assert this (double-resumption is a host
+contract violation, not a recoverable condition). This guarantee is what
+makes the protocol safe for linear/affine captures in a continuation
+environment: a captured linear value is consumed by exactly one resumption.
+It aligns directly with Ephapax's planned one-shot `resume(once)`
+restriction for linear-capturing handlers.
+
+== Convergence review (Ephapax co-stakeholder, typed-wasm#31)
+
+Reviewed against Ephapax's current `ephapax-wasm` lowering and effect
+system (`ephapax-syntax`/`ephapax-typing`, ADR-007..ADR-010).
+
+[cols="1,1,2", options="header"]
+|===
+| Protocol element | Ephapax status | Divergence
+
+| Async lowering | None yet (`perform`/`handle` type-checked, emit
+  `unreachable`) | None — adoption is purely additive
+| Closure ABI | cell `[table_idx@0, env_ptr@4]`, funcref table, general
+  call `(env_ptr, param)->i32` | None — closure *cell* byte-identical to
+  AffineScript #199. The async *continuation* call is the no-extra-arg
+  form `(env_ptr)->i32` (accessor model); Ephapax's general
+  `(env_ptr, param)->i32` is a superset, so the continuation simply uses
+  the zero-param-after-env case. No reconciliation required.
+| Once-settle | Planned `resume(once)` for linear captures | None —
+  aligned; protocol guarantee is a superset
+| Error shape | Native sum types (`inl`/`inr`, `[tag@0, value@4]`) |
+  Reconciled: `{__error}` is the *boundary* envelope; guest-side maps to
+  the native sum. No on-the-wire divergence.
+|===
+
+*Conclusion: no divergence.* Because Ephapax has no async lowering yet,
+there is nothing to conflict with, and the one structural requirement (the
+closure ABI for continuations) already converges byte-identically with what
+Ephapax independently emits. The single representational choice — the
+reject envelope — is settled as a host-boundary convention with per-language
+guest mapping, constraining neither language's error model.
+
+[[conformance]]
+== Conformance — AffineScript (#225)
+
+The marry-up between this protocol and the AffineScript WasmGC backend.
+Each protocol element maps to a concrete implementation site so the two
+repositories can be cross-referenced section-for-section. (Reciprocal
+xref: AffineScript `docs/specs/async-on-wasm-cps.adoc`, ADR-013.)
+
+[cols="2,3,1", options="header"]
+|===
+| Protocol element (this spec) | AffineScript site | Status
+
+| Thenable handle, sync return (<<_thenable_handle_synchronous_return>>)
+  | `stdlib/Http.affine` `http_request_thenable -> Thenable`; transformed
+    `Async` fn returns the `thenableThen` result handle
+  | ✅ #225 PR 1–2
+
+| `thenableThen(handle, closure) -> i32` (<<_continuation_registration>>)
+  | `stdlib/Http.affine` `thenableThen(t, on_settle: fn(Unit)->Int) -> Int`
+  | ✅ #225 PR 2
+
+| Shared closure cell `[fnId@0, envPtr@4]` via the indirect-call table
+  | #199 `ExprLambda` lowering, reused verbatim by the CPS transform
+    (`lib/codegen.ml` `gen_async_base_case`); table exported as
+    `__indirect_function_table` (root-cause fix, #225 PR 2 — the export
+    was absent so the #199 ABI had only ever been static-verified)
+  | ✅ #225 PR 2
+
+| Continuation signature `(env_ptr)->i32`, accessor model
+  | continuation is a zero-arg (post-env) `ExprLambda`; the captured
+    `Thenable` handle is the sole live local at the async split
+  | ✅ #225 PR 2
+
+| Settled value via `thenableResultJson` / fixed-shape typed reader
+  | minimal scalar accessor in PR 2; general typed `Response` reader in
+    PR 3 (ADR-013 §Delivery-plan)
+  | ◑ PR 2 scalar / PR 3 typed
+
+| `{ "__error": "<msg>" }` boundary envelope
+  | host adapter rejects settle as `{__error}`; guest maps to
+    `Result`/`Option`
+  | ✅ #225 PR 1
+
+| Once-settle / "Backends MUST assert this"
+  | guest-side once-resumption guard global ⇒ `unreachable` trap on a
+    second continuation entry (defence-in-depth over host single-fire)
+  | ✅ #225 PR 2
+|===
+
+== Status
+
+ACCEPTED 2026-05-18 (co-stakeholder sign-off, typed-wasm#31 / PR #32).
+
+AMENDED 2026-05-19 (PR #32, pre-merge): the continuation signature is
+ratified as the *accessor model* `(env_ptr) -> i32` — the earlier
+two-argument `(env_ptr, settled) -> i32` wording is removed as an
+internal ambiguity. This matches the proven #205 re-entry primitive and
+AffineScript #225 PR 2, and does not change the Ephapax conclusion (the
+closure *cell* remains byte-identical; the continuation call is the
+no-extra-arg case of Ephapax's general `(env_ptr, param)->i32`). A
+`<<conformance>>` section was added recording the AffineScript marry-up.
+
+AffineScript side is proven end-to-end (#225 PR 1, merged: Thenable
+foundation + wasm e2e round-trip; PR 2 implements the transform proper
+against this amended signature). Ephapax side: adopt-when-implemented —
+this document is the contract its async lowering must meet (no
+divergence: the closure cell converges byte-identically). AffineScript
+#225 PR 2–4 proceed against this ratified protocol.
+
+== References
+
+* typed-wasm ADR-004 (`.machine_readable/6a2/META.a2ml`) — aggregate /
+  convergence role
+* typed-wasm ADR-005 (this protocol; `.machine_readable/6a2/META.a2ml`)
+* typed-wasm#31 — convergence-ABI review issue
+* AffineScript: ADR-013 `docs/specs/async-on-wasm-cps.adoc`; #225 (this
+  work), #160 (Http primitive), #199 (closure ABI), #205 (Thenable
+  resolution), #226 (Deno-ESM, shipped)
+* Ephapax: `ephapax-wasm` closure codegen; `docs/specs/DESIGN-DECISIONS.adoc`
+  ADR-007..ADR-010 (algebraic effects, one-shot continuations)
