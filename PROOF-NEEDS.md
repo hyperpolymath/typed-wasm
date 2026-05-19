@@ -20,7 +20,46 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
-## Inventory snapshot (2026-04-13)
+## RECONCILIATION 2026-05-18 (verified ground truth — read this first)
+
+> Routed from estate proof-debt epic **hyperpolymath/standards#124**,
+> sub-issue **#130**. The 2026-04-13 inventory below is **superseded**
+> and retained for history (estate convention: dated snapshots get
+> historical banners, not rewrites).
+>
+> **standards#130's stated debt is refuted by ground truth.** It
+> claimed "5 `believe_me` + 5 `assert_total` + 5 `partial`" and that an
+> agent "called it fully real; it is not". A comprehensive re-grep
+> (`believe_me`, `really_believe_me`, `assert_total`, `assert_smaller`,
+> `postulate`, `idris_crash`, `prim__crash`, `%default partial`,
+> `Admitted`, `sorry`, `unsafePerformIO`, `assert_linear`) over all
+> 21 `.idr` files finds **zero** in code — only inside "NO believe_me"
+> banner comments. This is the survey-agent **over-report** failure
+> mode the epic explicitly warns about (the inverse of under-report).
+>
+> **Verified build (Idris2 0.8.0, `typed-wasm.ipkg`, 2026-05-18):**
+> `rc=0`, **zero errors**, **21/21 modules → TTC**, `%default total`
+> in all 21. Only 11 warnings, all one cosmetic kind (lowercase
+> implicit-bind shadowing of `mod`/`field`/`payload`) — no soundness
+> impact. The 2026-04-13 "2 files draft-only, standalone check fails
+> (Tropical, Epistemic)" item is **resolved**: both are now in the
+> ipkg and build clean (`believe_me` eliminated from Epistemic by
+> commit `e4253f0`).
+>
+> **The genuine residual debt is the one §P1 below already names** —
+> not trust escapes but `Proofs.idr` attestations that required a
+> witness then discarded it (`attestLN_* _ = MkAttestation N Proven`).
+> This pass discharges that for **all 15 levels** additively: the new
+> `attestLN_Sound` family (Proofs.idr §A9) is a per-level theorem that
+> cannot be invoked without the exact witness type and proves
+> `LevelAchievedIn N [attestLN witness]` — the missing
+> "witness ⟹ certificate-claims-level" bridge. Additive (no existing
+> definition touched → no prior proof can regress), verified by the
+> same clean `rc=0` build. Stronger "attestation entails the level's
+> semantic property" (needs `LevelAttestation` reindexed by witness)
+> remains tracked future work under standards#130.
+
+## Inventory snapshot (2026-04-13 — SUPERSEDED, see reconciliation above)
 
 - 11 `.idr` files, 2,589 LOC total, `%default total` everywhere, zero
   `believe_me` / `assert_total` / `postulate` / `sorry`.
