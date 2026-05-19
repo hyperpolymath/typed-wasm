@@ -158,9 +158,11 @@ Fix the shared async boundary protocol (spec/async-convergence-abi.adoc):
 an async host/guest call returns an i32 Thenable HANDLE synchronously;
 the guest registers a continuation via thenableThen(handle, closure) where
 closure is the shared closure ABI [fnId/table_idx @0, envPtr @4] dispatched
-through the module indirect-call table with signature (env_ptr, settled)
--> i32; the host re-enters the continuation exactly once on settlement;
-the result is read via thenableResultJson (or a fixed-shape typed reader);
+through the module indirect-call table with signature (env_ptr) -> i32
+(accessor model — the settled value is NOT a continuation argument); the
+host re-enters the continuation exactly once on settlement; the settled
+value is read via thenableResultJson (or a fixed-shape typed reader)
+keyed by the Thenable handle the continuation captured in env_ptr;
 rejection is the host-boundary JSON envelope { "__error": "<msg>" } with
 per-language guest-side mapping to native error types. Thenables settle
 once; thenableThen fires at most once.
@@ -175,6 +177,12 @@ consequences = """
   sum-type error model.
 - ACCEPTED 2026-05-18 on explicit co-stakeholder sign-off (typed-wasm#31 /
   PR #32); AffineScript #225 PR 2-4 (the CPS transform proper) unblocked.
+- AMENDED 2026-05-19 (pre-merge, PR #32): continuation signature ratified
+  as the accessor model (env_ptr)->i32; the earlier (env_ptr, settled)->i32
+  wording is removed as an internal ambiguity. Matches #205 + #225 PR 2;
+  Ephapax conclusion unchanged (closure cell still byte-identical; the
+  continuation is the no-extra-arg case of its general (env_ptr,param)).
+  A Conformance — AffineScript marry-up section was added to the spec.
 - spec/async-convergence-abi.adoc is the contract Ephapax's future async
   lowering must meet (adopt-when-implemented).
 """
