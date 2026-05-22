@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: PMPL-1.0-or-later -->
+<!-- SPDX-License-Identifier: MPL-2.0 -->
 # typed-wasm-verify
 
 Post-codegen verifier for typed-wasm **L7 (aliasing safety)** and **L10 (linearity)** constraints on emitted wasm modules.

@@ -1,9 +1,9 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 [package]
 name = "typed-wasm-verify"
 version = "0.1.0"
 edition = "2021"
-license = "PMPL-1.0-or-later"
+license = "MPL-2.0"
 description = "Post-codegen verifier for typed-wasm L7 (aliasing) and L10 (linearity) constraints on emitted wasm modules"
 repository = "https://github.com/hyperpolymath/typed-wasm"
 readme = "README.md"

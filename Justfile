@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
 # Project automation for typed-wasm.
@@ -342,7 +342,7 @@ validate-rsr:
     for f in .machine_readable/STATE.a2ml .machine_readable/META.a2ml .machine_readable/ECOSYSTEM.a2ml .machine_readable/anchors/ANCHOR.a2ml .machine_readable/policies/MAINTENANCE-AXES.a2ml .machine_readable/policies/MAINTENANCE-CHECKLIST.a2ml .machine_readable/policies/SOFTWARE-DEVELOPMENT-APPROACH.a2ml; do
         [ -f "$f" ] || MISSING="$MISSING $f"
     done
-    for f in licensing/exhibits/EXHIBIT-A-ETHICAL-USE.txt licensing/exhibits/EXHIBIT-B-QUANTUM-SAFE.txt licensing/texts/PMPL-1.0-or-later.txt; do
+    for f in licensing/exhibits/EXHIBIT-A-ETHICAL-USE.txt licensing/exhibits/EXHIBIT-B-QUANTUM-SAFE.txt licensing/texts/MPL-2.0.txt; do
         [ -f "$f" ] || MISSING="$MISSING $f"
     done
     for f in src/interface/abi src/interface/generated ffi/zig; do

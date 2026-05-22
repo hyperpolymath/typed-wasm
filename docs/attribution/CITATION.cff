@@ -8,7 +8,7 @@ version: 0.1.0
 date-released: 2026-03-30
 url: "https://github.com/hyperpolymath/typed-wasm"
 repository-code: "https://github.com/hyperpolymath/typed-wasm"
-license: PMPL-1.0-or-later
+license: MPL-2.0
 keywords:
   - "webassembly"
   - "types"

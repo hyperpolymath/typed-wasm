@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # typed-wasm Level Achievement Status
 
 ## Versioning Scheme (revised 2026-04-13 — typed-wasm-first rollout)

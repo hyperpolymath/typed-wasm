@@ -29,7 +29,7 @@ cd src/abi && idris2 --check Proofs.idr
 ## Key Design Decisions
 
 - Follows hyperpolymath ABI-FFI standard (Idris2 ABI, Zig FFI)
-- PMPL-1.0-or-later license
+- MPL-2.0 license
 - RSR (Rhodium Standard Repository) template
 - Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 - File extension: `.twasm` for typed-wasm source files

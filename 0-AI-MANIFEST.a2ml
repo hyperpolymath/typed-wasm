@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # typed-wasm — Root AI Manifest
 # Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 
@@ -38,5 +38,5 @@ progressive-core     = "Checked core L1-L10 is progressive — cannot skip level
 no-overclaim         = "L11-L12 are published (Zenodo 10.5281/zenodo.19535653) but NOT in the checked build — cite paper, do not claim machine-checked"
 immutable-schemas    = "Region schemas are immutable — once declared, layout is fixed"
 structural-compat    = "Multi-module schemas must agree — structural compatibility required"
-spdx                 = "SPDX PMPL-1.0-or-later on all files"
+spdx                 = "SPDX MPL-2.0 on all files"
 author               = "Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>"

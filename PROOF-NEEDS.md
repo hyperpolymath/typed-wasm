@@ -1,5 +1,5 @@
 # PROOF-NEEDS.md
-<!-- SPDX-License-Identifier: PMPL-1.0-or-later -->
+<!-- SPDX-License-Identifier: MPL-2.0 -->
 
 **Scope:** handoff document for the Claude instance that will deepen
 typed-wasm's formal verification. Read this file in full before

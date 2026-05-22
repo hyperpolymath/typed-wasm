@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 = typed-wasm Roadmap
 :author: Jonathan D.A. Jewell
 :revdate: 2026-03-29
