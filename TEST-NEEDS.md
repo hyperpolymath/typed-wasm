@@ -6,41 +6,63 @@
 
 | Category | Count | Details |
 |----------|-------|---------|
-| **Source modules** | 21 | 11 Idris2 ABI (Region, TypedAccess, Levels, Pointer, Effects, Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic), 3 ReScript parser (Ast, Parser, Lexer), 3 Idris2 interface ABI, 2 Zig FFI + cache |
-| **Unit tests** | 1 file | ParserTests.res (~82 assertions) |
-| **Integration tests** | 0 | None |
-| **E2E tests** | 1 | e2e-smoke.mjs (~43 assertions) |
-| **Property-based tests** | 1 | property_test.mjs (10 properties, ~40+ assertions) |
-| **Benchmarks** | 0 | None |
-| **ECHIDNA harness** | 1 | echidna-harness.mjs (7 assertions) |
+| **Source modules** | 21 | 11 Idris2 ABI (Region, TypedAccess, Levels, Pointer, Effects, Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic), 4 ReScript parser (Ast, Parser, Lexer, Checker), 3 Idris2 interface ABI, 2 Zig FFI + cache, 1 Rust verifier crate (typed-wasm-verify, ~1.6k LOC + 53 tests) |
+| **Unit tests** | 2 files | ParserTests.res (88 assertions), crates/typed-wasm-verify (43 unit + 10 cross-compat) |
+| **Integration tests** | 1 | tests/contracts/airborne-step-state-contract.mjs (14 assertions) |
+| **E2E tests** | 2 | tests/smoke/e2e-smoke.mjs (40 assertions), tests/e2e/e2e-driver.mjs (corpus driver) |
+| **Per-level tests** | 10 | tests/levels/L1.mjs .. L10.mjs (56 assertions total) |
+| **Aspect tests** | 1 | tests/aspect/claim-envelope.mjs (49 assertions — added 2026-05 to catch cross-doc claim drift after deep audit found 5 such drifts) |
+| **Property-based tests** | 0 | tests/property/property_test.mjs claimed DONE 2026-04-04 but file is absent — stale entry being scrubbed |
+| **Benchmarks** | 1 | benchmarks/parser-bench.mjs (per-example wallclock; median/p95/min/throughput; JSON summary on stderr; added 2026-05) |
+| **ECHIDNA harness** | 1 | tests/echidna/echidna-harness.mjs (659 LOC, 124 local assertions, remote prover-wars submission) |
 
 ## What's Missing
 
 ### P2P Tests
-- [x] **DONE 2026-04-04**: Property-based tests added (`tests/property/property_test.mjs`, 10 properties, ~40+ assertions)
+- [ ] **REVOKED 2026-05**: prior "DONE 2026-04-04 property tests" entry was
+      false — `tests/property/property_test.mjs` was never committed.
+      Aspect test now catches this drift class automatically.
 - [ ] No tests for Idris2 ABI type checking with Zig FFI
 - [ ] No tests for ReScript parser feeding into Idris2 type checker
 
 ### E2E Tests
-- [ ] e2e-smoke exists but only 43 assertions for a type system with 10 safety levels
-- [ ] No WASM module compilation and execution test
-- [ ] No multi-module linking test (MultiModule.idr untested)
+- [x] **DONE 2026-05**: `tests/e2e/e2e-driver.mjs` exercises every
+      example through parse + check with skip/expect-clean/expect-diagnostic
+      pragmas. Smoke test still narrow (40 assertions) but now augmented
+      by the per-level suite (56 more) and the aspect test (49 more).
+- [ ] No WASM module compilation and execution test (blocked on codegen)
+- [ ] No multi-module linking test (MultiModule.idr untested at runtime)
 
 ### Aspect Tests
-- [ ] **Security**: No memory safety violation detection tests (this IS the product's purpose)
-- [ ] **Performance**: No benchmarks for type checking overhead vs raw WASM
+- [x] **DONE 2026-05**: `tests/aspect/claim-envelope.mjs` — 49 checks that
+      cross-document claims (README/ROADMAP/LEVEL-STATUS/EXPLAINME) stay
+      consistent with actual artefacts (ipkg, Rust constants, CI pins,
+      example corpus, RSR surface). Built in response to a deep audit
+      finding five drifts the test now catches.
+- [ ] **Security**: No memory safety violation detection tests (this IS the
+      product's purpose)
+- [ ] **Performance**: see Benchmarks below
 - [ ] **Concurrency**: No concurrent WASM module compilation tests
-- [ ] **Error handling**: No tests for invalid type annotations, malformed WASM
+- [ ] **Error handling**: 10/10 per-level test suites (`tests/levels/L*.mjs`)
+      include negative cases — partial coverage
 
 ### Build & Execution
 - [ ] 11 Idris2 modules with 0 Idris2-level tests -- are proofs checked?
+      (PROOF-NEEDS.md 2026-05-18 reconciliation: ipkg builds clean, but
+      no Idris2 *test* layer beyond compile-time totality / type-checking)
 - [ ] Zig FFI integration_test.zig likely a template placeholder
 
-### Benchmarks Needed (CRITICAL)
-- [ ] Type checking overhead per WASM instruction
-- [ ] Memory region tracking performance
-- [ ] Lifetime analysis scaling with module size
+### Benchmarks
+- [x] **DONE 2026-05**: `benchmarks/parser-bench.mjs` — per-example parse +
+      check wallclock with median / p95 / min / throughput and JSON summary
+      for trend tracking. Only the parser is end-to-end today, so that's
+      where benchmark evidence has to start.
+- [ ] Type-checking overhead per WASM instruction (blocked on codegen +
+      Zig FFI runtime path)
+- [ ] Memory region tracking performance (blocked on codegen)
+- [ ] Lifetime analysis scaling with module size (blocked on codegen)
 - [ ] Comparison: typed-wasm overhead vs raw WASM execution
+      (blocked on codegen)
 
 ### Self-Tests
 - [ ] No type system self-consistency check

@@ -50,8 +50,20 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install npm deps (rescript build prerequisite)
+        run: npm install --no-audit --no-fund --silent
+
+      - name: Build ReScript parser
+        run: node_modules/.bin/rescript build
+
       - name: Run smoke test
-        run: node tests/e2e/e2e-smoke.mjs
+        run: node tests/smoke/e2e-smoke.mjs
+
+      - name: Run aspect test (claim envelope)
+        run: node tests/aspect/claim-envelope.mjs
+
+      - name: Run parser benchmark (smoke; full run is local)
+        run: BENCH_ITERS=20 node benchmarks/parser-bench.mjs
 
   # --------------------------------------------------------------------------
   # Job 3: Full Idris2 + Zig build then E2E
