@@ -9,8 +9,12 @@ repository = "https://github.com/hyperpolymath/typed-wasm"
 readme = "README.md"
 
 [dependencies]
-wasmparser = "0.250"
+# Exact pins: wasmparser's 0.x line ships API breaks on every minor bump
+# (0.221 -> 0.250 reshaped the import iterator). Keep these locked so the
+# next dependabot bump shows up as a visible Cargo.toml diff and forces a
+# deliberate port rather than a silent lockfile move.
+wasmparser = "=0.250.0"
 thiserror = "2"
 
 [dev-dependencies]
-wasm-encoder = "0.250"
+wasm-encoder = "=0.250.0"

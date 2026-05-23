@@ -4,9 +4,10 @@
 # e2e.yml — End-to-end validation for typed-wasm.
 #
 # Runs on every PR and push to main. Three jobs:
-#   structural — fast structural checks (no compiler required)
-#   smoke      — Node.js smoke test (ReScript parser + example files)
-#   build-e2e  — Full Idris2 + Zig build then E2E
+#   structural   — fast structural checks (no compiler required)
+#   smoke        — Node.js smoke test (ReScript parser + example files)
+#   build-e2e    — Full Idris2 + Zig build then E2E
+#   cargo-verify — Cargo workspace build + test (typed-wasm-verify crate)
 name: E2E Validation
 
 on:
@@ -96,3 +97,27 @@ jobs:
       # ---- Full E2E ----
       - name: Run full E2E (with build checks)
         run: E2E_BUILD=1 bash tests/e2e.sh
+
+  # --------------------------------------------------------------------------
+  # Job 4: Cargo workspace build + test (typed-wasm-verify)
+  #
+  # Catches wasmparser / wasm-encoder API breaks that previously slipped
+  # through (see commit 7223ef0). Runs on every PR so dependabot bumps
+  # cannot land green when they break the post-codegen verifier.
+  # --------------------------------------------------------------------------
+  cargo-verify:
+    name: Cargo build + test (typed-wasm-verify)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+
+      - name: Cargo build (workspace)
+        run: cargo build --workspace --locked
+
+      - name: Cargo test (workspace)
+        run: cargo test --workspace --locked

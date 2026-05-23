@@ -293,7 +293,9 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
                 // We need import_count to translate global func indices
                 // (used in the ownership section) to body indices.
                 // wasmparser yields imports of every kind; filter to functions.
-                for import in reader {
+                // `.into_imports()` flattens the 0.250 `Imports` group enum
+                // back to individual `Import` values.
+                for import in reader.into_imports() {
                     let import = import?;
                     match import.ty {
                         wasmparser::TypeRef::Func(_) => import_count += 1,
