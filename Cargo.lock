@@ -139,7 +139,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror",
  "wasm-encoder",
- "wasmparser 0.250.0",
+ "wasmparser",
 ]
 
 [[package]]
@@ -155,18 +155,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2271adb766023046af314460f1fae02cc34ea16d736d93404d3b65be44270923"
 dependencies = [
  "leb128fmt",
- "wasmparser 0.250.0",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.221.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d06bfa36ab3ac2be0dee563380147a5b81ba10dd8885d7fbbc9eb574be67d185"
-dependencies = [
- "bitflags",
- "indexmap",
- "semver",
+ "wasmparser",
 ]
 
 [[package]]
@@ -180,15 +169,4 @@ dependencies = [
  "indexmap",
  "semver",
  "serde",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.250.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "071d99cdfb8111603ed05500506c3298a940b58d609dd0259d3981785dd33556"
-dependencies = [
- "bitflags",
- "indexmap",
- "semver",
 ]

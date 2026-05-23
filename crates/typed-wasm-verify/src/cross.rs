@@ -131,7 +131,7 @@ pub fn verify_cross_module(
     for payload in parser.parse_all(caller_bytes) {
         match payload? {
             Payload::ImportSection(reader) => {
-                for import in reader {
+                for import in reader.into_imports() {
                     let import = import?;
                     // Only function imports occupy slots in the function
                     // index space — table/memory/global imports don't.
