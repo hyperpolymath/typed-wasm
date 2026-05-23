@@ -65,7 +65,9 @@ impl Frame {
                 *then_min += m;
                 *then_max += x;
             }
-            Frame::IfElse { else_min, else_max, .. } => {
+            Frame::IfElse {
+                else_min, else_max, ..
+            } => {
                 *else_min += m;
                 *else_max += x;
             }
@@ -151,9 +153,7 @@ pub(crate) fn count_op_range<C: OpCounter>(
                 });
             }
             Operator::Else => {
-                let top = stack
-                    .last_mut()
-                    .expect("frame stack underflow at Else");
+                let top = stack.last_mut().expect("frame stack underflow at Else");
                 match *top {
                     Frame::IfThen { then_min, then_max } => {
                         *top = Frame::IfElse {
@@ -299,9 +299,7 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
                     let import = import?;
                     match import.ty {
                         wasmparser::TypeRef::Func(_) => import_count += 1,
-                        wasmparser::TypeRef::Memory(_)
-                            if imported_shared.is_none() =>
-                        {
+                        wasmparser::TypeRef::Memory(_) if imported_shared.is_none() => {
                             imported_shared = Some(format!(
                                 "module owns linear memory yet imports \
                                  memory '{}.{}' (cross-module shared memory \
@@ -309,9 +307,7 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
                                 import.module, import.name
                             ));
                         }
-                        wasmparser::TypeRef::Table(_)
-                            if imported_shared.is_none() =>
-                        {
+                        wasmparser::TypeRef::Table(_) if imported_shared.is_none() => {
                             imported_shared = Some(format!(
                                 "module owns linear memory yet imports table \
                                  '{}.{}' (externally-backed table breaks L13 \
@@ -354,7 +350,12 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
         }
     }
 
-    for OwnershipEntry { func_idx, param_kinds, .. } in entries {
+    for OwnershipEntry {
+        func_idx,
+        param_kinds,
+        ..
+    } in entries
+    {
         // Global func index → body index: skip imports.
         let Some(body_idx) = func_idx.checked_sub(import_count) else {
             // Imported function: no body to inspect (the import's host
@@ -386,8 +387,8 @@ mod tests {
     use crate::section::build_ownership_section_payload;
     use crate::OwnershipEntry;
     use wasm_encoder::{
-        CodeSection, CustomSection, Function, FunctionSection, ImportSection, Instruction,
-        Module, TypeSection, ValType,
+        CodeSection, CustomSection, Function, FunctionSection, ImportSection, Instruction, Module,
+        TypeSection, ValType,
     };
 
     /// Build a single-function wasm module with the given function body
@@ -605,7 +606,10 @@ mod tests {
             Err(VerifyError::Ownership(errs)) => {
                 assert!(matches!(
                     errs.as_slice(),
-                    [OwnershipError::LinearNotUsed { func_idx: 0, param_idx: 0 }]
+                    [OwnershipError::LinearNotUsed {
+                        func_idx: 0,
+                        param_idx: 0
+                    }]
                 ));
             }
             other => panic!("expected LinearNotUsed, got {:?}", other),
@@ -633,7 +637,10 @@ mod tests {
             Err(VerifyError::Ownership(errs)) => {
                 assert!(matches!(
                     errs.as_slice(),
-                    [OwnershipError::LinearDroppedOnSomePath { func_idx: 0, param_idx: 0 }]
+                    [OwnershipError::LinearDroppedOnSomePath {
+                        func_idx: 0,
+                        param_idx: 0
+                    }]
                 ));
             }
             other => panic!("expected LinearDroppedOnSomePath, got {:?}", other),
@@ -653,7 +660,11 @@ mod tests {
             Err(VerifyError::Ownership(errs)) => {
                 assert!(matches!(
                     errs.as_slice(),
-                    [OwnershipError::LinearUsedMultiple { func_idx: 0, param_idx: 0, count: 2 }]
+                    [OwnershipError::LinearUsedMultiple {
+                        func_idx: 0,
+                        param_idx: 0,
+                        count: 2
+                    }]
                 ));
             }
             other => panic!("expected LinearUsedMultiple, got {:?}", other),
@@ -673,7 +684,11 @@ mod tests {
             Err(VerifyError::Ownership(errs)) => {
                 assert!(matches!(
                     errs.as_slice(),
-                    [OwnershipError::ExclBorrowAliased { func_idx: 0, param_idx: 0, count: 2 }]
+                    [OwnershipError::ExclBorrowAliased {
+                        func_idx: 0,
+                        param_idx: 0,
+                        count: 2
+                    }]
                 ));
             }
             other => panic!("expected ExclBorrowAliased, got {:?}", other),
@@ -724,9 +739,7 @@ mod tests {
     /// Always carries an (empty) ownership section so the isolation
     /// check is reached (gated behind it, like the OCaml port).
     fn isolation_module(import_memory: bool) -> Vec<u8> {
-        use wasm_encoder::{
-            EntityType, MemorySection, MemoryType,
-        };
+        use wasm_encoder::{EntityType, MemorySection, MemoryType};
         let mut module = Module::new();
 
         if import_memory {

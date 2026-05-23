@@ -52,6 +52,8 @@ erl_crash.dump
 !tests/e2e/*.mjs
 !tests/contracts/*.mjs
 !tests/levels/*.mjs
+!tests/aspect/*.mjs
+!benchmarks/*.mjs
 *.cmi
 *.cmj
 *.cmt

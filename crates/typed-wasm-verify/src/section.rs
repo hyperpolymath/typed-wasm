@@ -49,7 +49,11 @@ pub fn parse_ownership_section_payload(payload: &[u8]) -> Vec<OwnershipEntry> {
                 .map(|_| OwnershipKind::from_byte(r.read_u8()))
                 .collect();
             let ret_kind = OwnershipKind::from_byte(r.read_u8());
-            OwnershipEntry { func_idx, param_kinds, ret_kind }
+            OwnershipEntry {
+                func_idx,
+                param_kinds,
+                ret_kind,
+            }
         })
         .collect()
 }
@@ -69,12 +73,19 @@ pub fn parse_ownership_section_payload(payload: &[u8]) -> Vec<OwnershipEntry> {
 /// than 255 params (the engine limit is far lower), so this is
 /// unreachable in practice.
 pub fn build_ownership_section_payload(entries: &[OwnershipEntry]) -> Vec<u8> {
-    let count: u32 = entries.len().try_into().expect("entry count must fit in u32");
+    let count: u32 = entries
+        .len()
+        .try_into()
+        .expect("entry count must fit in u32");
     let mut out = Vec::with_capacity(4 + entries.len() * 8);
     out.extend_from_slice(&count.to_le_bytes());
     for entry in entries {
         out.extend_from_slice(&entry.func_idx.to_le_bytes());
-        let n_params: u8 = entry.param_kinds.len().try_into().expect("param count must fit in u8");
+        let n_params: u8 = entry
+            .param_kinds
+            .len()
+            .try_into()
+            .expect("param count must fit in u8");
         out.push(n_params);
         for k in &entry.param_kinds {
             out.push(k.to_byte());
@@ -121,7 +132,11 @@ mod tests {
     use OwnershipKind::*;
 
     fn entry(func_idx: u32, params: Vec<OwnershipKind>, ret: OwnershipKind) -> OwnershipEntry {
-        OwnershipEntry { func_idx, param_kinds: params, ret_kind: ret }
+        OwnershipEntry {
+            func_idx,
+            param_kinds: params,
+            ret_kind: ret,
+        }
     }
 
     #[test]
@@ -145,11 +160,15 @@ mod tests {
     #[test]
     fn single_entry_with_all_kinds() {
         // count=1, func_idx=42, n_params=4, params=[Linear, Unrestricted, ExclBorrow, SharedBorrow], ret=Linear
-        let payload = [1, 0, 0, 0,  42, 0, 0, 0,  4,  1, 0, 3, 2,  1];
+        let payload = [1, 0, 0, 0, 42, 0, 0, 0, 4, 1, 0, 3, 2, 1];
         let parsed = parse_ownership_section_payload(&payload);
         assert_eq!(
             parsed,
-            vec![entry(42, vec![Linear, Unrestricted, ExclBorrow, SharedBorrow], Linear)]
+            vec![entry(
+                42,
+                vec![Linear, Unrestricted, ExclBorrow, SharedBorrow],
+                Linear
+            )]
         );
     }
 

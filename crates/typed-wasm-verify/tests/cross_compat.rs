@@ -44,8 +44,7 @@
 
 use typed_wasm_verify::{
     build_ownership_section_payload, extract_exports, verify_cross_module, verify_from_module,
-    CrossError, OwnershipEntry, OwnershipError, OwnershipKind, VerifyError,
-    OWNERSHIP_SECTION_NAME,
+    CrossError, OwnershipEntry, OwnershipError, OwnershipKind, VerifyError, OWNERSHIP_SECTION_NAME,
 };
 use wasm_encoder::{
     BlockType, CodeSection, CustomSection, EntityType, ExportKind, ExportSection, Function,

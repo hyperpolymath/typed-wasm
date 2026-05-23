@@ -146,7 +146,8 @@ test-contract:
 test-e2e:
     @echo "Running end-to-end tests..."
     rescript build
-    node tests/e2e/e2e-smoke.mjs
+    node tests/smoke/e2e-smoke.mjs
+    node tests/e2e/e2e-driver.mjs
 
 # Aspect tests for cross-surface claim coherence
 test-aspect:

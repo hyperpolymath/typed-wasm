@@ -75,10 +75,14 @@ time; they are not needed at runtime.
 
 ## What "draft" means
 
-Levels 11-12 currently have draft Idris2 files and example syntax, but they are
-not part of `typed-wasm.ipkg` and, as of 2026-03-30, both standalone checks
-fail. Zero dangerous patterns is not enough here: a file that does not
-type-check is not a claimable proof artefact. Wiring these levels into the
+Levels 11-12 are draft for surface semantics, not for ipkg membership.
+As of 2026-04-18 (commit A1) both `Tropical.idr` and `Epistemic.idr` are
+in `typed-wasm.ipkg` and build clean under Idris2 0.8.0 — see the
+2026-05-18 reconciliation in `PROOF-NEEDS.md`. The "draft" label
+applies to the level semantics themselves (Tropical cost-tracking and
+Epistemic freshness propagation under concurrent writes remain
+research-grade): theorems live, but the surface language and Zig FFI
+do not yet expose them. Wiring these levels through the rest of the
 toolchain remains future work.
 
 ## Proof inventory
