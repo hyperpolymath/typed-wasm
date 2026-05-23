@@ -256,7 +256,7 @@ RSR_FILES=(
   "README.adoc"
   "EXPLAINME.adoc"
   "SECURITY.md"
-  "CONTRIBUTING.adoc"
+  "CONTRIBUTING.md"
   "LICENSE"
   "Justfile"
   "0-AI-MANIFEST.a2ml"
@@ -279,7 +279,7 @@ SPDX_CHECK_FILES=(
   "src/parser/Parser.res"
   "src/parser/Lexer.res"
   "ffi/zig/src/main.zig"
-  "tests/e2e/e2e-smoke.mjs"
+  "tests/smoke/e2e-smoke.mjs"
 )
 
 for f in "${SPDX_CHECK_FILES[@]}"; do
@@ -300,9 +300,9 @@ done
 section "9. Smoke test invocability"
 
 if command -v node &>/dev/null; then
-  echo "  Invoking: node tests/e2e/e2e-smoke.mjs"
-  if node tests/e2e/e2e-smoke.mjs 2>&1 | tail -5; then
-    if node tests/e2e/e2e-smoke.mjs 2>&1 | grep -q "passed"; then
+  echo "  Invoking: node tests/smoke/e2e-smoke.mjs"
+  if node tests/smoke/e2e-smoke.mjs 2>&1 | tail -5; then
+    if node tests/smoke/e2e-smoke.mjs 2>&1 | grep -q "passed"; then
       pass "Smoke test ran and reports passed"
     else
       fail "Smoke test ran but reported failures or no 'passed' summary"

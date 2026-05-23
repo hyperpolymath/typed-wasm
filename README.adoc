@@ -79,9 +79,10 @@ WASM instructions with zero overhead.
 | 10 | Linearity | Linear resource usage
 |===
 
-L11-L12 research files exist in the repository, but they are not part of the
-default checked Idris2 package and are not currently claimed as integrated or
-machine-checked proof surface.
+L11-L12 (Tropical, Epistemic) are in `typed-wasm.ipkg` and build clean under
+Idris2 0.8.0 as of 2026-04-18 (see `PROOF-NEEDS.md` reconciliation). Their
+surface semantics remain research-grade — the parser, Zig FFI and downstream
+tooling do not yet expose L11/L12 features.
 
 == The Killer Feature: Multi-Module Type Safety
 

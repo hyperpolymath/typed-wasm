@@ -25,9 +25,7 @@ use wasmparser::{FunctionBody, Parser, Payload};
 
 use crate::section::parse_ownership_section_payload;
 use crate::verify::{count_op_range, CallOf};
-use crate::{
-    CrossError, FuncInterface, OwnershipKind, VerifyError, OWNERSHIP_SECTION_NAME,
-};
+use crate::{CrossError, FuncInterface, OwnershipKind, VerifyError, OWNERSHIP_SECTION_NAME};
 
 // ----------------------------------------------------------------------
 // Interface extraction (callee side)
@@ -164,8 +162,7 @@ pub fn verify_cross_module(
     for (import_slot, import_name) in &linear_imports {
         for (local_idx, body) in bodies.iter().enumerate() {
             let caller_func_idx = (local_idx as u32) + import_count;
-            let (min_calls, max_calls) =
-                count_op_range(body.clone(), &CallOf(*import_slot))?;
+            let (min_calls, max_calls) = count_op_range(body.clone(), &CallOf(*import_slot))?;
 
             if max_calls == 0 {
                 // Function never calls this import: not a violation.
@@ -525,14 +522,12 @@ mod tests {
         match verify_cross_module(&iface, &caller) {
             Err(VerifyError::Cross(errs)) => {
                 assert_eq!(errs.len(), 2);
-                assert!(errs.iter().any(|e| matches!(
-                    e,
-                    CrossError::LinearImportDroppedOnSomePath { .. }
-                )));
-                assert!(errs.iter().any(|e| matches!(
-                    e,
-                    CrossError::LinearImportCalledMultiple { count: 2, .. }
-                )));
+                assert!(errs
+                    .iter()
+                    .any(|e| matches!(e, CrossError::LinearImportDroppedOnSomePath { .. })));
+                assert!(errs
+                    .iter()
+                    .any(|e| matches!(e, CrossError::LinearImportCalledMultiple { count: 2, .. })));
             }
             other => panic!("expected 2 errors, got {:?}", other),
         }

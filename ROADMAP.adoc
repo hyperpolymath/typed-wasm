@@ -26,7 +26,10 @@ Key capabilities delivered:
 
 Known audit constraints:
 
-* L11-L12 draft files are not part of `typed-wasm.ipkg` and currently fail standalone type-checking
+* L11 (Tropical) and L12 (Epistemic) are in `typed-wasm.ipkg` since 2026-04-18
+  (commit A1) and build clean under Idris2 0.8.0 (PROOF-NEEDS.md reconciliation
+  2026-05-18). Treat them as research/draft for surface semantics, not for
+  ipkg membership.
 * Release/build/container metadata still contains template residue
 * Benchmark and venue-facing paper claims require evidence cleanup before submission
 

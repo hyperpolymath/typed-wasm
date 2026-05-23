@@ -20,7 +20,9 @@ pub mod cross;
 pub mod section;
 pub mod verify;
 pub use cross::{extract_exports, verify_cross_module};
-pub use section::{build_ownership_section_payload, parse_ownership_section_payload, OwnershipEntry};
+pub use section::{
+    build_ownership_section_payload, parse_ownership_section_payload, OwnershipEntry,
+};
 pub use verify::{count_uses_range, verify_function};
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
@@ -63,10 +65,18 @@ pub enum OwnershipError {
     LinearDroppedOnSomePath { func_idx: u32, param_idx: u32 },
 
     #[error("Level 10 violation: function {func_idx}, param {param_idx} — Linear (own) param loaded {count} times on some path (exactly 1 required; possible duplication)")]
-    LinearUsedMultiple { func_idx: u32, param_idx: u32, count: u32 },
+    LinearUsedMultiple {
+        func_idx: u32,
+        param_idx: u32,
+        count: u32,
+    },
 
     #[error("Level 7 violation: function {func_idx}, param {param_idx} — ExclBorrow (mut) param aliased ({count} simultaneous references; at most 1 permitted)")]
-    ExclBorrowAliased { func_idx: u32, param_idx: u32, count: u32 },
+    ExclBorrowAliased {
+        func_idx: u32,
+        param_idx: u32,
+        count: u32,
+    },
 
     /// Level 13 (module isolation, negative form). Mirrors OCaml
     /// `Tw_verify.ModuleNotIsolated` (affinescript PR #280, issue #35):
