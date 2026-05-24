@@ -1,0 +1,101 @@
+============================================
+Simple region with two primitive fields
+============================================
+
+region Vec2 {
+    x: f32;
+    y: f32;
+}
+
+---
+
+(source_file
+  (region_decl
+    name: (identifier)
+    (field_decl name: (identifier) type: (primitive_type))
+    (field_decl name: (identifier) type: (primitive_type))))
+
+
+============================================
+Array region with embedded ref and align
+============================================
+
+region Players[100] {
+    hp:    i32;
+    speed: f64;
+    pos:   @Vec2;
+    name:  u8[24];
+    align 8;
+}
+
+---
+
+(source_file
+  (region_decl
+    name: (identifier)
+    (region_quantifier)
+    (field_decl name: (identifier) type: (primitive_type))
+    (field_decl name: (identifier) type: (primitive_type))
+    (field_decl name: (identifier) type: (region_ref (identifier)))
+    (field_decl name: (identifier) type: (array_field_type (primitive_type)))
+    (align_clause)))
+
+
+============================================
+Region with optional ref
+============================================
+
+region Enemies[256] {
+    hp:        i32;
+    target:    opt<@Players>;
+}
+
+---
+
+(source_file
+  (region_decl
+    name: (identifier)
+    (region_quantifier)
+    (field_decl name: (identifier) type: (primitive_type))
+    (field_decl name: (identifier) type: (optional_type (region_ref (identifier))))))
+
+
+============================================
+Region with where range constraint
+============================================
+
+region Bounded {
+    hp: i32;
+    where 0 <= hp <= 9999;
+}
+
+---
+
+(source_file
+  (region_decl
+    name: (identifier)
+    (field_decl name: (identifier) type: (primitive_type))
+    (where_block)))
+
+
+============================================
+Comments are ignored
+============================================
+
+// top-of-file comment
+region X {
+    // inside-region comment
+    a: i32; // trailing comment
+}
+// trailing-file comment
+
+---
+
+(source_file
+  (line_comment)
+  (region_decl
+    name: (identifier)
+    (line_comment)
+    (field_decl name: (identifier) type: (primitive_type))
+    (line_comment))
+  (line_comment))

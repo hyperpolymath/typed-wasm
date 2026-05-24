@@ -1,0 +1,35 @@
+{
+  "name": "tree-sitter-twasm",
+  "version": "0.0.1",
+  "description": "Tree-sitter grammar for typed-wasm (.twasm) — scaffold / Phase 0 kickoff",
+  "main": "bindings/node",
+  "keywords": [
+    "parser",
+    "tree-sitter",
+    "typed-wasm",
+    "wasm",
+    "webassembly"
+  ],
+  "author": "Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hyperpolymath/typed-wasm.git",
+    "directory": "tools/tree-sitter-twasm"
+  },
+  "scripts": {
+    "build": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "parse": "tree-sitter parse"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.24.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.twasm",
+      "file-types": ["twasm"],
+      "highlights": "queries/highlights.scm"
+    }
+  ]
+}
