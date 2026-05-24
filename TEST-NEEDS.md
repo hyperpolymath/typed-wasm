@@ -11,17 +11,21 @@
 | **Integration tests** | 1 | tests/contracts/airborne-step-state-contract.mjs (14 assertions) |
 | **E2E tests** | 2 | tests/smoke/e2e-smoke.mjs (40 assertions), tests/e2e/e2e-driver.mjs (corpus driver) |
 | **Per-level tests** | 10 | tests/levels/L1.mjs .. L10.mjs (56 assertions total) |
-| **Aspect tests** | 1 | tests/aspect/claim-envelope.mjs (49 assertions — added 2026-05 to catch cross-doc claim drift after deep audit found 5 such drifts) |
-| **Property-based tests** | 0 | tests/property/property_test.mjs claimed DONE 2026-04-04 but file is absent — stale entry being scrubbed |
+| **Aspect tests** | 2 | tests/aspect/claim-envelope.mjs (49 assertions — added 2026-05 to catch cross-doc claim drift after deep audit found 5 such drifts), tests/aspect/security-envelope.mjs (10 assertions — added 2026-05-24 to catch SECURITY.md/security.txt drift, SPDX gaps, badge-vs-reality, committed secrets) |
+| **Property-based tests** | 1 | tests/property/property_test.mjs (29 assertions across 6 invariants P1-P6: parser determinism, comment stability, diagnostic positional consistency, example-corpus liveness, level-fixture coverage, 5-trial stability — added 2026-05-24, closes the 2026-04-04 ghost) |
+| **Proof regression** | 1 | tests/proof/regression.mjs (25 named-theorem presence assertions + optional idris2 --check layer — added 2026-05-24) |
 | **Benchmarks** | 1 | benchmarks/parser-bench.mjs (per-example wallclock; median/p95/min/throughput; JSON summary on stderr; added 2026-05) |
 | **ECHIDNA harness** | 1 | tests/echidna/echidna-harness.mjs (659 LOC, 124 local assertions, remote prover-wars submission) |
 
 ## What's Missing
 
 ### P2P Tests
-- [ ] **REVOKED 2026-05**: prior "DONE 2026-04-04 property tests" entry was
-      false — `tests/property/property_test.mjs` was never committed.
-      Aspect test now catches this drift class automatically.
+- [x] **DONE 2026-05-24**: `tests/property/property_test.mjs` exists with
+      29 assertions across 6 invariants (parser determinism, comment
+      stability, diagnostic positional consistency, example-corpus
+      liveness, level-fixture coverage, 5-trial stability). Wired into
+      Justfile `test-property` and CI smoke job. Closes the revoked
+      2026-04-04 ghost entry.
 - [ ] No tests for Idris2 ABI type checking with Zig FFI
 - [ ] No tests for ReScript parser feeding into Idris2 type checker
 
@@ -39,17 +43,34 @@
       consistent with actual artefacts (ipkg, Rust constants, CI pins,
       example corpus, RSR surface). Built in response to a deep audit
       finding five drifts the test now catches.
-- [ ] **Security**: No memory safety violation detection tests (this IS the
-      product's purpose)
+- [x] **DONE 2026-05-24** (security claim-envelope dimension):
+      `tests/aspect/security-envelope.mjs` — 10 assertions covering
+      SECURITY.md ↔ .well-known/security.txt contact alignment,
+      disclosure-timeline concreteness, SPDX-header presence on all
+      git-tracked source files, README badge-claim-vs-reality (parses
+      Idris2 comments out before substring matching), no committed
+      credential patterns, LICENSE-vs-SPDX consistency. Caught two real
+      bugs in the same commit it was added: template residue in
+      `.well-known/security.txt` and missing SPDX on three files.
+- [ ] **Security (behavioural)**: No memory safety violation detection
+      tests at the verifier-rejects-bad-program level beyond what
+      `tests/levels/L*.mjs` covers (10/10 per-level negative cases
+      exist). Reaching full safety-violation coverage is a Phase 1
+      deliverable since it requires end-to-end codegen.
 - [ ] **Performance**: see Benchmarks below
 - [ ] **Concurrency**: No concurrent WASM module compilation tests
 - [ ] **Error handling**: 10/10 per-level test suites (`tests/levels/L*.mjs`)
       include negative cases — partial coverage
 
 ### Build & Execution
-- [ ] 11 Idris2 modules with 0 Idris2-level tests -- are proofs checked?
-      (PROOF-NEEDS.md 2026-05-18 reconciliation: ipkg builds clean, but
-      no Idris2 *test* layer beyond compile-time totality / type-checking)
+- [x] **PARTIAL 2026-05-24**: `tests/proof/regression.mjs` provides
+      Layer 1 (named-theorem presence) — 25 assertions covering Region,
+      TypedAccess, Levels, Linear, Lifetime, Effects, Pointer,
+      MultiModule, Layout, Proofs. Catches silent theorem deletion or
+      rename. Layer 2 (`idris2 --check typed-wasm.ipkg`) runs only when
+      idris2 is on PATH, falls back to skip otherwise; pass `--strict`
+      to require idris2. The strong test still depends on the toolchain
+      being installable in CI, which is its own Phase 0 item.
 - [ ] Zig FFI integration_test.zig likely a template placeholder
 
 ### Benchmarks
