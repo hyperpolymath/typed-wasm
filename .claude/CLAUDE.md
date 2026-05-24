@@ -13,7 +13,7 @@ TypeLL's 10-level type safety for WebAssembly linear memory.
 - **Idris2 ABI** (`src/abi/`) — Formal proofs: region schemas, typed access, 10-level verification
 - **Zig FFI** (`ffi/zig/`) — C-ABI bridge: runtime region management, typed load/store
 - **Grammar** (`spec/grammar.ebnf`) — The `.twasm` surface syntax (EBNF)
-- **Spec** (`spec/10-levels-for-wasm.adoc`) — How each level maps from DB to WASM
+- **Spec** (`spec/type-safety-levels-for-wasm.adoc`) — How each level maps from DB to WASM
 - **Examples** (`examples/`) — `.twasm` files demonstrating all features
 
 ## Build & Test

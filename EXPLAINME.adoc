@@ -18,7 +18,7 @@ image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_published
 L11 (tropical cost-tracking) and L12 (epistemic safety) are formally specified and published.**
 ____
 
-**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/src/abi/Levels.idr` defines Idris2 dependent types for all 10 checked levels: L1 (instruction validity), L2 (region binding), L3 (type compatibility), ..., L10 (linearity). `src/abi/Proofs.idr` contains zero `believe_me`, `assert_total`, or escape hatches. LEVEL-STATUS.md confirms "checked L1-L10 core."
+**Evidence**: `/var/mnt/eclipse/repos/typed-wasm/src/abi/Levels.idr` defines Idris2 dependent types for all 10 checked levels: L1 (instruction validity), L2 (region binding), L3 (type compatibility), ..., L10 (linearity). `src/abi/TypedWasm/ABI/Proofs.idr` contains zero `believe_me`, `assert_total`, or escape hatches. LEVEL-STATUS.md confirms "checked L1-L10 core."
 
 L11 and L12 are formally specified in `src/abi/TypedWasm/ABI/Tropical.idr` (L11: AllPairsCosts + Level11KleeneProof) and `src/abi/TypedWasm/ABI/Epistemic.idr` (L12: Level12Proof + freshness witnesses). The full 12-level type hierarchy is given by the `fullCert12` top-level certificate type in `Proofs.idr`.
 
@@ -35,13 +35,13 @@ When Module A (compiled from Rust) shares memory with Module B (compiled from Re
 typed-wasm declares the shared schema once. Both modules import it. The typed-wasm checker verifies structural agreement at compile time, before any module runs.
 ____
 
-**Evidence**: `examples/02-multi-module.twasm` demonstrates: Module A exports a `region Entity` with fields (pos_x, pos_y, hp); Module B imports the same region and defines typed load/store operations. `src/abi/Proofs.idr` proves field offset and alignment agreement.
+**Evidence**: `examples/02-multi-module.twasm` demonstrates: Module A exports a `region Entity` with fields (pos_x, pos_y, hp); Module B imports the same region and defines typed load/store operations. `src/abi/TypedWasm/ABI/Proofs.idr` proves field offset and alignment agreement.
 
 **Caveat**: Schema agreement proof is _type-level_ (compile-time). Does NOT verify that actual Rust/AffineScript compiled code respects field layout — correspondence is manual. Runtime behavior depends on correct field packing across compilers.
 
 === Claim 3: "Checked L1-L10 Proof Core — All 10 Levels Integrated"
 
-**Evidence**: `spec/10-levels-for-wasm.adoc` maps each level from database (TypedQL) to WASM. `src/abi/` contains proof files for each: L1-L3 in Types.idr, L4-L5 in Layout.idr, L6-L7 in Access.idr, L8-L10 in Linearity.idr.
+**Evidence**: `spec/type-safety-levels-for-wasm.adoc` maps each level from database (TypedQL) to WASM. The Idris2 proofs live under `src/abi/TypedWasm/ABI/`: `Region.idr` + `TypedAccess.idr` define L1-L3 schema and access typing; `Pointer.idr` defines L4 nullability kinds; `Levels.idr` enumerates `Level1_InstructionValidity` through `Level10_Linear` as data types; `Effects.idr` covers L8; `Lifetime.idr` covers L9; `Linear.idr` covers L10; `Proofs.idr` carries the composed certificates.
 
 **Caveat**: Proofs are _about abstract WASM models_, not actual WebAssembly instruction sequences. Translation from `.twasm` (typed-wasm surface syntax) to WASM bytecode is NOT mechanically verified.
 
@@ -64,25 +64,28 @@ All share: _Progressive safety levels, mechanized proofs in Idris2, no escape ha
 
 | `spec/grammar.ebnf` | The `.twasm` surface syntax in EBNF: region declarations, typed load/store operations, effect annotations, module imports/exports
 
-| `spec/10-levels-for-wasm.adoc` | Mapping document: each of the 12 levels from TypedQL (database) → typed-wasm (WASM), with rationale and examples
+| `spec/type-safety-levels-for-wasm.adoc` | Mapping document: each of the 12 levels from TypedQL (database) → typed-wasm (WASM), with rationale and examples
 
-| `src/abi/Types.idr` | Idris2 dependent types: L1-L3 proof definitions (instruction validity, region binding, type compatibility) with witness types
+| `src/abi/TypedWasm/ABI/Region.idr` | Schema type, field accessors (`sizeOf`, `alignOf`, `fieldName`, `fieldType`) — load-bearing for L1-L3
+| `src/abi/TypedWasm/ABI/TypedAccess.idr` | Load/store typing: `HostType`, `RegionPredicate`, typed projections through the schema (L2-L3)
+| `src/abi/TypedWasm/ABI/Levels.idr` | The canonical L1-L10 data types — `Level1_InstructionValidity` through `Level10_Linear` and `Nullability` / `RefKind` / `MemEffect` enumerations
 
-| `src/abi/Layout.idr` | Idris2 memory layout proofs: L4 (null safety via opt<T>), L5 (compile-time bounds proofs via offset witnesses)
+| `src/abi/TypedWasm/ABI/Pointer.idr` | L4 nullability + L7 aliasing kinds: `OwnPtr`, `BorrowRef`, `UniquePtr`, `OptRef`, `checkNull`
+| `src/abi/TypedWasm/ABI/Layout.idr` | Cross-language layout contracts (aggregate-library role): `Subtype`, `WasmGCEq`, `subTrans`, `optionSubtype`
 
-| `src/abi/Access.idr` | Idris2 access correctness: L6 (result-type inference), L7 (aliasing safety via exclusive refs)
+| `src/abi/TypedWasm/ABI/MultiModule.idr` | Cross-module sharing (the killer feature): `LinkGraph`, `SchemaSub`, `schemaSubRefl`, `schemaSubTrans`
 
-| `src/abi/Effects.idr` | Idris2 effect tracking: L8 (effect type annotations), L9 (lifetime safety via resource tracking)
+| `src/abi/TypedWasm/ABI/Effects.idr` | L8 effect tracking: `EffectSet`, `pureEffects`, `readOnly`, `readWrite`, `allocEffects`
+| `src/abi/TypedWasm/ABI/Lifetime.idr` | L9 lifetime tracking: `Outlives`, `outlivesRefl`, `outlivesTrans`, `outlivesTransitive`
 
-| `src/abi/Linearity.idr` | Idris2 linear type proofs: L10 (exactly-once resource usage via linear arrows)
+| `src/abi/TypedWasm/ABI/Linear.idr` | L10 linearity: `LinHandle`, `allocRegion`, `freeRegion`, `immBorrow` — exactly-once resource usage
 
 | `src/abi/TypedWasm/ABI/Tropical.idr` | L11: tropical cost-tracking — AllPairsCosts + Level11KleeneProof (min-plus semiring, bounded memory access cost)
 
 | `src/abi/TypedWasm/ABI/Epistemic.idr` | L12: epistemic safety — Level12Proof + freshness witnesses (prevents stale-state reads across modules)
 
-| `src/abi/Proofs.idr` | Machine-checked proofs for L1-L10. `fullCert12` top-level certificate for all 12 levels. Zero `believe_me`.
+| `src/abi/TypedWasm/ABI/Proofs.idr` | Machine-checked proofs for L1-L10. `fullCert12` top-level certificate for all 12 levels. Zero `believe_me`.
 
-| `src/abi/Foreign.idr` | FFI declarations: C header generation from Idris2 ABI
 
 | `ffi/zig/src/main.zig` | Zig FFI implementation: runtime region management, typed load/store operations, C-ABI compatible interface
 

@@ -161,7 +161,7 @@ in name, type, offset, and alignment.
 [source,bash]
 ----
 spec/grammar.ebnf              # The grammar — core intellectual artifact
-spec/10-levels-for-wasm.adoc    # Checked L1-L10 mapping from DB to WASM
+spec/type-safety-levels-for-wasm.adoc    # Checked L1-L10 mapping from DB to WASM
 src/abi/*.idr                   # Idris2 formal proofs
 ffi/zig/src/main.zig            # Zig C-ABI implementation
 examples/01-single-module.twasm # Basic typed regions

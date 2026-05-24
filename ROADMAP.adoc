@@ -45,7 +45,7 @@ Key capabilities delivered:
 * Idris2 ABI proofs (src/abi/) -- checked L1-L10 region, access, and proof core
 * Zig FFI (ffi/zig/) -- C-ABI bridge for runtime region management, typed load/store
 * `.twasm` grammar (spec/grammar.ebnf) -- EBNF surface syntax
-* 10-level spec (spec/10-levels-for-wasm.adoc) -- checked DB-to-WASM core mapping
+* 10-level spec (spec/type-safety-levels-for-wasm.adoc) -- checked DB-to-WASM core mapping
 * Example `.twasm` files for the checked core, plus draft higher-level examples
 * Whitepaper drafts (docs/WHITEPAPER.md + docs/arxiv/typed-wasm.tex) under audit
 * No unsound escape hatches in the checked Idris2 core (`believe_me`, `assert_total`)
