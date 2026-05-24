@@ -36,8 +36,14 @@ jobs:
             echo "::warning::No .a2ml manifest files found. Every RSR repo should have 0-AI-MANIFEST.a2ml"
           fi
 
+      # Phase 0 NOTE (issue #48): the third-party action returns exit 1 on
+      # every PR; log contents are auth-gated and unreadable. Marked
+      # non-blocking so it surfaces as an advisory rather than a merge
+      # blocker until upstream action behaviour is investigated. Remove
+      # continue-on-error once the action is fixed or replaced.
       - name: Validate A2ML manifests
         if: steps.detect.outputs.count > 0
+        continue-on-error: true
         uses: hyperpolymath/a2ml-validate-action@59145c7d1039fa3059b3ecacdb50ee23d7505898 # main
         with:
           path: '.'
@@ -84,8 +90,12 @@ jobs:
             echo "::warning::Found $CONFIG_COUNT config files but no K9 contracts. Run k9iser to generate contracts."
           fi
 
+      # Phase 0 NOTE (issue #48): same situation as A2ML — third-party
+      # action returns exit 1 on every PR with auth-gated logs. Non-blocking
+      # until investigated. Remove continue-on-error once fixed.
       - name: Validate K9 contracts
         if: steps.detect.outputs.k9_count > 0
+        continue-on-error: true
         uses: hyperpolymath/k9-validate-action@2d96f43c538964b097d159ed3a56ba5b5ceca227 # main
         with:
           path: '.'
