@@ -193,20 +193,32 @@ done
 # ---------------------------------------------------------------------------
 section "5. ReScript parser source files"
 
-PARSER_FILES=(
+PARSER_SOURCES=(
   "src/parser/Parser.res"
   "src/parser/Lexer.res"
   "src/parser/Ast.res"
+)
+# Build outputs are gitignored and only exist after `rescript build`; the
+# smoke job validates their importability separately.
+PARSER_OUTPUTS=(
   "src/parser/Parser.mjs"
   "src/parser/Lexer.mjs"
   "src/parser/Ast.mjs"
 )
 
-for f in "${PARSER_FILES[@]}"; do
+for f in "${PARSER_SOURCES[@]}"; do
   if [ -f "$f" ]; then
-    pass "Parser file exists: $f"
+    pass "Parser source exists: $f"
   else
-    fail "Missing parser file: $f"
+    fail "Missing parser source: $f"
+  fi
+done
+
+for f in "${PARSER_OUTPUTS[@]}"; do
+  if [ -f "$f" ]; then
+    pass "Parser build output exists: $f"
+  else
+    skip "Parser build output not yet built: $f (run \`rescript build\`)"
   fi
 done
 
@@ -299,7 +311,14 @@ done
 # ---------------------------------------------------------------------------
 section "9. Smoke test invocability"
 
-if command -v node &>/dev/null; then
+if ! command -v node &>/dev/null; then
+  skip "node not found — skipping smoke test invocation"
+elif [ ! -f "src/parser/Parser.mjs" ] || [ ! -d "node_modules/@rescript" ]; then
+  # Structural job runs without a build; smoke test needs rescript artifacts +
+  # the @rescript runtime in node_modules. Skip cleanly rather than fail —
+  # the smoke job runs the real invocation after `rescript build`.
+  skip "rescript artifacts or node_modules absent — skipping smoke test invocation"
+else
   echo "  Invoking: node tests/smoke/e2e-smoke.mjs"
   if node tests/smoke/e2e-smoke.mjs 2>&1 | tail -5; then
     if node tests/smoke/e2e-smoke.mjs 2>&1 | grep -q "passed"; then
@@ -310,8 +329,6 @@ if command -v node &>/dev/null; then
   else
     fail "Smoke test exited with non-zero status"
   fi
-else
-  skip "node not found — skipping smoke test invocation"
 fi
 
 # ---------------------------------------------------------------------------
