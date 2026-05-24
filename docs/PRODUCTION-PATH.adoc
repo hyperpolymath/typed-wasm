@@ -1,0 +1,468 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= typed-wasm Production Path
+:author: Jonathan D.A. Jewell
+:revdate: 2026-05-24
+:toc: preamble
+:sectnums:
+
+== Purpose
+
+This document is the canonical strategic plan for taking typed-wasm from
+its current pre-alpha / research state to a production-quality compile
+target adopted outside the hyperpolymath ecosystem. It is the long-form
+companion to `ROADMAP.adoc` (which tracks specific milestone versions);
+PRODUCTION-PATH.adoc carries the *why*, the gates between stages, the
+load-bearing decisions, and the comparison landscape that situates the
+project against neighbouring work.
+
+When in doubt: ROADMAP.adoc says what changes per version; this document
+says what stage the project is in and what must be true to advance.
+
+== Scope clarification
+
+"Production-ready as a compile target equivalent to wasm" admits three
+readings, only one of which this plan targets:
+
+. **Serious-systems compile target adopted outside hyperpolymath.** A
+  toolchain that an outside team can pick up, integrate, and ship without
+  needing direct maintainer support; backed by a stable spec, conformance
+  suite, multi-language SDKs, and at least one runtime that enforces the
+  full level set. **This is the target.**
+. *W3C-standardized bytecode peer to wasm.* A different project. Wasm
+  took five years and Mozilla+Google+Apple+Microsoft to reach W3C
+  Recommendation. typed-wasm can realistically aim for "WebAssembly CG
+  candidate extension" by Phase 5; "wasm peer" is out of scope.
+. *Own bytecode that runtimes execute natively, not compiled-to-wasm.*
+  Out of scope. Would require building a new wasm-class platform from
+  scratch and rules out the existing Wasmtime / Wasmer / browser
+  consumption story.
+
+The plan below targets reading (1).
+
+== Where we are (start of Phase 0)
+
+* Idris2 ABI proofs for the checked L1-L10 core, 0 `believe_me`, 0
+  `assert_total`, 0 `postulate` (`src/abi/`).
+* Zig FFI for runtime region management (`ffi/zig/`).
+* Rust verifier (`crates/typed-wasm-verify/`) that checks already-compiled
+  wasm against the L7-L10 properties. 10/10 tests pass.
+* ReScript parser for the `.twasm` surface syntax (`src/parser/`),
+  mid-replacement.
+* EBNF grammar (`spec/grammar.ebnf`) — the surface-syntax source of truth.
+* Six `.twasm` example files demonstrating L1-L6 plus draft higher-level
+  features.
+* Cross-language consumers in flight: `hyperpolymath/ephapax` calls the
+  verifier as of 2026-05-15; `hyperpolymath/affinescript` is queued for
+  the same migration.
+
+What is *not* yet in place:
+
+* A `.twasm` -> `.wasm` codegen. The parser parses, the verifier verifies
+  someone else's wasm, but nothing in this repository emits wasm from a
+  `.twasm` source.
+* Tree-sitter grammar, LSP, Linguist registration.
+* A producer specification document for third-party compilers.
+* Runtime-side enforcement of L7-L10.
+* Frozen 1.0 spec, conformance suite, third-party verifier implementation.
+
+Honest framing: today typed-wasm is a *verifier + spec*, not a *compiler*.
+That distinction is the spine of every phase that follows.
+
+== The six phases
+
+[cols="1,3,1,2",options="header"]
+|===
+| Phase | Theme | Duration | Gate to next
+
+| 0 | Stabilize foundation                | weeks (in flight)      | CI green; no merged red; ROADMAP truthful
+| 1 | End-to-end producer                  | 4-6 months             | `.twasm -> .wasm` round-trips for all examples; verifier accepts codegen output
+| 2 | Multi-producer adoption              | 6-12 months            | >=3 independent producers ship wasm that passes the verifier
+| 3 | Runtime-side enforcement             | 9-18 months            | Reference runtime demonstrates L7-L10 detection that the verifier missed
+| 4 | Tooling + developer experience       | 12-24 months           | Outside-ecosystem user ships without direct maintainer support
+| 5 | Specification + standards            | 18-36 months           | 1.0 spec frozen; conformance suite; academic publication
+| 6 | Production hardening                 | 24-36 months           | SLA, CVE process, >=1 production deployment with case study
+|===
+
+Phases overlap. Cumulative timeline 2-3 years well-resourced; 4-5 years
+single-maintainer part-time. Each phase below states *what must be true to
+advance*, not just what work happens.
+
+=== Phase 0 — Stabilize the foundation (in flight)
+
+The engineering surface around the proofs is currently fragile. Recent
+history: PRs merged with eight red CI jobs (PR #42); the wasmparser API
+broke in CI without anyone noticing (commit `7223ef0`); the cargo verifier
+job we added to catch that very class of regression itself failed silently
+on every PR until PR #46. Phase 0 closes that gap.
+
+Concretely:
+
+* All CI jobs on `main` either green or removed. Persistent red is an
+  honesty problem before it is a technical one.
+* Track A (Codegen pipeline) kicked off: tree-sitter grammar derived from
+  `spec/grammar.ebnf`; Idris2 parser at parity with the ReScript parser;
+  single-PR ReScript cut after parity; codegen v0 for
+  `examples/01-single-module.twasm`.
+* Track B (AffineScript verifier migration): swap `affinescript/lib/{tw_verify,
+  tw_interface}.ml` for subprocess call to the Rust verifier; retire
+  ~491 LOC of duplicated OCaml verifier logic.
+* Track C (audit-floor cleanup): `cargo audit` on GitHub CI; the
+  `tests/property/property_test.mjs` ghost (claimed DONE in TEST-NEEDS but
+  never existed); a Security aspect-test dimension; proof-level regression
+  tests so an Idris2 toolchain bump cannot silently break a theorem.
+
+What advancing to Phase 1 requires:
+
+. Every commit on `main` exits CI green (or the gate is explicitly
+  removed from the merge requirement set, with reason recorded in this
+  document).
+. Codegen v0 emits valid wasm for `examples/01-single-module.twasm`,
+  verifiable end-to-end by `typed-wasm-verify`.
+. ROADMAP.adoc reflects reality — claims that an artifact is DONE only
+  when the artifact exists and is reachable from a green CI run.
+
+=== Phase 1 — Complete the producer story
+
+This is the phase that turns typed-wasm from "verifier + spec" into
+"compile target proper." Without it, the project's claim to be a compile
+target is honest-but-empty (the parser parses; the verifier verifies; no
+producer exists in-tree).
+
+Deliverables:
+
+* Codegen coverage for all 10 levels across all six `.twasm` examples.
+  Track A's first codegen commit targets only the simplest example;
+  Phase 1 extends to every checked level on every example.
+* Round-trip soundness property as a test corpus: for every valid
+  `.twasm` source, `verify(codegen(parse(src)))` returns OK. Enforced via
+  ECHIDNA-style property testing.
+* Optimization story: either passes implemented inside typed-wasm or a
+  documented `binaryen` pass list that preserves the L1-L10 invariants.
+  Without this, output is unoptimized and slow.
+* WAT (text wasm) emission alongside the binary for debugging.
+* Source maps so debuggers can step `.twasm` source, not wasm bytes.
+* Human-readable error messages. The Idris2 type errors surfaced today
+  are unintelligible to non-proof-language users; need a translation
+  layer from proof failures to "you used resource X twice at line N".
+* Multi-module codegen at parity with the verifier's existing
+  multi-module coverage.
+
+Gate to Phase 2:
+
+. A new contributor can write a `.twasm` file, run `tw build`, get a
+  runnable `.wasm`, execute it on Wasmtime, and on a violation receive an
+  error message they can act on.
+
+=== Phase 2 — Multi-producer adoption
+
+Today AffineScript is the only realistic adopter (and only via Track B).
+For typed-wasm to be a real target, other compilers must target it.
+
+Deliverables:
+
+* **Producer specification document.** Normative: what a third-party
+  compiler must guarantee to emit valid typed-wasm. Today this lives
+  implicitly in the verifier code; the spec extracts it as an external
+  contract with examples and edge cases.
+* **C ABI for the verifier.** Today it is a Rust crate; wrap it in a
+  stable C API so Go / Python / C++ / Java consumers can call it
+  without binding to Rust.
+* **Producer conformance test suite.** A corpus that any candidate
+  compiler must satisfy. Analogue to the wasm reference test suite but
+  for the typed-wasm discipline.
+* **"How to make your compiler target typed-wasm" cookbook,** built
+  from the AffineScript migration. This is the artifact other compiler
+  authors actually consume.
+* **At least two more reference producers** beyond AffineScript. Realistic
+  candidates: Ephapax, TypedQLiser (the hyperpolymath umbrella gives
+  coordination access); plus one outside-ecosystem proof, ideally an
+  academic language (an MS thesis project) before chasing larger languages.
+* **LLVM lowering guide** (not yet a backend): how LLVM IR concepts map
+  to regions / levels. Lets anyone with an LLVM frontend route through
+  typed-wasm semi-mechanically.
+
+Gate to Phase 3:
+
+. >=3 producers ship wasm that passes the verifier.
+. The producer specification has been stable for the last 2 adoptions
+  (no breaking changes required).
+
+=== Phase 3 — Runtime-side enforcement (the hard one)
+
+Today the 10 levels are *compile-time* guarantees against the verifier.
+Once the wasm runs on Wasmtime / Wasmer / V8, those runtimes know nothing
+about regions. Levels 7-10 (aliasing, effects, lifetimes, linearity) only
+hold if the producer was honest. A malicious or buggy producer can violate
+them at runtime and no one notices.
+
+This is the difference between *linting* and *memory safety*. Options
+(all hard, listed by tractability):
+
+. **Wasmtime extension** — host functions for region operations, runtime
+  tracks region metadata. You fork the runtime; smallest blast radius.
+. **Wasmer plugin** — Wasmer has a more flexible plugin model than
+  Wasmtime. Possibly faster path; smaller adoption.
+. **Compile to native via a typed-wasm-aware lowering** — sidesteps the
+  wasm-runtime layer. Becomes a Rust or Zig backend that consumes
+  typed-wasm and emits native code. Loses portability; gains enforcement.
+. **Custom wasm proposal to the CG** — start in stage 0 (strawman),
+  eventually push to standardization. Multi-year process; needs allies
+  inside Mozilla / Google / Apple / Microsoft. Not realistic for solo
+  or small team without a champion.
+
+Recommendation: option (1) (Wasmtime fork), with the long-term goal of
+upstreaming the *interface* (let runtimes register region-tracking hooks)
+rather than the specific levels.
+
+Gate to Phase 4:
+
+. At least one runtime demonstrates runtime detection of an L7+
+  violation that the verifier missed because the producer lied.
+
+=== Phase 4 — Tooling and developer experience
+
+The unglamorous phase. Necessary for adoption that does not depend on
+direct maintainer involvement.
+
+* **LSP server.** Tree-sitter parsing (from Phase 1's Track A) ->
+  semantic analysis -> diagnostics surfacing Phase 1's human-readable
+  errors. Acceptance: completion, jump-to-definition, hover types,
+  inline errors work in VS Code.
+* **Debugger integration.** DWARF emission from codegen; gdb / lldb
+  scripts for typed-wasm-aware inspection.
+* **Editor plugins.** VS Code (must-have), JetBrains, Neovim, Emacs,
+  Helix, Zed.
+* **Linguist registration.** GitHub recognizes `.twasm` files; syntax
+  highlighting on GitHub.
+* **Package convention.** Probably "use wapm / wasi conventions, here are
+  the metadata fields" rather than a bespoke package manager.
+* **Documentation.** Getting-started tutorial; the 10 levels explained
+  for working programmers (not type theorists); cookbook of patterns;
+  ABI/FFI guide; architecture deep-dive; formal-proofs guide for the
+  academically inclined.
+* **Conference talks and papers.** ICFP / POPL for the academic side;
+  WebAssembly Summit / Wasm I/O for the practitioner side.
+* **Real-world examples** beyond the existing six: multi-module
+  workspaces, shared-memory cross-language demos (the killer-feature
+  from `README.adoc`).
+
+Gate to Phase 5:
+
+. Someone outside the hyperpolymath ecosystem successfully ships
+  something using typed-wasm without needing direct maintainer support.
+
+=== Phase 5 — Specification and standards
+
+Work that moves typed-wasm from "good open-source project" to "thing
+that lasts."
+
+* **Freeze a 1.0 specification.** Normative document covering the 10
+  levels, the verifier semantics, the producer obligations, the surface
+  syntax, the bytecode encoding (if any), the runtime hooks from Phase 3.
+  Versioning and deprecation policy attached.
+* **Conformance test suite** at the level of the wasm spec interpreter.
+  Hundreds to thousands of tests covering every spec clause. Producers
+  and runtimes both run against this.
+* **Multiple independent verifier implementations.** The Idris2 reference
+  proves correctness; the Rust production crate is what people use; at
+  least one third-party port (Go? OCaml? Coq?) is needed to demonstrate
+  that the spec is implementable by someone who did not write it.
+* **Academic publication.** The soundness proofs are publishable today;
+  the engineering story (producer + verifier + runtime cooperation) is
+  publishable once Phase 3 lands. POPL / ICFP / OOPSLA / PLDI level. This
+  is what gets the project taken seriously outside open source.
+* **W3C CG engagement.** Publish typed-wasm as a community spec under the
+  WebAssembly CG; explore whether the runtime hooks (not the levels
+  themselves) could become a standardization candidate.
+* **Security review.** Hire a firm to audit the verifier. Critical for
+  credibility.
+
+Gate to Phase 6:
+
+. A working group exists beyond the founding author.
+. The 1.0 spec has been stable for six months without breaking changes.
+
+=== Phase 6 — Production hardening
+
+What "production-ready" actually means in industry terms.
+
+* **SLA on bug fixes.** 24h triage, 7-day patch for critical, 30-day for
+  high.
+* **CVE process.** `security@typed-wasm.dev`, GPG key, disclosure
+  timeline, published advisories.
+* **Performance benchmarks** characterised against native (Rust, C),
+  plain wasm, and asm.js across realistic workloads. Published,
+  reproducible, kept current.
+* **Long-running production deployment.** At least one organisation runs
+  typed-wasm-compiled code in production at scale (millions of executions
+  per hour) for six or more months with published telemetry on incident
+  rates.
+* **Migration guides.** "From plain wasm to typed-wasm"; per-producer
+  guides for each major adopter.
+* **Multi-language SDK quality.** Every SDK (Rust, Go, Python, JS) at
+  idiomatic-API quality with maintained docs.
+* **Published case studies** — two or three real adopters telling the
+  story.
+
+Definition of production-ready:
+
+. Everything above, plus a credible answer to "what if you get hit by a
+  bus" — at least two people with commit and release authority.
+
+== Load-bearing decisions
+
+Six choices, mostly due in the first 12 months, that determine which
+phases are reachable. Each should land an ADR under `docs/decisions/`
+when made.
+
+. **Stay codegen-on-top-of-wasm vs. become own bytecode.** Today the
+  pipeline compiles to wasm and the verifier checks wasm. Phase 3 option
+  (3) (compile to native) diverges from this. Picking own-bytecode adds
+  years and changes the scope question (see "Scope clarification" above).
+. **Producer-side-only vs. runtime-aware.** Choosing not to do Phase 3
+  means typed-wasm stays a soundness pass producers opt into. Defensible
+  position — simpler, smaller surface, easier to verify — but caps the
+  safety claims at "subject to producer honesty."
+. **W3C CG path vs. independent ecosystem.** CG path adds 3-5 years to
+  standardization but gives wasm-tier legitimacy. Independent path means
+  living in the hyperpolymath ecosystem indefinitely. Recommend
+  independent for now; revisit at Phase 5.
+. **Idris2-only proofs vs. dual implementation.** Today Idris2 is the
+  source of truth. A second mechanised proof (Coq? Lean?) by an
+  independent party is what OOPSLA-grade reviewers will demand. Decide
+  whether to commission one or stay single-implementation.
+. **MPL-2.0 vs. dual MPL/Apache.** MPL-2.0 is fine but some big-company
+  legal teams will not touch it. Dual-licensing to Apache 2.0 widens the
+  adoption door. Costs: contributor agreement complexity,
+  license-compatibility matrix.
+. **Single-maintainer vs. recruit committers.** Phase 5+ requires
+  multiple humans with commit authority. Start recruiting now (academics
+  writing proofs, infrastructure-curious engineers wanting to help).
+  Without this, the bus-factor blocks "production-ready" indefinitely
+  regardless of code quality.
+
+== Comparison landscape
+
+Where typed-wasm sits among neighbouring approaches at each maturity
+level. Treat these as approximate; the wasm-safety landscape moves
+fast.
+
+=== Today (start of Phase 0)
+
+Honest peer set: **academic research prototypes for wasm memory safety**.
+
+* **MS-Wasm** (Memory-Safe WebAssembly, Disselkoen et al. 2019+).
+  Segmented memory model with runtime enforcement of bounds; hot-and-cold
+  heap separation. Compile-time + runtime. typed-wasm currently
+  *under-covers* MS-Wasm in runtime enforcement (typed-wasm is
+  producer-side only) and *over-covers* it in level depth (typed-wasm's
+  L7-L10 reach beyond bounds).
+* **CHERI-Wasm** research (Watson et al.). Capability-machine extension
+  for wasm; hardware-level enforcement. typed-wasm and CHERI-Wasm address
+  different threat models (CHERI is runtime-hardware; typed-wasm is
+  compile-time-discipline) and could complement each other.
+* **WAVM and various validators.** Wasm well-formedness validators
+  (wasm-validate, wasmparser). typed-wasm is strictly stronger: every
+  typed-wasm-valid program is wasm-valid, but not vice versa.
+* **AssemblyScript's runtime.** Managed types and a GC over wasm linear
+  memory; targets the same "type safety for wasm" niche from a different
+  angle (managed-types vs. linear-region discipline).
+* **Lucet** (Fastly, discontinued for product purposes but still
+  influential). Sandbox isolation via static + dynamic checks; concerned
+  with host safety, not producer-side memory discipline.
+
+At start of Phase 0, typed-wasm is closest to MS-Wasm in ambition,
+weaker in deployment (no published runtime; pre-alpha), and stronger in
+formal foundation (Idris2 proofs vs. paper proofs).
+
+=== After Phase 0 (stabilized foundation, ~0.2)
+
+Still a research prototype, but a *defensibly engineered* one. CI is
+honest; codegen v0 works for the simplest example; the ReScript-to-Idris2
+parser migration has happened; the AffineScript adoption is real and
+working. Peer set unchanged but typed-wasm has moved from "interesting
+paper-ware" to "interesting paper-ware you can build and run without
+hand-holding."
+
+This is *not yet* "a fully legit and working verified soundness
+discipline for wasm linear memory" in any sense an outsider would
+recognise. It is a credible research vehicle.
+
+=== After Phase 1 (end-to-end producer, ~0.5 beta)
+
+This is the first version that warrants the description "a working
+compile target with verified soundness for linear memory." A user can
+take a `.twasm` source, compile it, and trust the 10-level discipline.
+Peer set shifts: typed-wasm becomes comparable to **AssemblyScript** as a
+language-with-a-wasm-toolchain, but with a much stronger safety story.
+Still pre-1.0; still single-maintainer; still ecosystem-confined.
+
+=== After Phase 2 (multi-producer adoption, ~0.9 RC)
+
+typed-wasm enters the same category as **wasm-bindgen** (the standard
+"wasm + multi-language interop" surface) but with formal guarantees on
+top. Three independent producers exist; the spec is stable enough that
+the second and third adoptions did not require spec changes. At this
+point typed-wasm is "the standard way to opt into formal memory safety
+for any wasm producer." Peer set: it has no direct peer at this maturity
+level; the closest comparison is **CHERI's adoption status** in the
+hardware world (specified, multi-vendor, used but not pervasive).
+
+=== After Phase 3 (runtime-side enforcement, ~1.0)
+
+typed-wasm becomes one of a small set of **memory-safe wasm-class
+platforms** with both producer- and runtime-side enforcement. The peer
+set is roughly:
+
+* **CHERI / Morello + wasm** — hardware capability machine running wasm
+  with capability-aware runtime.
+* **MS-Wasm production runtime** (if one exists by then).
+* **wasmGC** — different threat model (managed types) but addresses
+  overlapping concerns from the other direction.
+
+Within this set, typed-wasm's distinguishing claim is the *formal proof
+of soundness* of its level discipline (Idris2). CHERI has hardware
+proofs; wasmGC has wasm-spec coverage; MS-Wasm has paper proofs.
+typed-wasm would be unique in carrying machine-checked end-to-end proofs
+from spec to producer to runtime.
+
+=== After Phase 6 (production-hardened, 1.x stable)
+
+The honest comparison is no longer to other wasm-safety projects but to
+**memory-safe systems languages and runtimes** in general:
+
+* **Rust** for borrow-checking-as-producer-side memory safety.
+* **CHERI / Morello** for capability-machine-as-runtime-side enforcement.
+* **Pony's reference capabilities** for explicit ownership at the
+  language level.
+* **CompCert** for verified compilation.
+
+typed-wasm at Phase 6 would occupy a distinct cell: machine-checked,
+verifier-mediated, runtime-enforced memory safety for **any wasm
+producer** (not just one source language) with **cross-language sharing**
+(the killer feature from `README.adoc`) verifiable end-to-end. No
+existing system covers all four properties simultaneously. The closest
+analogue is "Rust + CHERI + wasm" composed by hand, which no one ships
+as a product.
+
+This positioning is realistic only if Phases 3 and 5 land. Without
+runtime enforcement (Phase 3), typed-wasm remains "Rust-style discipline
+at the wasm level"; without spec + multiple implementations (Phase 5),
+it remains "one project's discipline" rather than an interoperable
+standard.
+
+== Cross-references
+
+* `ROADMAP.adoc` — version-by-version delivery plan; phases here map to
+  the version axis there.
+* `docs/architecture/AGGREGATE-LIBRARY-VISION.adoc` — the
+  cross-language-layout role that motivates much of Phase 2.
+* `docs/architecture/THREAT-MODEL.adoc` — what we're defending against;
+  informs Phase 3's runtime-enforcement scope.
+* `docs/decisions/` — ADRs for the six load-bearing decisions land here
+  as they are made.
+* `LEVEL-STATUS.md` — current claim envelope; the "what is actually
+  proved today" companion to this strategic plan.
+* GitHub Issues with the `phase:0` through `phase:6` labels — work
+  tracking against the plan.

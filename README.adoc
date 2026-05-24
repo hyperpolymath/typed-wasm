@@ -177,8 +177,15 @@ docs/WHITEPAPER.md              # Full academic treatment
 **Pre-alpha / Research.** The checked L1-L10 ABI core, Zig FFI, parser tests,
 and smoke tests are in place. L11-L12 files are experimental drafts: they are
 not part of the default proof package and are not yet claimable as integrated
-proofs. The next step is to de-template the release path, expand end-to-end and
-aspect coverage, and either complete or withdraw the higher-level claims.
+proofs.
+
+The path from here to a production-quality compile target adopted outside
+the hyperpolymath ecosystem is documented in
+link:docs/PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] — six phases
+with explicit gates, load-bearing decisions, and a comparison landscape
+locating typed-wasm against neighbouring wasm-safety projects at each
+maturity level. `ROADMAP.adoc` tracks the version-by-version delivery
+against that plan.
 
 == Related Projects
 
