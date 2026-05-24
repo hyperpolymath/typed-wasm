@@ -153,6 +153,17 @@ test-e2e:
 test-aspect:
     @echo "Running aspect tests..."
     node tests/aspect/claim-envelope.mjs
+    node tests/aspect/security-envelope.mjs
+
+# Property-based tests of parser/checker invariants
+test-property:
+    @echo "Running property tests..."
+    node tests/property/property_test.mjs
+
+# Proof-level regression (named-theorem presence; idris2 typecheck if available)
+test-proof:
+    @echo "Running proof regression..."
+    node tests/proof/regression.mjs
 
 # Parser benchmark surface
 bench:
@@ -167,7 +178,7 @@ check-abi:
     @echo "Checked ABI package type-checks successfully."
 
 # Run all quality checks
-quality: fmt-check lint test test-e2e test-aspect
+quality: fmt-check lint test test-e2e test-aspect test-property test-proof
     @echo "All quality checks passed!"
 
 # Fix all auto-fixable issues [reversible: git checkout]
