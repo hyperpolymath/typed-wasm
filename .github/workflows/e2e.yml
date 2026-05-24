@@ -59,8 +59,16 @@ jobs:
       - name: Run smoke test
         run: node tests/smoke/e2e-smoke.mjs
 
-      - name: Run aspect test (claim envelope)
-        run: node tests/aspect/claim-envelope.mjs
+      - name: Run aspect tests (claim + security envelopes)
+        run: |
+          node tests/aspect/claim-envelope.mjs
+          node tests/aspect/security-envelope.mjs
+
+      - name: Run property tests (parser/checker invariants)
+        run: node tests/property/property_test.mjs
+
+      - name: Run proof regression (named theorems + idris2 typecheck if present)
+        run: node tests/proof/regression.mjs
 
       - name: Run parser benchmark (smoke; full run is local)
         run: BENCH_ITERS=20 node benchmarks/parser-bench.mjs

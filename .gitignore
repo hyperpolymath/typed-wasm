@@ -53,6 +53,8 @@ erl_crash.dump
 !tests/contracts/*.mjs
 !tests/levels/*.mjs
 !tests/aspect/*.mjs
+!tests/property/*.mjs
+!tests/proof/*.mjs
 !benchmarks/*.mjs
 *.cmi
 *.cmj
