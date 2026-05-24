@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# cargo-audit.yml — RustSec advisory check for the Rust workspace.
+#
+# Catches CVEs in transitive dependencies of crates/typed-wasm-verify
+# without waiting for dependabot to file a PR. Distinct from e2e.yml's
+# cargo-verify job (which runs `cargo build` + `cargo test`) — audit is
+# concerned with security advisories, not API breakage.
+#
+# Track C deliverable from the production-path Phase 0 work
+# (docs/PRODUCTION-PATH.adoc §Phase 0). Tracks under issue #48.
+
+name: Cargo Audit
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, master]
+  # Weekly scheduled run so new advisories surface even on quiescent code.
+  # Monday 04:17 UTC — off the typical hour boundary to avoid GH Actions
+  # cron contention.
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    name: Cargo audit (RustSec advisories)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Match the cargo-verify pattern in e2e.yml: use the preinstalled
+      # rustup directly rather than a SHA-pinned third-party action.
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          cargo --version
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: cargo audit --deny warnings
