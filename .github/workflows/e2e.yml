@@ -98,18 +98,15 @@ jobs:
       # comment "Updated for Zig 0.15+ API (addLibrary / createModule
       # pattern)"). 0.12 lacks `b.addLibrary` and the `.root_module` field
       # and will not parse the build script.
+      # Direct curl was failing on every PR (#44 CI: curl exit 22 / 404)
+      # because Zig 0.14+ flipped tarball naming from zig-OS-ARCH-VERSION
+      # to zig-ARCH-OS-VERSION. mlugg/setup-zig handles the naming, fetches
+      # from ziglang.org with a community mirror fallback, and is SHA-pinned
+      # to v2.2.1.
       - name: Install Zig
-        run: |
-          ZIG_VERSION="0.15.1"
-          # Zig 0.14+ flipped its tarball naming from zig-OS-ARCH-VERSION to
-          # zig-ARCH-OS-VERSION. The old name 404s on ziglang.org for 0.15.1,
-          # which was failing this step with curl exit 22 on every PR (#44 CI).
-          ZIG_DIR="zig-x86_64-linux-${ZIG_VERSION}"
-          curl -fsSL \
-            "https://ziglang.org/download/${ZIG_VERSION}/${ZIG_DIR}.tar.xz" \
-            -o /tmp/zig.tar.xz
-          tar -xJf /tmp/zig.tar.xz -C /opt
-          ln -s "/opt/${ZIG_DIR}/zig" /usr/local/bin/zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.15.1'
 
       # ---- Node (for smoke test within E2E script) ----
       - name: Set up Node.js
