@@ -310,6 +310,90 @@ for (const f of rsrFiles) {
 }
 
 // ----------------------------------------------------------------------
+// 8. Path references in docs resolve to real files
+//
+// Catches the rename-drift class: a file gets renamed but doc references
+// keep pointing at the old path. Caught by Phase 0 housekeeping that
+// found 5 stale references to spec/10-levels-for-wasm.adoc after it
+// became spec/type-safety-levels-for-wasm.adoc.
+//
+// We scan README.adoc, ROADMAP.adoc, EXPLAINME.adoc, and CLAUDE.md for
+// repo-relative path-ish tokens matching common source-file extensions
+// and verify each resolves on disk.
+// ----------------------------------------------------------------------
+section("8. Path references in docs resolve to real files");
+
+function maybeRead(rel) {
+  try { return readFileSync(join(ROOT, rel), "utf8"); } catch { return null; }
+}
+
+const docsToScan = [
+  "README.adoc",
+  "ROADMAP.adoc",
+  "EXPLAINME.adoc",
+  ".claude/CLAUDE.md",
+];
+
+const PATH_LIKE = /(?<![A-Za-z0-9_./-])([a-z0-9][a-z0-9._/-]*\.(?:adoc|md|mjs|res|idr|zig|rs|ebnf|toml|ipkg))(?![A-Za-z0-9_./-])/gi;
+
+const ALLOWLIST_FRAGMENTS = [
+  "rsr-template-repo",
+  "github.com",
+  "node_modules/",
+  "{{",
+  "example.com",
+  "/home/runner/",
+  // Cross-repo references (different repos in the hyperpolymath ecosystem)
+  "typedqliser/",
+  "affinescript/",
+  "ephapax/",
+  "hypatia/",
+  "standards/",
+  "typell/",
+  "vql-ut/",
+  "echidna/",
+];
+
+// Skip bare filenames without a directory part — those are conventional
+// references in prose (e.g. "see PROOF-NEEDS.md") that may live anywhere
+// in the tree. Only check refs with at least one `/` (an actual path).
+function isFullPath(ref) {
+  return ref.includes("/");
+}
+
+let docPathRefsChecked = 0;
+const missingRefs = [];
+
+for (const doc of docsToScan) {
+  const content = maybeRead(doc);
+  if (content === null) {
+    skip(`${doc}: doc absent — cannot scan`);
+    continue;
+  }
+  const seen = new Set();
+  for (const match of content.matchAll(PATH_LIKE)) {
+    const ref = match[1];
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    if (ALLOWLIST_FRAGMENTS.some((f) => ref.includes(f))) continue;
+    if (ref.includes("*") || ref.includes("?")) continue;
+    if (!isFullPath(ref)) continue; // bare filenames are prose conventions
+    docPathRefsChecked++;
+    if (!existsSync(join(ROOT, ref))) {
+      missingRefs.push(`${doc}: ${ref}`);
+    }
+  }
+}
+
+// Print full list inline so reviewers see each failure, not just first-5.
+if (missingRefs.length === 0) {
+  ok(`All ${docPathRefsChecked} path references across ${docsToScan.length} docs resolve on disk`);
+} else {
+  bad(`${missingRefs.length} of ${docPathRefsChecked} doc path references are stale:`);
+  for (const r of missingRefs) console.log(`    - ${r}`);
+}
+
+// ----------------------------------------------------------------------
 // Summary
 // ----------------------------------------------------------------------
 console.log("");
