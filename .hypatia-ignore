@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MPL-2.0
+# .hypatia-ignore — per-repo exemptions from hyperpolymath/standards governance.
+#
+# Each line: <rule_namespace>:<path>
+# Honored by hyperpolymath/standards/.github/workflows/governance-reusable.yml
+# (the "Check for ReScript / Go / Python (banned language files)" step).
+#
+# ReScript exemptions: the current parser surface is written in ReScript and
+# will be replaced by a tree-sitter-derived Idris2 parser (Track A in the
+# project roadmap). Until that work lands the source must remain checked in
+# so the smoke + aspect + level tests have something to import.
+
+cicd_rules/banned_language_file:src/parser/Parser.res
+cicd_rules/banned_language_file:src/parser/Lexer.res
+cicd_rules/banned_language_file:src/parser/Checker.res
+cicd_rules/banned_language_file:src/parser/Ast.res
+cicd_rules/banned_language_file:examples/SafeDOMExample.res
+cicd_rules/banned_language_file:tests/parser/ParserTests.res
