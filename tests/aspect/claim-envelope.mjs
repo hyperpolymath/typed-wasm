@@ -294,6 +294,7 @@ section("7. RSR surface files exist");
 const rsrFiles = [
   "README.adoc",
   "EXPLAINME.adoc",
+  "AUDIT.adoc",                  // RSR template alignment (added 2026-05-25)
   "SECURITY.md",
   "CONTRIBUTING.md",
   "LICENSE",
@@ -303,6 +304,9 @@ const rsrFiles = [
   "ROADMAP.adoc",
   "PROOF-NEEDS.md",
   "TEST-NEEDS.md",
+  "docs/PRODUCTION-PATH.adoc",   // canonical strategic plan (added 2026-05-24)
+  "docs/onboarding/README.adoc", // RSR taxonomy (added 2026-05-25)
+  "docs/status/README.adoc",     // RSR taxonomy (added 2026-05-25)
 ];
 for (const f of rsrFiles) {
   if (existsSync(join(ROOT, f))) ok(`RSR file: ${f}`);
