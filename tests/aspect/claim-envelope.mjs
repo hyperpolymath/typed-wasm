@@ -202,10 +202,28 @@ function assertReferencedPathsExist(file, regex, label) {
     seen.add(path);
     if (existsSync(join(ROOT, path))) {
       ok(`${file} -> ${path}`);
+    } else if (isBuildOutputWithSource(path)) {
+      // .mjs in src/parser/ or tests/parser/ may be absent on a clean
+      // checkout — they're built from .affine sources. If the source
+      // exists, treat the reference as live (the Justfile recipe runs
+      // the build before invoking).
+      ok(`${file} -> ${path} (build output; source exists)`);
     } else {
       bad(`${file} references ${path} which does not exist`);
     }
   }
+}
+
+// .mjs file in a parser source directory is generated from a .affine
+// (or .res — pre-migration) source by the AffineScript compiler.
+function isBuildOutputWithSource(path) {
+  if (!path.endsWith(".mjs")) return false;
+  if (!path.startsWith("src/parser/") && !path.startsWith("tests/parser/")) return false;
+  const stem = path.slice(0, -".mjs".length);
+  return (
+    existsSync(join(ROOT, stem + ".affine")) ||
+    existsSync(join(ROOT, stem + ".res"))
+  );
 }
 
 // Justfile recipe bodies: capture `node tests/...mjs` and `bash tests/...sh`.
