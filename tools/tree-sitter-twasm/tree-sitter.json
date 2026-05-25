@@ -1,0 +1,36 @@
+{
+  "grammars": [
+    {
+      "name": "twasm",
+      "camelcase": "Twasm",
+      "scope": "source.twasm",
+      "path": ".",
+      "file-types": [
+        "twasm"
+      ],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.1",
+    "license": "MPL-2.0",
+    "description": "Tree-sitter grammar for typed-wasm (.twasm) — scaffold / Phase 0 kickoff",
+    "authors": [
+      {
+        "name": "Jonathan D.A. Jewell",
+        "email": "j.d.a.jewell@open.ac.uk"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/hyperpolymath/typed-wasm.git"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true
+  }
+}
