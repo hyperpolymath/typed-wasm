@@ -87,10 +87,10 @@ tooling do not yet expose L11/L12 features.
 == The Killer Feature: Multi-Module Type Safety
 
 When Module A (compiled from Rust) shares memory with Module B (compiled from
-ReScript), **neither source-level type system can verify the boundary.**
+AffineScript), **neither source-level type system can verify the boundary.**
 
-Rust's borrow checker types memory within Rust. ReScript's type system types
-values within ReScript. If Rust writes a struct at offset 0 and ReScript reads
+Rust's borrow checker types memory within Rust. AffineScript's type system types
+values within AffineScript. If Rust writes a struct at offset 0 and AffineScript reads
 from offset 0 assuming a different layout, you get silent corruption.
 
 typed-wasm declares the shared schema once. Both modules import it. The
@@ -107,7 +107,7 @@ region Entity[1024] {
 }
 export region Entity;
 
-// Module B (from ReScript) — imports and uses
+// Module B (from AffineScript) — imports and uses
 import region Entity from "physics" {
     pos_x: f32;
     pos_y: f32;
@@ -140,7 +140,7 @@ in name, type, offset, and alignment.
 | C-ABI compatible memory operations
 
 | Parser
-| ReScript (planned)
+| AffineScript (planned)
 | Parse `.twasm` syntax to AST
 
 | Proofs

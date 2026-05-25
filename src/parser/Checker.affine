@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
-// Checker.res — v1.1 post-parse well-formedness checks for typed-wasm.
+// Checker.affine — v1.1 post-parse well-formedness checks for typed-wasm.
 //
 // The parser accepts every grammatically valid program. This module imposes
 // the v1.1 semantic obligations that cannot be expressed in the EBNF alone:
@@ -40,7 +40,7 @@
 // A single top-level `checkModule` runs all four checks across the whole
 // module and returns an accumulated error list.
 //
-// These checks are INTENTIONALLY implemented at the ReScript level (not in
+// These checks are INTENTIONALLY implemented at the AffineScript level (not in
 // Idris2) for v1.1. The Idris2 proof core remains the ultimate authority for
 // L1-L10 properties; v1.1 sugar checks are fast-fail feedback for consumers
 // and are below the "formally proven" bar. They may migrate to Idris2 in a
@@ -464,7 +464,7 @@ let checkStriatedRegion = (r: regionDecl, loc: Lexer.loc): array<diagnostic> => 
 //
 // L13 introduces isolated modules with private memory and declared boundaries.
 // The Idris2-side correctness story lives in
-// TypedWasm/ABI/ModuleIsolation.idr; this ReScript checker enforces the
+// TypedWasm/ABI/ModuleIsolation.idr; this AffineScript checker enforces the
 // *surface*-level obligations that drop out to diagnostics instead of proof
 // failures:
 //

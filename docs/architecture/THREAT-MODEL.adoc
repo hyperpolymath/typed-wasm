@@ -27,7 +27,7 @@
 
 === In Scope
 
-* ReScript parser sources and tests.
+* AffineScript parser sources and tests.
 * Idris2 ABI package and checked proof core.
 * Zig FFI runtime in `ffi/zig`.
 * Example inputs, aspect tests, and benchmark surfaces.
@@ -41,7 +41,7 @@
 
 == System Overview
 
-`typed-wasm` is a research repository combining a ReScript parser, an Idris2
+`typed-wasm` is a research repository combining a AffineScript parser, an Idris2
 ABI/proof layer, and a Zig FFI runtime. The main security concern is claim
 integrity and artifact integrity: the code, proofs, tests, and papers must all
 describe the same system.
@@ -142,7 +142,7 @@ topology.
 
 * L11-L12 drafts remain in the tree and can still tempt overclaiming if the
   paper surface is not kept disciplined.
-* ReScript warnings remain unresolved and should be treated as real technical debt.
+* AffineScript warnings remain unresolved and should be treated as real technical debt.
 * Venue-facing papers still need a dedicated theorem/benchmark parity review.
 
 == Review Trigger

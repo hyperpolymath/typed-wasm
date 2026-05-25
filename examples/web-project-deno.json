@@ -1,17 +1,17 @@
 {
-  "// NOTE": "Example deno.json for ReScript web projects",
+  "// NOTE": "Example deno.json for AffineScript web projects",
   "tasks": {
-    "build": "deno run -A npm:rescript",
-    "clean": "deno run -A npm:rescript clean",
-    "watch": "deno run -A npm:rescript -w",
+    "build": "deno run -A @hyperpolymath/affinescript",
+    "clean": "deno run -A @hyperpolymath/affinescript clean",
+    "watch": "deno run -A @hyperpolymath/affinescript -w",
     "serve": "deno run -A jsr:@std/http/file-server .",
     "test": "deno test --allow-all"
   },
   "imports": {
-    "rescript": "^12.0.0",
-    "@rescript/core": "npm:@rescript/core@^1.6.0",
+    "affinescript": "^12.0.0",
+    "@hyperpolymath/affinescript": "npm:@hyperpolymath/affinescript@^1.6.0",
     "safe-dom/": "https://raw.githubusercontent.com/hyperpolymath/rescript-dom-mounter/main/src/",
-    "proven/": "../proven/bindings/rescript/src/"
+    "proven/": "../proven/bindings/affinescript/src/"
   },
   "compilerOptions": {
     "allowJs": true,

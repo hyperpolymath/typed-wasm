@@ -59,29 +59,29 @@ init:
 # BUILD & COMPILE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Build the project — ReScript parser + Zig FFI
+# Build the project — AffineScript parser + Zig FFI
 build *args:
     @echo "Building {{project}}..."
-    rescript build
+    affinescript build
     cd ffi/zig && zig build
     @echo "Build complete"
 
 # Build in release mode with optimizations
 build-release *args:
     @echo "Building {{project}} (release)..."
-    rescript build
+    affinescript build
     cd ffi/zig && zig build -Doptimize=ReleaseFast
     @echo "Release build complete"
 
 # Build and watch for changes
 build-watch:
     @echo "Watching for changes..."
-    find src -name '*.res' | entr -c just build
+    find src -name '*.affine' | entr -c just build
 
 # Clean build artifacts [reversible: rebuild with `just build`]
 clean:
     @echo "Cleaning..."
-    rescript clean
+    affinescript clean
     rm -rf lib/bs lib/ocaml
     rm -rf ffi/zig/zig-out ffi/zig/.zig-cache
     rm -rf src/abi/build
@@ -94,10 +94,10 @@ clean-all: clean
 # TEST & QUALITY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Run all tests — ReScript parser tests + Zig FFI tests
+# Run all tests — AffineScript parser tests + Zig FFI tests
 test *args:
-    @echo "Running ReScript parser tests..."
-    rescript build
+    @echo "Running AffineScript parser tests..."
+    affinescript build
     node tests/parser/ParserTests.mjs
     @echo ""
     @echo "Running contract tests..."
@@ -126,7 +126,7 @@ test *args:
 # Run tests with verbose output
 test-verbose:
     @echo "Running all tests (verbose)..."
-    rescript build
+    affinescript build
     node tests/parser/ParserTests.mjs
     cd ffi/zig && zig build test
     node tests/smoke/e2e-smoke.mjs
@@ -134,7 +134,7 @@ test-verbose:
 # End-to-end smoke test — parse example, verify ABI correspondence
 test-smoke:
     @echo "Running E2E smoke test..."
-    rescript build
+    affinescript build
     node tests/smoke/e2e-smoke.mjs
 
 # ABI contract tests
@@ -145,7 +145,7 @@ test-contract:
 # End-to-end test surface
 test-e2e:
     @echo "Running end-to-end tests..."
-    rescript build
+    affinescript build
     node tests/smoke/e2e-smoke.mjs
     node tests/e2e/e2e-driver.mjs
 
@@ -168,7 +168,7 @@ test-proof:
 # Parser benchmark surface
 bench:
     @echo "Running parser benchmark..."
-    rescript build
+    affinescript build
     node benchmarks/parser-bench.mjs
 
 # Type-check Idris2 ABI modules (formal proofs)
@@ -192,19 +192,19 @@ fix: fmt
 # Format all source files [reversible: git checkout]
 fmt:
     @echo "Formatting source files..."
-    npx rescript format
+    affinescript format
     zig fmt ffi/zig/build.zig ffi/zig/src/main.zig ffi/zig/test/integration_test.zig ffi/zig/test/echidna_oracle_test.zig >/dev/null
 
 # Check formatting without changes
 fmt-check:
     @echo "Checking formatting..."
-    npx rescript format --check
+    affinescript format --check
     zig fmt --check ffi/zig/build.zig ffi/zig/src/main.zig ffi/zig/test/integration_test.zig ffi/zig/test/echidna_oracle_test.zig
 
 # Run linter
 lint:
-    @echo "Linting ReScript sources with warnings-as-errors..."
-    npx rescript build --warn-error "+3+4+45+102"
+    @echo "Linting AffineScript sources with warnings-as-errors..."
+    npx affinescript build --warn-error "+3+4+45+102"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUN & EXECUTE
@@ -580,11 +580,11 @@ release-tag version:
 
 # Count lines of code
 loc:
-    @find . \( -name "*.rs" -o -name "*.ex" -o -name "*.exs" -o -name "*.res" -o -name "*.gleam" -o -name "*.zig" -o -name "*.idr" -o -name "*.hs" -o -name "*.ncl" -o -name "*.scm" -o -name "*.adb" -o -name "*.ads" \) -not -path './target/*' -not -path './_build/*' 2>/dev/null | xargs wc -l 2>/dev/null | tail -1 || echo "0"
+    @find . \( -name "*.rs" -o -name "*.ex" -o -name "*.exs" -o -name "*.affine" -o -name "*.gleam" -o -name "*.zig" -o -name "*.idr" -o -name "*.hs" -o -name "*.ncl" -o -name "*.scm" -o -name "*.adb" -o -name "*.ads" \) -not -path './target/*' -not -path './_build/*' 2>/dev/null | xargs wc -l 2>/dev/null | tail -1 || echo "0"
 
 # Show TODO comments
 todos:
-    @grep -rn "TODO\|FIXME\|HACK\|XXX" --include="*.rs" --include="*.ex" --include="*.res" --include="*.gleam" --include="*.zig" --include="*.idr" --include="*.hs" . 2>/dev/null || echo "No TODOs"
+    @grep -rn "TODO\|FIXME\|HACK\|XXX" --include="*.rs" --include="*.ex" --include="*.affine" --include="*.gleam" --include="*.zig" --include="*.idr" --include="*.hs" . 2>/dev/null || echo "No TODOs"
 
 # Open in editor
 edit:
@@ -606,7 +606,7 @@ doctor:
     @command -v just >/dev/null 2>&1 && echo "  [OK] just" || echo "  [FAIL] just not found"
     @command -v git >/dev/null 2>&1 && echo "  [OK] git" || echo "  [FAIL] git not found"
     @echo "Checking for hardcoded paths..."
-    @grep -rn '$HOME\|$ECLIPSE_DIR' --include='*.rs' --include='*.ex' --include='*.res' --include='*.gleam' --include='*.sh' . 2>/dev/null | head -5 || echo "  [OK] No hardcoded paths"
+    @grep -rn '$HOME\|$ECLIPSE_DIR' --include='*.rs' --include='*.ex' --include='*.affine' --include='*.gleam' --include='*.sh' . 2>/dev/null | head -5 || echo "  [OK] No hardcoded paths"
     @echo "Diagnostics complete."
 
 # Auto-repair common issues

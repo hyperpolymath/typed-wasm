@@ -37,7 +37,7 @@ schemaless database; typed-wasm adds region schemas and typed access
 operations.
 
 Killer feature: multi-module shared memory type safety across language boundaries
-(e.g. Rust Module A shares WASM memory with ReScript Module B -- neither source
+(e.g. Rust Module A shares WASM memory with AffineScript Module B -- neither source
 type system covers the boundary; typed-wasm does).
 
 Key capabilities delivered:

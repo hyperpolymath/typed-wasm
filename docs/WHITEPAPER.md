@@ -61,7 +61,7 @@ This gap becomes a safety hazard when multiple independently compiled
 modules share linear memory — an increasingly common pattern in plugin
 architectures, game engines, and polyglot Wasm compositions. If Module A
 (compiled from Rust) writes a struct to shared memory and Module B
-(compiled from C or ReScript) reads the same memory with a different
+(compiled from C or AffineScript) reads the same memory with a different
 layout assumption, the result is silent data corruption undetectable by
 either source-level type system.
 
@@ -379,7 +379,7 @@ Multi-module schema agreement enables:
   plugins import them. Schema-breaking changes are caught at plugin
   compile time.
 
-- **Polyglot Wasm compositions** where Rust, C, and ReScript modules
+- **Polyglot Wasm compositions** where Rust, C, and AffineScript modules
   share structured data with compile-time layout verification.
 
 - **Hot-reloadable modules** where a new module version is checked for
@@ -502,7 +502,7 @@ operational semantics.
 |-------|----------|------|
 | ABI definitions | Idris 2 | Dependent types: region schemas, access rules, proof obligations |
 | FFI bridge | Zig | C-ABI runtime: region management, typed load/store, WASM codegen |
-| Surface parser | ReScript | Parse `.twasm` syntax to typed AST |
+| Surface parser | AffineScript | Parse `.twasm` syntax to typed AST |
 | Proof engine | Idris 2 totality checker | Discharge levels 5–10 obligations |
 | Code generator | Zig → Wasm | Emit raw Wasm instructions from verified typed access |
 | Ecosystem plugin | Rust (TypedQLiser) | Integration as a TypedQLiser target language |
@@ -513,8 +513,8 @@ dependencies, and memory-safe defaults. Region handles encode base
 offset, schema ID, generation counter (for lifetime tracking), and
 ownership flag in a 64-bit value.
 
-**ReScript parser.** The surface syntax parser is written in ReScript,
-consistent with the VCL-total parser in the TypedQL ecosystem. ReScript
+**AffineScript parser.** The surface syntax parser is written in AffineScript,
+consistent with the VCL-total parser in the TypedQL ecosystem. AffineScript
 compiles to JavaScript/Wasm via Deno.
 
 **TypedQLiser integration.** typed-wasm implements the `QueryLanguagePlugin`
@@ -622,7 +622,7 @@ typed-wasm provides:
 3. **10 levels of progressive type safety** from instruction validity
    through linearity, with formal proofs in Idris 2 and zero runtime
    overhead through proof erasure.
-4. **A practical architecture** integrating Idris 2, Zig, ReScript, and
+4. **A practical architecture** integrating Idris 2, Zig, AffineScript, and
    the TypedQLiser ecosystem.
 
 The implication extends beyond Wasm. Any system where multiple languages

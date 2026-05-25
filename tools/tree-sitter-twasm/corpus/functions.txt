@@ -1,0 +1,213 @@
+============================================
+Simple function with effects and return type
+============================================
+
+fn get_player_hp(players: &region<Players>, idx: i32) -> i32
+    effects { ReadRegion(Players) }
+{
+    region.get $players[idx] .hp -> hp;
+    return hp;
+}
+
+---
+
+(source_file
+  (function_decl
+    name: (identifier)
+    (parameter_list
+      (parameter name: (identifier) type: (region_handle_type (handle_mode) (identifier)))
+      (parameter name: (identifier) type: (primitive_type)))
+    (return_type (primitive_type))
+    (effects_clause (effect (identifier)))
+    (region_get_stmt
+      (region_target (identifier) (identifier_expr (identifier)))
+      (field_path (identifier))
+      binding: (identifier))
+    (return_stmt (identifier_expr (identifier)))))
+
+
+============================================
+Memory declaration with placements
+============================================
+
+memory game_memory {
+    initial: 64;
+    maximum: 256;
+    place Players at 0;
+    place Enemies at 4800;
+}
+
+---
+
+(source_file
+  (memory_decl
+    name: (identifier)
+    (initial_clause)
+    (maximum_clause)
+    (place_clause (identifier))
+    (place_clause (identifier))))
+
+
+============================================
+If/else with region.set in both branches
+============================================
+
+fn damage_player(players: &mut region<Players>, idx: i32, amount: i32)
+    effects { ReadRegion(Players), WriteRegion(Players) }
+{
+    region.get $players[idx] .hp -> current_hp;
+    let new_hp: i32 = current_hp - amount;
+
+    if new_hp < 0 {
+        region.set $players[idx] .hp, 0;
+    } else {
+        region.set $players[idx] .hp, new_hp;
+    }
+}
+
+---
+
+(source_file
+  (function_decl
+    name: (identifier)
+    (parameter_list
+      (parameter name: (identifier) type: (region_handle_type (handle_mode) (identifier)))
+      (parameter name: (identifier) type: (primitive_type))
+      (parameter name: (identifier) type: (primitive_type)))
+    (effects_clause (effect (identifier)) (effect (identifier)))
+    (region_get_stmt
+      (region_target (identifier) (identifier_expr (identifier)))
+      (field_path (identifier))
+      binding: (identifier))
+    (let_stmt
+      name: (identifier)
+      (primitive_type)
+      (binary_expr (identifier_expr (identifier)) (identifier_expr (identifier))))
+    (if_stmt
+      (binary_expr (identifier_expr (identifier)) (literal (integer_literal)))
+      (region_set_stmt
+        (region_target (identifier) (identifier_expr (identifier)))
+        (field_path (identifier))
+        (literal (integer_literal)))
+      (region_set_stmt
+        (region_target (identifier) (identifier_expr (identifier)))
+        (field_path (identifier))
+        (identifier_expr (identifier))))))
+
+
+============================================
+Null check via is_null and bare-identifier region_target
+============================================
+
+fn get_enemy_target_hp(enemies: &region<Enemies>, enemy_idx: i32) -> i32
+    effects { ReadRegion(Enemies) }
+{
+    region.get $enemies[enemy_idx] .target -> maybe_target;
+
+    if is_null(maybe_target) {
+        return -1;
+    }
+
+    region.get maybe_target .hp -> target_hp;
+    return target_hp;
+}
+
+---
+
+(source_file
+  (function_decl
+    name: (identifier)
+    (parameter_list
+      (parameter name: (identifier) type: (region_handle_type (handle_mode) (identifier)))
+      (parameter name: (identifier) type: (primitive_type)))
+    (return_type (primitive_type))
+    (effects_clause (effect (identifier)))
+    (region_get_stmt
+      (region_target (identifier) (identifier_expr (identifier)))
+      (field_path (identifier))
+      binding: (identifier))
+    (if_stmt
+      (is_null_expr (identifier_expr (identifier)))
+      (return_stmt (literal (integer_literal))))
+    (region_get_stmt
+      (region_target (identifier))
+      (field_path (identifier))
+      binding: (identifier))
+    (return_stmt (identifier_expr (identifier)))))
+
+
+============================================
+region.scan with where + binding + body
+============================================
+
+fn count_active_enemies(enemies: &region<Enemies>) -> i32
+    effects { ReadRegion(Enemies) }
+{
+    let mut count: i32 = 0;
+
+    region.scan $enemies where is_active == true -> |enemy| {
+        count = count + 1;
+    }
+
+    return count;
+}
+
+---
+
+(source_file
+  (function_decl
+    name: (identifier)
+    (parameter_list
+      (parameter name: (identifier) type: (region_handle_type (handle_mode) (identifier))))
+    (return_type (primitive_type))
+    (effects_clause (effect (identifier)))
+    (let_stmt name: (identifier) (primitive_type) (literal (integer_literal)))
+    (region_scan_stmt
+      (region_target (identifier))
+      (binary_expr (identifier_expr (identifier)) (literal))
+      binding: (identifier)
+      (assign_stmt (identifier) (binary_expr (identifier_expr (identifier)) (literal (integer_literal)))))
+    (return_stmt (identifier_expr (identifier)))))
+
+
+============================================
+Nested field path
+============================================
+
+fn move_player(players: &mut region<Players>, idx: i32, dx: f32, dy: f32)
+    effects { ReadRegion(Players), WriteRegion(Players) }
+{
+    region.get $players[idx] .pos.x -> old_x;
+    region.get $players[idx] .pos.y -> old_y;
+
+    region.set $players[idx] .pos.x, old_x + dx;
+    region.set $players[idx] .pos.y, old_y + dy;
+}
+
+---
+
+(source_file
+  (function_decl
+    name: (identifier)
+    (parameter_list
+      (parameter name: (identifier) type: (region_handle_type (handle_mode) (identifier)))
+      (parameter name: (identifier) type: (primitive_type))
+      (parameter name: (identifier) type: (primitive_type))
+      (parameter name: (identifier) type: (primitive_type)))
+    (effects_clause (effect (identifier)) (effect (identifier)))
+    (region_get_stmt
+      (region_target (identifier) (identifier_expr (identifier)))
+      (field_path (identifier) (identifier))
+      binding: (identifier))
+    (region_get_stmt
+      (region_target (identifier) (identifier_expr (identifier)))
+      (field_path (identifier) (identifier))
+      binding: (identifier))
+    (region_set_stmt
+      (region_target (identifier) (identifier_expr (identifier)))
+      (field_path (identifier) (identifier))
+      (binary_expr (identifier_expr (identifier)) (identifier_expr (identifier))))
+    (region_set_stmt
+      (region_target (identifier) (identifier_expr (identifier)))
+      (field_path (identifier) (identifier))
+      (binary_expr (identifier_expr (identifier)) (identifier_expr (identifier))))))
