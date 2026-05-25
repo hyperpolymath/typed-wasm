@@ -2,40 +2,45 @@
 
 Tree-sitter grammar for `.twasm` (typed-wasm surface syntax).
 
-## Status: scaffold (Phase 0 kickoff)
+## Status: v1 grammar (Phase 0 grammar extension)
 
-This is the **scaffold** for the tree-sitter grammar that will eventually
-back the Idris2 parser, the LSP, Linguist registration, and editor
-plugins. See `docs/PRODUCTION-PATH.adoc` §Phase 0 for the strategic
-context.
+The grammar now covers enough of `examples/01-single-module.twasm` to
+parse the full file: region declarations, memory declarations,
+function declarations (parameters / return types / effects), and the
+statement and expression forms used in example 01.
 
 ### What works today
 
-- Tree-sitter scaffold + corpus harness (`tree-sitter test` runs)
-- `grammar.js` v0 — covers **region declarations only**:
-  - `region Name { field: type; ... }`
-  - `region Name[N] { ... }` (array quantifier)
-  - Primitive types (`i32`, `f32`, `u8`, `bool`, etc.)
-  - Nested region references (`@OtherRegion`)
-  - Optional types (`opt<@T>`)
-  - Fixed-size array fields (`u8[24]`)
-  - `align N;` clauses
-  - `where` field constraints (range form)
-  - Single-line `//` comments
+- **Region declarations** — `region Name { ... }`, array quantifiers `[N]`,
+  primitives, region refs (`@T`), `opt<T>`, fixed-size arrays (`u8[24]`),
+  `align N;`, `where` range constraints
+- **Memory declarations** — `memory Name { initial: N; maximum: N; place X at N; ... }`
+- **Function declarations** — `fn name(params) -> ret effects { ... } { body }`
+  - parameter modes: `&region<R>`, `&mut region<R>`, `own region<R>`, and bare typed parameters
+  - effects: `Read`, `Write`, `Alloc`, `Free`, `ReadRegion(R)`, `WriteRegion(R)`
+- **Statements** — `region.get`, `region.set`, `region.scan`, `let [mut] name [: type] = expr;`,
+  assignment, `if ... else`, `return`
+- **Expressions** — literals (`int`, `float`, `true`, `false`, `null`),
+  identifiers, `$region_var`, binary ops (`+ - * / %`, `== != < > <= >=`, `&& ||`),
+  unary (`-`, `!`), `is_null(expr)`, parenthesised
+- **Field paths** — single and nested (`.pos.x`)
+- **`//` line comments**
 
-### What does NOT work yet (deferred to subsequent Track A PRs)
+### What does NOT work yet (next Track A PR)
 
-- Function declarations (`fn name(...) { ... }`)
-- Memory declarations, imports/exports
-- Statements: `region.get`, `region.set`, `let`, `if`, `while`
-- Effects, lifetime, cost-bound, freshness clauses
-- L13–L16 surface syntax (isolated modules, sessions, capabilities, choreography)
-- Tropical / epistemic extensions (L11/L12)
-- The full v1.5 surface — see `spec/grammar.ebnf` (~695 lines) for what's still ahead
+- Imports / exports (`import region X from "mod"`, `export region X`)
+- Invariant declarations and `proof` statements
+- `const` declarations
+- Block-expression `if ... yield`
+- Match on union regions
+- L13–L16 surface (`isolated`, `session`, `capability`, `choreography`)
+- L11/L12 surface (`cost_bound`, `fresh`, `version_of`, `region.sync`)
+- Lifetime annotations on function decls
+- `striated` region layout
 
-This deliberate v0 scope covers enough of `examples/01-single-module.twasm`
-to exercise the toolchain end-to-end without overcommitting to the
-multi-month full-grammar port.
+Scope-wise the v1 grammar covers maybe 60–70% of `spec/grammar.ebnf`
+by production count. The remainder is sequenced for the next Track A
+PR.
 
 ## Why in-tree first
 
@@ -66,8 +71,8 @@ regenerate locally via `tree-sitter generate`.
 
 | Phase | This grammar's role |
 |-------|---------------------|
-| **0** (now) | Scaffold + region-decl coverage; proves toolchain works |
-| **1** | Extend to full `spec/grammar.ebnf` parity; back the Idris2 parser |
+| **0** (current) | v1 grammar — parses `examples/01-single-module.twasm` fully |
+| **1** | Extend to remaining `spec/grammar.ebnf` productions (imports, L11-L16, match, proof); back the Idris2 parser |
 | **4** | Extract to `hyperpolymath/tree-sitter-twasm`; publish to npm; submit to Linguist |
 
 Tracked under issue [#48 (Phase 0)](https://github.com/hyperpolymath/typed-wasm/issues/48).

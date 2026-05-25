@@ -3,17 +3,27 @@
 //
 // tree-sitter grammar for typed-wasm (.twasm).
 //
-// SCOPE (v0 scaffold, Phase 0): region declarations only.
-//   - region Name { field: type; ... }
-//   - region Name[N] { ... } with array quantifier
-//   - primitive field types, region refs (@T), opt<T>, fixed arrays (u8[24])
-//   - align clauses, where constraints
-//   - // line comments
+// SCOPE (v1, Phase 0 grammar extension): full coverage of
+// examples/01-single-module.twasm. That means region declarations,
+// memory declarations, function declarations with parameters / effects
+// / return types, and the statement and expression forms used in
+// example 01 — region.get / region.set / region.scan / let / return /
+// if / binary operators / is_null / field paths.
 //
-// EVERYTHING ELSE (functions, statements, imports/exports, memory decls,
-// L11-L16 surface) is NOT yet covered. Extending to full spec/grammar.ebnf
-// parity is the second deliverable of Track A; see the package README for
-// the staged plan.
+// STILL DEFERRED (next Track A PR):
+//   - Imports/exports (import region X from "mod"; export region X;)
+//   - Invariant declarations and proof statements
+//   - Const declarations
+//   - Block-expression if (`yield`)
+//   - Match on union regions
+//   - L13–L16 surface (isolated, session, capability, choreography)
+//   - L11/L12 surface (cost_bound, fresh, version_of, region.sync)
+//   - Lifetime annotations on function decls
+//   - Striated region layout
+//
+// The deferrals are sequenced for the next Track A PR; the v1 here
+// closes the gap between scaffold (region-decls only) and "can parse
+// the simplest end-to-end example".
 
 module.exports = grammar({
   name: 'twasm',
@@ -23,6 +33,12 @@ module.exports = grammar({
     $.line_comment,
   ],
 
+  word: $ => $.identifier,
+
+  precedences: $ => [
+    ['unary', 'mul', 'add', 'cmp', 'and', 'or'],
+  ],
+
   rules: {
     // ---- Top-level ----
 
@@ -30,21 +46,19 @@ module.exports = grammar({
 
     _declaration: $ => choice(
       $.region_decl,
-      // TODO Phase 0/1: import_region_decl, export_region_decl,
-      //                 function_decl, memory_decl, invariant_decl,
-      //                 const_decl, L13-L16 forms.
+      $.memory_decl,
+      $.function_decl,
     ),
 
-    // ---- Region declarations (the v0 coverage) ----
+    // ---- Region declarations ----
 
     region_decl: $ => seq(
       'region',
       field('name', $.identifier),
       optional($.region_quantifier),
       '{',
-      repeat($.field_decl),
+      repeat(choice($.field_decl, $.where_constraint)),
       optional($.align_clause),
-      optional($.where_block),
       '}',
     ),
 
@@ -90,28 +104,225 @@ module.exports = grammar({
 
     align_clause: $ => seq('align', $._integer, ';'),
 
-    // v0 supports the range form only:
-    //   where LO <= field <= HI ;
-    where_block: $ => seq(
+    where_constraint: $ => seq(
       'where',
-      $._range_constraint,
-      repeat(seq(',', $._range_constraint)),
-      ';',
-    ),
-
-    _range_constraint: $ => seq(
       $._integer,
       $._range_op,
       $.identifier,
       $._range_op,
       $._integer,
+      ';',
     ),
 
     _range_op: $ => choice('<=', '<', '>=', '>'),
 
+    // ---- Memory declarations ----
+
+    memory_decl: $ => seq(
+      'memory',
+      field('name', $.identifier),
+      '{',
+      $.initial_clause,
+      optional($.maximum_clause),
+      repeat($.place_clause),
+      '}',
+    ),
+
+    initial_clause: $ => seq('initial', ':', $._integer, ';'),
+    maximum_clause: $ => seq('maximum', ':', $._integer, ';'),
+    place_clause: $ => seq('place', $.identifier, 'at', $._integer, ';'),
+
+    // ---- Function declarations ----
+
+    function_decl: $ => seq(
+      'fn',
+      field('name', $.identifier),
+      '(',
+      optional($.parameter_list),
+      ')',
+      optional($.return_type),
+      optional($.effects_clause),
+      '{',
+      repeat($._statement),
+      '}',
+    ),
+
+    parameter_list: $ => seq(
+      $.parameter,
+      repeat(seq(',', $.parameter)),
+      optional(','),
+    ),
+
+    parameter: $ => seq(
+      field('name', $.identifier),
+      ':',
+      field('type', $._param_type),
+    ),
+
+    _param_type: $ => choice(
+      $._field_type,
+      $.region_handle_type,
+    ),
+
+    region_handle_type: $ => seq(
+      $.handle_mode,
+      'region',
+      '<',
+      $.identifier,
+      '>',
+    ),
+
+    handle_mode: $ => choice('&mut', '&', 'own'),
+
+    return_type: $ => seq('->', choice($._field_type, 'void')),
+
+    effects_clause: $ => seq(
+      'effects',
+      '{',
+      $.effect,
+      repeat(seq(',', $.effect)),
+      '}',
+    ),
+
+    effect: $ => choice(
+      'Read', 'Write', 'Alloc', 'Free',
+      seq('ReadRegion', '(', $.identifier, ')'),
+      seq('WriteRegion', '(', $.identifier, ')'),
+    ),
+
+    // ---- Statements ----
+
+    _statement: $ => choice(
+      $.region_get_stmt,
+      $.region_set_stmt,
+      $.region_scan_stmt,
+      $.let_stmt,
+      $.assign_stmt,
+      $.if_stmt,
+      $.return_stmt,
+    ),
+
+    region_get_stmt: $ => seq(
+      'region.get',
+      $.region_target,
+      $.field_path,
+      '->',
+      field('binding', $.identifier),
+      ';',
+    ),
+
+    region_set_stmt: $ => seq(
+      'region.set',
+      $.region_target,
+      $.field_path,
+      ',',
+      $._expression,
+      ';',
+    ),
+
+    region_scan_stmt: $ => seq(
+      'region.scan',
+      $.region_target,
+      optional(seq('where', $._expression)),
+      '->',
+      '|',
+      field('binding', $.identifier),
+      '|',
+      '{',
+      repeat($._statement),
+      '}',
+    ),
+
+    region_target: $ => choice(
+      seq('$', $.identifier),
+      seq('$', $.identifier, '[', $._expression, ']'),
+      // bare identifier — for post-null-check bound refs like maybe_target
+      $.identifier,
+    ),
+
+    field_path: $ => seq(
+      '.',
+      $.identifier,
+      repeat(seq('.', $.identifier)),
+    ),
+
+    let_stmt: $ => seq(
+      'let',
+      optional('mut'),
+      field('name', $.identifier),
+      optional(seq(':', $._field_type)),
+      '=',
+      $._expression,
+      ';',
+    ),
+
+    // Assignment (used in scan bodies: count = count + 1;)
+    assign_stmt: $ => seq(
+      $.identifier,
+      '=',
+      $._expression,
+      ';',
+    ),
+
+    if_stmt: $ => seq(
+      'if',
+      $._expression,
+      '{',
+      repeat($._statement),
+      '}',
+      optional(seq(
+        'else',
+        '{',
+        repeat($._statement),
+        '}',
+      )),
+    ),
+
+    return_stmt: $ => seq('return', optional($._expression), ';'),
+
+    // ---- Expressions ----
+
+    _expression: $ => choice(
+      $.literal,
+      $.identifier_expr,
+      $.region_var,
+      $.binary_expr,
+      $.unary_expr,
+      $.is_null_expr,
+      $.paren_expr,
+    ),
+
+    identifier_expr: $ => $.identifier,
+    region_var: $ => seq('$', $.identifier),
+
+    binary_expr: $ => choice(
+      prec.left('mul', seq($._expression, choice('*', '/', '%'), $._expression)),
+      prec.left('add', seq($._expression, choice('+', '-'), $._expression)),
+      prec.left('cmp', seq($._expression, choice('==', '!=', '<', '>', '<=', '>='), $._expression)),
+      prec.left('and', seq($._expression, '&&', $._expression)),
+      prec.left('or',  seq($._expression, '||', $._expression)),
+    ),
+
+    unary_expr: $ => prec.right('unary', seq(choice('-', '!'), $._expression)),
+
+    is_null_expr: $ => seq('is_null', '(', $._expression, ')'),
+
+    paren_expr: $ => seq('(', $._expression, ')'),
+
+    literal: $ => choice(
+      $.integer_literal,
+      $.float_literal,
+      'true',
+      'false',
+      'null',
+    ),
+
     // ---- Lexical ----
 
     identifier: $ => /[A-Za-z_][A-Za-z0-9_]*/,
+
+    integer_literal: $ => /-?[0-9]+/,
+    float_literal: $ => /-?[0-9]+\.[0-9]+/,
 
     _integer: $ => /[0-9]+/,
 

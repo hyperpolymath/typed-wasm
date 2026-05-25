@@ -24,12 +24,5 @@
   },
   "devDependencies": {
     "tree-sitter-cli": "^0.24.0"
-  },
-  "tree-sitter": [
-    {
-      "scope": "source.twasm",
-      "file-types": ["twasm"],
-      "highlights": "queries/highlights.scm"
-    }
-  ]
+  }
 }
