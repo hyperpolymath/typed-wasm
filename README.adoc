@@ -169,7 +169,7 @@ tools/tree-sitter-twasm/grammar.js         # Tree-sitter grammar (v1 — parses 
 src/abi/TypedWasm/ABI/*.idr                # Idris2 formal proofs (Levels, Region, TypedAccess, ...)
 ffi/zig/src/main.zig                       # Zig C-ABI FFI implementation
 crates/typed-wasm-verify/                  # Rust post-codegen verifier (consumed by Ephapax)
-src/parser/                                # ReScript parser (being replaced by Idris2 — Track A)
+src/parser/                                # AffineScript parser (.affine); Idris2 replacement is later Track A work
 
 # Examples
 examples/01-single-module.twasm            # Basic typed regions, L1-L6

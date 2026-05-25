@@ -5,14 +5,10 @@
 # Honored by hyperpolymath/standards/.github/workflows/governance-reusable.yml
 # (the "Check for ReScript / Go / Python (banned language files)" step).
 #
-# AffineScript exemptions: the current parser surface is written in AffineScript and
-# will be replaced by a tree-sitter-derived Idris2 parser (Track A in the
-# project roadmap). Until that work lands the source must remain checked in
-# so the smoke + aspect + level tests have something to import.
-
-cicd_rules/banned_language_file:src/parser/Parser.res
-cicd_rules/banned_language_file:src/parser/Lexer.res
-cicd_rules/banned_language_file:src/parser/Checker.res
-cicd_rules/banned_language_file:src/parser/Ast.res
-cicd_rules/banned_language_file:examples/SafeDOMExample.res
-cicd_rules/banned_language_file:tests/parser/ParserTests.res
+# As of 2026-05-25 the ReScript-to-AffineScript parser migration has landed
+# on main — there are no tracked .res files left. AffineScript is not in
+# the banned-language list, so no exemptions are needed today.
+#
+# This file is retained as the canonical location for future per-repo
+# governance exemptions; future entries follow the same
+# <rule_namespace>:<path> form.

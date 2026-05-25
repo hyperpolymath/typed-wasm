@@ -38,8 +38,9 @@ specifics where they apply.
 * Release paths must not ship with placeholders, stubs, `FIXME`, `XXX`,
   template residue, fake fuzz, fake benches, or partial proof debt hidden as
   if it were complete. typed-wasm currently carries: a hand-maintained Zig
-  FFI (no generator yet); a ReScript parser being replaced by Idris2 in
-  Track A; an empty `generated/abi/` directory awaiting the C-header
+  FFI (no generator yet); an AffineScript parser at `src/parser/*.affine`
+  (post-migration from ReScript; Idris2 replacement is later Track A
+  work); an empty `generated/abi/` directory awaiting the C-header
   generator (status: RESERVED, documented at
   `docs/architecture/ABI-PIPELINE.adoc`); persistent CI advisories
   (Build+E2E, A2ML, K9) all documented with removal preconditions in
