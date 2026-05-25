@@ -189,17 +189,21 @@ for f in "${ZIG_FILES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# 5. ReScript parser source files
+# 5. Parser source files (AffineScript)
+#
+# History: this was the ReScript parser (.res files) until the Track A
+# parser migration replaced ReScript with AffineScript (.affine files).
+# Build outputs (.mjs) are still generated and consumed by the smoke job.
 # ---------------------------------------------------------------------------
-section "5. ReScript parser source files"
+section "5. Parser source files (AffineScript)"
 
 PARSER_SOURCES=(
-  "src/parser/Parser.res"
-  "src/parser/Lexer.res"
-  "src/parser/Ast.res"
+  "src/parser/Parser.affine"
+  "src/parser/Lexer.affine"
+  "src/parser/Ast.affine"
 )
-# Build outputs are gitignored and only exist after `rescript build`; the
-# smoke job validates their importability separately.
+# Build outputs are gitignored and only exist after the parser is built;
+# the smoke job validates their importability separately.
 PARSER_OUTPUTS=(
   "src/parser/Parser.mjs"
   "src/parser/Lexer.mjs"
