@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MPL-2.0
+= Status documents
+
+The three load-bearing status documents live at the repo root for
+visibility (every contributor, every audit, every CI run looks at
+them):
+
+* link:../../LEVEL-STATUS.md[`LEVEL-STATUS.md`] — current claim
+  envelope for the 10-level + L11–L12 hierarchy; what is checked,
+  what is research, what is reserved
+* link:../../PROOF-NEEDS.md[`PROOF-NEEDS.md`] — outstanding proof
+  obligations; the gap between claimed and proven
+* link:../../TEST-NEEDS.md[`TEST-NEEDS.md`] — outstanding test
+  coverage; the gap between claimed and tested
+
+This directory exists for RSR-template taxonomy alignment so that
+tools looking under `docs/status/` find the pointer. The actual
+content is at the root because the status documents are read more
+often than any docs page and benefit from one-click visibility.
+
+== Related
+
+* `docs/PRODUCTION-PATH.adoc` — the 6-phase strategic plan; status
+  feeds into phase-gate decisions
+* `docs/wiki/Phase-0-Status.md` — outside-reader view of current
+  phase closure state
+* `.machine_readable/6a2/STATE.a2ml` — machine-readable state
+  (consumed by agents and dashboards)

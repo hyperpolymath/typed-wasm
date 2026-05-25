@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= ABI/FFI Pipeline — Idris2 to C Headers (Reserved)
+:status: RESERVED — not yet populated
+:last-reviewed: 2026-05-25
+
+== Intent
+
+Per the hyperpolymath ABI/FFI standard (see `.claude/CLAUDE.md`):
+
+[cols="1,1,3",options="header"]
+|===
+| Layer | Language | Purpose
+
+| ABI | Idris2 | Interface definitions with formal proofs
+| FFI | Zig | C-compatible implementation
+| Headers | C (generated) | Bridge between ABI and FFI
+|===
+
+The `generated/abi/` path is reserved for auto-generated C headers
+derived from the Idris2 ABI proofs at `src/abi/TypedWasm/ABI/`.
+Today there is no automated pipeline; the C-ABI surface in
+`ffi/zig/src/main.zig` is hand-maintained in parallel with the Idris2
+side (the file header is explicit about this).
+
+== Why this lives in docs/architecture/ now
+
+The previous note lived at `generated/abi/README.adoc`. That path
+violates the `generated/` gitignore convention (`generated/` should
+only contain auto-generated artefacts produced by tooling, never
+human-authored documentation tracked in git).
+
+This file now records the intent at the architectural layer it
+belongs to. When the pipeline is implemented, the implementer adds
+the actual generator under `tools/` and the generated output under
+`generated/abi/` — but no README in that directory.
+
+== Status
+
+Not implemented. Closing this gap is a deliverable somewhere between
+Phase 1 (codegen end-to-end) and Phase 2 (C ABI for the verifier) in
+`docs/PRODUCTION-PATH.adoc`. Tracked in:
+
+* `.machine_readable/6a2/STATE.a2ml` milestone "generated/abi/ C
+  header pipeline" — currently 0%
+* `TEST-NEEDS.md` blocked-on-codegen items reference this gap
+
+== Why a generator is needed
+
+Hand-maintaining the C-ABI types in parallel with Idris2's `Region`,
+`TypedAccess`, `Pointer`, `Effects`, `Lifetime`, `Linear`,
+`MultiModule` modules is fragile. Each new field added to the Idris2
+ABI must be manually mirrored in the Zig FFI; the
+claim-envelope aspect test catches some classes of drift but not
+all. A generator removes the manual mirror entirely and makes the
+ABI single-sourced from the proofs.
+
+Idris2 0.8's reflection capabilities are sufficient to emit a C
+header from a marked-up ABI module; the generator would be a small
+Idris2 program plus a Justfile recipe.

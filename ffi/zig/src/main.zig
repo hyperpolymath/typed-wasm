@@ -7,8 +7,8 @@
 // are hand-maintained in parallel with the Idris2 ABI spread across
 // src/abi/{Region,TypedAccess,Pointer,Effects,Lifetime,Linear,
 // MultiModule}.idr and src/abi/Layout/*.idr. There is no automated
-// Idris2 -> C header pipeline yet; see generated/abi/README.adoc for the
-// gap analysis and the plan for closing it.
+// Idris2 -> C header pipeline yet; see docs/architecture/ABI-PIPELINE.adoc
+// for the gap analysis and the plan for closing it.
 //
 // SPDX-License-Identifier: MPL-2.0
 

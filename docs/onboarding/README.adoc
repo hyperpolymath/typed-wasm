@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MPL-2.0
+= Onboarding
+
+New here? Read in this order:
+
+. link:../../README.adoc[`README.adoc`] (root) — what typed-wasm is,
+  the 10 levels, the killer feature, the architecture
+. link:../../EXPLAINME.adoc[`EXPLAINME.adoc`] (root) — claim-by-claim
+  walkthrough with evidence pointers; the longer "what does this
+  project actually claim, and what is the evidence" document
+. link:../QUICKSTART.adoc[`docs/QUICKSTART.adoc`] — 60-second build
+  + test path; minimal hands-on
+. link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] — the
+  6-phase plan from current pre-alpha to production-quality
+  compile target; the strategic context
+. link:../status/README.adoc[`docs/status/`] — current status
+  documents (LEVEL-STATUS, PROOF-NEEDS, TEST-NEEDS)
+
+== By role
+
+=== I want to use typed-wasm
+
+You probably can't yet — the project is pre-alpha. The verifier
+crate at `crates/typed-wasm-verify/` is the most production-shaped
+artefact today; `hyperpolymath/ephapax` consumes it. See
+link:../wiki/Phase-0-Status.md[Phase-0-Status] for the realistic
+adoption horizon.
+
+=== I want to contribute code
+
+. Read link:../../CONTRIBUTING.md[`CONTRIBUTING.md`]
+. Check link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`]
+  for the active phase + which tracks are open
+. Look at https://github.com/hyperpolymath/typed-wasm/issues?q=is%3Aissue+label%3A%22phase%3A0%22[issues labelled `phase:0`]
+  (or whichever phase is active) for tractable starter work
+. Run `just quality` locally before opening a PR
+
+=== I want to understand the proofs
+
+. Read `src/abi/TypedWasm/ABI/Levels.idr` — the canonical L1–L10
+  data types
+. Read `src/abi/TypedWasm/ABI/Proofs.idr` — the composed certificates
+. `src/abi/README.md` — proof-package overview
+. link:../theory/[`docs/theory/`] — type-theoretic foundations
+. link:../whitepapers/[`docs/whitepapers/`] — academic write-ups
+
+=== I want to file a security issue
+
+`SECURITY.md` at the root. Coordinated disclosure timeline.
+
+== Common stumbling blocks
+
+* `Build + E2E (Idris2 + Zig)` CI job is persistently red and marked
+  advisory — see `.github/workflows/e2e.yml` "Phase 0 NOTE" comment
+* `governance / Language / package anti-pattern policy` red is
+  blocked on Track A's ReScript removal — expected; auto-greens
+  when Track A's ReScript-cut PR lands
+* `Hypatia security scan` posting 100+ findings on every PR — most
+  are false positives matching scanner banlist tokens inside
+  Idris2 anti-pattern banner comments; upstream bug filed against
+  `hyperpolymath/hypatia`

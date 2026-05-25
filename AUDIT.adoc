@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= typed-wasm Audit Gate
+Jonathan D.A. Jewell
+v1.0, 2026-05-25
+:toc:
+:toclevels: 2
+:sectnums:
+
+== Purpose
+
+This root document exists so humans and bots can see the hard audit posture
+without having to discover the `hyperpolymath/standards` repository first.
+
+Canonical source documents live in the `hyperpolymath/standards` repository.
+This file is a repo-local audit gate summary, populated to typed-wasm
+specifics where they apply.
+
+== Hard Rules
+
+* Do not call anything `stable`, `v1.0.0`, or full release unless the stable
+  release gate has been passed end to end. typed-wasm is **pre-alpha / Phase 0**
+  as of 2026-05-25; the "stable" word is not in scope.
+* Do not publish implementation-facing work below `B` in CRG unless the work is
+  genuinely abstract and makes no implementation-readiness claim. typed-wasm
+  is at CRG grade C (achieved 2026-04-04 per `TEST-NEEDS.md`).
+* `D` requires RSR compliance or a documented equivalent repository discipline.
+* `C` requires deep code and folder annotation, not just local confidence.
+* `B` means `beta-stable`: external breadth and safe broad trial, not merely
+  public visibility. typed-wasm is not at B; consumption beyond AffineScript
+  and Ephapax requires coordinated maintainer support.
+* Papers, whitepapers, release notes, and READMEs must not outrun the proofs,
+  tests, or artefacts that support their claims. The
+  `tests/aspect/claim-envelope.mjs` and `tests/aspect/security-envelope.mjs`
+  suites catch known drift classes at CI time; the truthfulness audit landed
+  in PR #60 closes the back-catalogue of drift.
+* Release paths must not ship with placeholders, stubs, `FIXME`, `XXX`,
+  template residue, fake fuzz, fake benches, or partial proof debt hidden as
+  if it were complete. typed-wasm currently carries: a hand-maintained Zig
+  FFI (no generator yet); an AffineScript parser at `src/parser/*.affine`
+  (post-migration from ReScript; Idris2 replacement is later Track A
+  work); an empty `generated/abi/` directory awaiting the C-header
+  generator (status: RESERVED, documented at
+  `docs/architecture/ABI-PIPELINE.adoc`); persistent CI advisories
+  (Build+E2E, A2ML, K9) all documented with removal preconditions in
+  `.github/workflows/*.yml`. **No fake fuzz** — `tests/fuzz/README.adoc`
+  is honest about pointing at `tests/echidna/echidna-harness.mjs`
+  (659 LOC real random-program fuzz) plus `ffi/zig/test/`. **No fake
+  benches** — `benchmarks/parser-bench.mjs` is real per-example wallclock
+  with median / p95 / min / throughput; trend-tracking JSON on stderr.
+
+== Canonical Standards
+
+Read these as the authoritative source:
+
+* `hyperpolymath/standards/component-readiness-grades/COMPONENT-READINESS-GRADES.md`
+* `hyperpolymath/standards/release-pre-flight/V1-GATE.adoc`
+* `hyperpolymath/standards/publication-pre-flight/PREFLIGHT.adoc`
+* `hyperpolymath/standards/session-management-standards/README.adoc`
+
+== Repo-local sources of truth
+
+For typed-wasm-specific audit posture:
+
+* `LEVEL-STATUS.md` — what is checked (L1–L10), what is research (L11–L12),
+  what is reserved
+* `PROOF-NEEDS.md` — outstanding proof obligations
+* `TEST-NEEDS.md` — outstanding test coverage
+* `docs/PRODUCTION-PATH.adoc` — 6-phase plan to production-quality compile
+  target; current state is Phase 0 (foundation stabilisation), 2 of 3 gates
+  met
+* `.machine_readable/6a2/STATE.a2ml` — machine-readable project state
+* `tests/aspect/claim-envelope.mjs` (53 assertions) +
+  `tests/aspect/security-envelope.mjs` (10 assertions) — automated
+  drift-detection on cross-document claims
+
+== Bot requirement
+
+Bots operating on this repository should treat this document as a key root
+audit document and should not make optimistic release or publication claims
+that conflict with it. Specifically:
+
+* Do not claim end-to-end `.twasm → .wasm` compilation works (codegen v0
+  is outstanding — Phase 0 gate 2).
+* Do not claim "fully verified soundness discipline" without the qualifier
+  that producer-side enforcement only; runtime enforcement is Phase 3 work.
+* Do not claim production-readiness — production hardening is Phase 6.
+* When in doubt, defer to `docs/PRODUCTION-PATH.adoc` Status table and
+  `docs/wiki/Phase-0-Status.md`.

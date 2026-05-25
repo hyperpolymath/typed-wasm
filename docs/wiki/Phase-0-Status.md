@@ -11,7 +11,8 @@ Phase 0 closes the engineering-surface fragility around the proofs so all subseq
 | Deliverable | Status | PR |
 |---|---|---|
 | tree-sitter-twasm scaffold + region-decls grammar v0 | ✅ Shipped | [#58](https://github.com/hyperpolymath/typed-wasm/pull/58) |
-| Extend tree-sitter to full `spec/grammar.ebnf` parity | 🟡 In progress | — |
+| tree-sitter v1 — parses `examples/01-single-module.twasm` end-to-end (0 ERROR nodes) | ✅ Shipped | [#62](https://github.com/hyperpolymath/typed-wasm/pull/62) |
+| Extend tree-sitter to remaining `spec/grammar.ebnf` productions (imports, L11–L16, match, proof) | 🟡 Next | — |
 | Idris2 parser at 188-test parity with ReScript | ⬜ Not started | — |
 | ReScript cut (single PR) | ⬜ Blocked on parser parity | — |
 | Codegen v0 for `examples/01-single-module.twasm` | ⬜ Blocked on parser | — |
@@ -56,6 +57,8 @@ Phase 0 closes the engineering-surface fragility around the proofs so all subseq
 | Phase tracking issues #48–#54 with checklists | ✅ Shipped | — |
 | ROADMAP truthfulness audit (3 real drifts fixed) | ✅ Shipped | [#60](https://github.com/hyperpolymath/typed-wasm/pull/60) |
 | claim-envelope §8 drift-detection (catches rename + missing-file drift) | ✅ Shipped | #60 |
+| Wiki source-of-truth at `docs/wiki/` + comprehensive STATE.a2ml update | ✅ Shipped | [#61](https://github.com/hyperpolymath/typed-wasm/pull/61) |
+| Repo taxonomy tidy: RSR-aligned (AUDIT.adoc, docs/status/, docs/onboarding/, docs/proposals/); deletions (3 template-residue QUICKSTARTs, 2 .invariants.md heuristic artefacts, empty docs/wikis/, stray generated/abi/README); ABI-PIPELINE doc move | 🟡 In flight | This PR |
 
 ## When does Phase 0 "close"?
 
