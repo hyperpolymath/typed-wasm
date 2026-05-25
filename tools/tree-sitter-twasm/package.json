@@ -23,6 +23,15 @@
     "parse": "tree-sitter parse"
   },
   "devDependencies": {
-    "tree-sitter-cli": "^0.24.0"
-  }
+    "tree-sitter-cli": "^0.24.7"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.twasm",
+      "file-types": [
+        "twasm"
+      ],
+      "highlights": "queries/highlights.scm"
+    }
+  ]
 }

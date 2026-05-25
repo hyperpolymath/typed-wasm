@@ -27,6 +27,7 @@ Thumbs.db
 # npm side-effect: this repo uses deno.lock as the lockfile of record;
 # package-lock.json shows up only when someone runs `npm install` locally.
 /package-lock.json
+/tools/tree-sitter-twasm/package-lock.json
 
 # Rust
 # Cargo.lock  # Keep for binaries

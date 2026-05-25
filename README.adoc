@@ -160,16 +160,31 @@ in name, type, offset, and alignment.
 
 [source,bash]
 ----
-spec/grammar.ebnf              # The grammar — core intellectual artifact
-spec/type-safety-levels-for-wasm.adoc    # Checked L1-L10 mapping from DB to WASM
-src/abi/*.idr                   # Idris2 formal proofs
-ffi/zig/src/main.zig            # Zig C-ABI implementation
-examples/01-single-module.twasm # Basic typed regions
-examples/02-multi-module.twasm  # THE killer feature demo
-examples/03-ownership-linearity.twasm  # Levels 7-10
-examples/04-ecs-game.twasm      # ECS as a columnar database
-LEVEL-STATUS.md                 # Current claim envelope and audit status
-docs/WHITEPAPER.md              # Full academic treatment
+# Specification and surface syntax
+spec/grammar.ebnf                          # .twasm grammar (EBNF) — core intellectual artifact
+spec/type-safety-levels-for-wasm.adoc      # Checked L1-L10 mapping from DB to WASM
+tools/tree-sitter-twasm/grammar.js         # Tree-sitter grammar (v1 — parses example 01)
+
+# Proofs and implementation
+src/abi/TypedWasm/ABI/*.idr                # Idris2 formal proofs (Levels, Region, TypedAccess, ...)
+ffi/zig/src/main.zig                       # Zig C-ABI FFI implementation
+crates/typed-wasm-verify/                  # Rust post-codegen verifier (consumed by Ephapax)
+src/parser/                                # ReScript parser (being replaced by Idris2 — Track A)
+
+# Examples
+examples/01-single-module.twasm            # Basic typed regions, L1-L6
+examples/02-multi-module.twasm             # THE killer feature: cross-module shared memory
+examples/03-ownership-linearity.twasm      # L7-L10 ownership and linearity
+examples/04-ecs-game.twasm                 # ECS as a columnar database
+
+# Status and strategy
+LEVEL-STATUS.md                            # Current claim envelope
+PROOF-NEEDS.md                             # Outstanding proof obligations
+TEST-NEEDS.md                              # Outstanding test coverage
+docs/PRODUCTION-PATH.adoc                  # 6-phase plan to production-ready
+docs/onboarding/README.adoc                # New here? Start here.
+docs/WHITEPAPER.md                         # Full academic treatment
+AUDIT.adoc                                 # Hard rules and audit posture
 ----
 
 == Status

@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: MPL-2.0
+= Proposals
+
+Forward-looking design proposals that don't yet rise to the level
+of an architectural decision record (ADR — those live in
+link:../decisions/[`docs/decisions/`]).
+
+Status legend:
+
+* `[draft]` — circulating; not yet shippable
+* `[review]` — ready for maintainer review
+* `[accepted]` — accepted; usually gets promoted to an ADR or to
+  a `docs/architecture/` doc when work starts
+* `[rejected]` — closed without merge; reasoning preserved in-file
+* `[superseded]` — replaced by another proposal; pointer to successor
+
+== Current proposals
+
+None yet. The strategic decisions (D1–D6) from
+link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] §"Load-bearing
+decisions" are tracked there directly; each will land an ADR under
+`docs/decisions/` when made rather than first landing as a proposal.
+
+When the engineering surface grows (Phase 2+), this directory
+becomes the natural staging ground for design-doc-level proposals
+before they harden into ADRs.
+
+== Authoring a proposal
+
+. File: `docs/proposals/NNNN-short-slug.adoc` (numbering starts at
+  0001; pad to 4 digits)
+. Top-of-file metadata: status, author, date, last-updated
+. Sections: Context, Proposal, Alternatives considered, Open
+  questions, Acceptance criteria
+. Cross-link to the relevant phase issue (`#48–#54`) and to
+  related ADRs / architecture docs
+
+== Related
+
+* link:../decisions/[`docs/decisions/`] — accepted decisions (ADRs)
+* link:../architecture/[`docs/architecture/`] — current
+  architecture documentation
+* link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] —
+  strategic plan; proposals usually fit into a specific phase
