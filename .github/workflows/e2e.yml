@@ -5,7 +5,7 @@
 #
 # Runs on every PR and push to main. Three jobs:
 #   structural   — fast structural checks (no compiler required)
-#   smoke        — Node.js smoke test (ReScript parser + example files)
+#   smoke        — Node.js smoke test (AffineScript parser + example files)
 #   build-e2e    — Full Idris2 + Zig build then E2E
 #   cargo-verify — Cargo workspace build + test (typed-wasm-verify crate)
 name: E2E Validation
@@ -38,7 +38,7 @@ jobs:
   # Job 2: Smoke test — Node.js parser validation
   # --------------------------------------------------------------------------
   smoke:
-    name: Smoke test (Node.js ReScript parser)
+    name: Smoke test (Node.js AffineScript parser)
     runs-on: ubuntu-latest
 
     steps:
@@ -53,7 +53,7 @@ jobs:
       - name: Install npm deps (rescript build prerequisite)
         run: npm install --no-audit --no-fund --silent
 
-      - name: Build ReScript parser
+      - name: Build AffineScript parser
         run: node_modules/.bin/rescript build
 
       - name: Run smoke test

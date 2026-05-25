@@ -143,7 +143,7 @@ jobs:
             -not -path '*/.deno/*' -not -path '*/target/*' \
             -not -path '*/_build/*' -not -path '*/deps/*' \
             -not -path '*/external_corpora/*' -not -path '*/.lake/*' \
-            -type f \( -name '*.rs' -o -name '*.ex' -o -name '*.exs' -o -name '*.res' \
+            -type f \( -name '*.rs' -o -name '*.ex' -o -name '*.exs' -o -name '*.affine' \
               -o -name '*.js' -o -name '*.ts' -o -name '*.json' -o -name '*.toml' \
               -o -name '*.yml' -o -name '*.yaml' -o -name '*.md' -o -name '*.adoc' \
               -o -name '*.idr' -o -name '*.zig' -o -name '*.v' -o -name '*.jl' \
@@ -213,7 +213,7 @@ jobs:
           fi
 
           # Check for Groove endpoint code (Rust, Elixir, Zig, V)
-          if grep -rl 'well-known/groove' --include='*.rs' --include='*.ex' --include='*.zig' --include='*.v' --include='*.res' . 2>/dev/null | head -1 | grep -q .; then
+          if grep -rl 'well-known/groove' --include='*.rs' --include='*.ex' --include='*.zig' --include='*.v' --include='*.affine' . 2>/dev/null | head -1 | grep -q .; then
             HAS_GROOVE_CODE="true"
           fi
 

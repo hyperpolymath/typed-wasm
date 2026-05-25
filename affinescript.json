@@ -4,6 +4,7 @@
     { "dir": "src/parser", "subdirs": false },
     { "dir": "tests/parser", "subdirs": false }
   ],
+  "compiler": "@hyperpolymath/affinescript",
   "package-specs": [
     { "module": "esmodule", "in-source": true }
   ],

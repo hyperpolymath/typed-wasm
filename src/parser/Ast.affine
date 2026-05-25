@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
-// Ast.res — Abstract Syntax Tree for typed-wasm (.twasm) programs.
+// Ast.affine — Abstract Syntax Tree for typed-wasm (.twasm) programs.
 //
 // This module defines the typed AST that the parser produces from tokenised
 // source text. The AST mirrors the grammar in spec/grammar.ebnf.
@@ -70,7 +70,7 @@ and declaration =
 //
 // Reserved-keyword policy:
 //   `module`, `isolated`, `private_memory`, `boundary` are NOT globally
-//   lexed as keywords (see Lexer.res — contextual reservation). The parser
+//   lexed as keywords (see Lexer.affine — contextual reservation). The parser
 //   recognises them in context inside parseDeclaration / parseIsolatedBody.
 
 /// v1.2 / L13 — declaration of an isolated module.

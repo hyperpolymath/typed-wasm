@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
-// Lexer.res — Tokenizer for typed-wasm (.twasm) surface syntax.
+// Lexer.affine — Tokenizer for typed-wasm (.twasm) surface syntax.
 //
 // Produces a stream of tokens from raw source text. Each token carries
 // its source location (line, column) for error reporting.
@@ -211,7 +211,7 @@ let isAtEnd = (l: lexerState): bool => {
 }
 
 /// Peek at the current character without consuming.
-/// Returns a single-character string (ReScript 12: String.get returns option<string>).
+/// Returns a single-character string (AffineScript 12: String.get returns option<string>).
 let peek = (l: lexerState): option<string> => {
   if isAtEnd(l) {
     None

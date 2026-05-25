@@ -236,7 +236,7 @@ and a type-preservation corollary `noTypeSpoofing` at a known
 FieldMatches f y -> SchemaSub y z -> FieldMatches f z`, which walks
 the SchemaSub witness field-by-field — so the proof is not vacuous.
 
-Sanity-checked with a worked Rust-exports / ReScript-imports example
+Sanity-checked with a worked Rust-exports / AffineScript-imports example
 (4-field export `[id: U64, age: U8, score: F32, banned: WBool]`,
 2-field subset import `[id: U64, age: U8]`) that constructs a live
 `ModuleCompat` certificate and applies `noSpoofing` to it.  Zero
@@ -389,8 +389,8 @@ nested List/Map fields.
 
 ### P2 — Interop (parser + round-trip, ECHIDNA coverage)
 
-**P2.1. Parser round-trip property.** ReScript parser in
-`lib/ocaml/Parser.res` / `Lexer.res` / `Ast.res`. The ECHIDNA runs
+**P2.1. Parser round-trip property.** AffineScript parser in
+`lib/ocaml/Parser.affine` / `Lexer.affine` / `Ast.affine`. The ECHIDNA runs
 listed in `LEVEL-STATUS.md` are for runtime L1-L6; there is no
 property-based test asserting `parse (print ast) = Right ast`. Add
 one. This is not an Idris2 proof — it's an ECHIDNA generator + a

@@ -17,7 +17,7 @@ template infrastructure that was inherited and later removed.
           |                            |                            |
           v                            v                            v
  +------------------+        +--------------------+      +-------------------+
- | ReScript Parser  |        | Idris2 ABI Proofs  |      | Zig FFI Runtime   |
+ | AffineScript Parser  |        | Idris2 ABI Proofs  |      | Zig FFI Runtime   |
  | src/parser       |        | src/abi            |      | ffi/zig           |
  +------------------+        +--------------------+      +-------------------+
           |                            |                            |
@@ -37,7 +37,7 @@ template infrastructure that was inherited and later removed.
 ----
 COMPONENT                          STATUS              NOTES
 ---------------------------------  ------------------  -----------------------------------------------
-Parser core                        ██████████ 100%     ReScript parser builds and tests run
+Parser core                        ██████████ 100%     AffineScript parser builds and tests run
 Checked proof core (L1-L10)        ██████████ 100%     Default Idris package checks successfully
 L11-L12 proof drafts               ███░░░░░░░ 30%      Present, but not in package and not claimable
 Zig FFI runtime                    ████████░░ 80%      Live path is ffi/zig; tests run

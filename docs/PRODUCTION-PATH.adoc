@@ -47,7 +47,7 @@ The plan below targets reading (1).
 * Zig FFI for runtime region management (`ffi/zig/`).
 * Rust verifier (`crates/typed-wasm-verify/`) that checks already-compiled
   wasm against the L7-L10 properties. 10/10 tests pass.
-* ReScript parser for the `.twasm` surface syntax (`src/parser/`),
+* AffineScript parser for the `.twasm` surface syntax (`src/parser/`),
   mid-replacement.
 * EBNF grammar (`spec/grammar.ebnf`) — the surface-syntax source of truth.
 * Six `.twasm` example files demonstrating L1-L6 plus draft higher-level
@@ -101,8 +101,8 @@ Concretely:
 * All CI jobs on `main` either green or removed. Persistent red is an
   honesty problem before it is a technical one.
 * Track A (Codegen pipeline) kicked off: tree-sitter grammar derived from
-  `spec/grammar.ebnf`; Idris2 parser at parity with the ReScript parser;
-  single-PR ReScript cut after parity; codegen v0 for
+  `spec/grammar.ebnf`; Idris2 parser at parity with the AffineScript parser;
+  single-PR AffineScript cut after parity; codegen v0 for
   `examples/01-single-module.twasm`.
 * Track B (AffineScript verifier migration): swap `affinescript/lib/{tw_verify,
   tw_interface}.ml` for subprocess call to the Rust verifier; retire
@@ -379,7 +379,7 @@ formal foundation (Idris2 proofs vs. paper proofs).
 === After Phase 0 (stabilized foundation, ~0.2)
 
 Still a research prototype, but a *defensibly engineered* one. CI is
-honest; codegen v0 works for the simplest example; the ReScript-to-Idris2
+honest; codegen v0 works for the simplest example; the AffineScript-to-Idris2
 parser migration has happened; the AffineScript adoption is real and
 working. Peer set unchanged but typed-wasm has moved from "interesting
 paper-ware" to "interesting paper-ware you can build and run without

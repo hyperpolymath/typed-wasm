@@ -30,7 +30,7 @@ L11 and L12 are formally specified in `src/abi/TypedWasm/ABI/Tropical.idr` (L11:
 
 **From README**:
 ____
-When Module A (compiled from Rust) shares memory with Module B (compiled from ReScript), **neither source-level type system can verify the boundary.**
+When Module A (compiled from Rust) shares memory with Module B (compiled from AffineScript), **neither source-level type system can verify the boundary.**
 
 typed-wasm declares the shared schema once. Both modules import it. The typed-wasm checker verifies structural agreement at compile time, before any module runs.
 ____

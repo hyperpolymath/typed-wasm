@@ -6,8 +6,8 @@
 
 | Category | Count | Details |
 |----------|-------|---------|
-| **Source modules** | 21 | 11 Idris2 ABI (Region, TypedAccess, Levels, Pointer, Effects, Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic), 4 ReScript parser (Ast, Parser, Lexer, Checker), 3 Idris2 interface ABI, 2 Zig FFI + cache, 1 Rust verifier crate (typed-wasm-verify, ~1.6k LOC + 53 tests) |
-| **Unit tests** | 2 files | ParserTests.res (88 assertions), crates/typed-wasm-verify (43 unit + 10 cross-compat) |
+| **Source modules** | 21 | 11 Idris2 ABI (Region, TypedAccess, Levels, Pointer, Effects, Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic), 4 AffineScript parser (Ast, Parser, Lexer, Checker), 3 Idris2 interface ABI, 2 Zig FFI + cache, 1 Rust verifier crate (typed-wasm-verify, ~1.6k LOC + 53 tests) |
+| **Unit tests** | 2 files | ParserTests.affine (88 assertions), crates/typed-wasm-verify (43 unit + 10 cross-compat) |
 | **Integration tests** | 1 | tests/contracts/airborne-step-state-contract.mjs (14 assertions) |
 | **E2E tests** | 2 | tests/smoke/e2e-smoke.mjs (40 assertions), tests/e2e/e2e-driver.mjs (corpus driver) |
 | **Per-level tests** | 10 | tests/levels/L1.mjs .. L10.mjs (56 assertions total) |
@@ -27,7 +27,7 @@
       Justfile `test-property` and CI smoke job. Closes the revoked
       2026-04-04 ghost entry.
 - [ ] No tests for Idris2 ABI type checking with Zig FFI
-- [ ] No tests for ReScript parser feeding into Idris2 type checker
+- [ ] No tests for AffineScript parser feeding into Idris2 type checker
 
 ### E2E Tests
 - [x] **DONE 2026-05**: `tests/e2e/e2e-driver.mjs` exercises every

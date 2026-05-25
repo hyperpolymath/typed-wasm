@@ -28,12 +28,12 @@ natural home for "striation is cheaper" proofs once it lands.
 
 | Feature | Grammar | AST | Lexer | Parser | Checker | Tests |
 |---------|---------|-----|-------|--------|---------|-------|
-| `const` top-level | spec/grammar.ebnf | Ast.ConstDecl | Const | **DONE** parseConstDecl (Parser.res:2088) | Checker.constValueIsLiteral | **DONE** |
-| `match` on union | spec/grammar.ebnf | Ast.MatchStmt | Match | **DONE** (Parser.res:1191) | Checker.matchIsExhaustive | **DONE** |
-| Block-expr `if` | spec/grammar.ebnf | Ast.BlockIfExpr | Yield | **DONE** (Parser.res:529) | Checker.blockIfBranchesAgree | **DONE** |
-| Split `effects` | spec/grammar.ebnf | functionDecl.caps | (contextual) | **DONE** parseEffectsClause (Parser.res:1554) | (opaque until L15) | **DONE** |
+| `const` top-level | spec/grammar.ebnf | Ast.ConstDecl | Const | **DONE** parseConstDecl (Parser.affine:2088) | Checker.constValueIsLiteral | **DONE** |
+| `match` on union | spec/grammar.ebnf | Ast.MatchStmt | Match | **DONE** (Parser.affine:1191) | Checker.matchIsExhaustive | **DONE** |
+| Block-expr `if` | spec/grammar.ebnf | Ast.BlockIfExpr | Yield | **DONE** (Parser.affine:529) | Checker.blockIfBranchesAgree | **DONE** |
+| Split `effects` | spec/grammar.ebnf | functionDecl.caps | (contextual) | **DONE** parseEffectsClause (Parser.affine:1554) | (opaque until L15) | **DONE** |
 | `striated` regions | spec/grammar.ebnf | regionDecl.layout | Striated | **DONE** | Checker.striatedLayoutIsWellFormed | **DONE** |
-| Reserved keywords (L13-L16) | spec/L13-L16-reserved-syntax.adoc | — | contextual (per-block) | **DONE** (Parser.res:2685-2718) | — | **DONE** (v1.4/v1.5 rejection tests) |
+| Reserved keywords (L13-L16) | spec/L13-L16-reserved-syntax.adoc | — | contextual (per-block) | **DONE** (Parser.affine:2685-2718) | — | **DONE** (v1.4/v1.5 rejection tests) |
 
 **v1.1 surface sugar fully landed: parser, checker, tests all live.
 88/88 parser tests pass (verified 2026-04-18). LEVEL-STATUS table was stale
@@ -96,7 +96,7 @@ toolchain remains future work.
 | Effects.idr | 0 | 0 | 0 | In package |
 | Lifetime.idr | 0 | 0 | 0 | In package |
 | Linear.idr | 0 | 0 | 0 | In package |
-| MultiModule.idr | 0 | 0 | 0 | In package.  Flagship no-spoofing theorem proven A6 (2026-04-18): `FieldMatches`, `SchemaSub` preorder (`schemaSubRefl`, `schemaSubTrans`), `ModuleCompat` indexed on modules + schemas (`compatRefl`, `compatTrans`), and the flagship `noSpoofing : ModuleCompat from to imp exp -> FieldMatches f imp -> FieldMatches f exp`.  Worked Rust-exports / ReScript-imports example (4-field export, 2-field import subset) constructs a live certificate and applies the theorem. |
+| MultiModule.idr | 0 | 0 | 0 | In package.  Flagship no-spoofing theorem proven A6 (2026-04-18): `FieldMatches`, `SchemaSub` preorder (`schemaSubRefl`, `schemaSubTrans`), `ModuleCompat` indexed on modules + schemas (`compatRefl`, `compatTrans`), and the flagship `noSpoofing : ModuleCompat from to imp exp -> FieldMatches f imp -> FieldMatches f exp`.  Worked Rust-exports / AffineScript-imports example (4-field export, 2-field import subset) constructs a live certificate and applies the theorem. |
 | ModuleIsolation.idr | 0 | 0 | 0 | In package (v1.2 / L13) |
 | SessionProtocol.idr | 0 | 0 | 0 | In package (v1.3 / L14) |
 | ResourceCapabilities.idr | 0 | 0 | 0 | In package (v1.4 / L15) |

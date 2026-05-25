@@ -406,7 +406,7 @@ jobs:
             comment += `</details>\n\n`;
             comment += `*Powered by Hypatia Neurosymbolic CI/CD Intelligence*`;
 
-            github.rest.issues.createComment({
+            github.affinet.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,

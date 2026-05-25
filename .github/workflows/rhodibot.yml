@@ -150,7 +150,7 @@ jobs:
           # --- 7. Check dangerous patterns ---
           DANGEROUS=""
           for pattern in "believe_me" "assert_total" "Admitted" "sorry" "unsafeCoerce" "Obj.magic"; do
-            count=$(grep -r "$pattern" --include='*.idr' --include='*.v' --include='*.lean' --include='*.hs' --include='*.ml' --include='*.res' . 2>/dev/null | grep -v node_modules | wc -l || echo 0)
+            count=$(grep -r "$pattern" --include='*.idr' --include='*.v' --include='*.lean' --include='*.hs' --include='*.ml' --include='*.affine' . 2>/dev/null | grep -v node_modules | wc -l || echo 0)
             if [ "$count" -gt 0 ]; then
               DANGEROUS="$DANGEROUS\n- \`$pattern\`: $count occurrences"
             fi

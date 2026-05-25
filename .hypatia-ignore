@@ -5,7 +5,7 @@
 # Honored by hyperpolymath/standards/.github/workflows/governance-reusable.yml
 # (the "Check for ReScript / Go / Python (banned language files)" step).
 #
-# ReScript exemptions: the current parser surface is written in ReScript and
+# AffineScript exemptions: the current parser surface is written in AffineScript and
 # will be replaced by a tree-sitter-derived Idris2 parser (Track A in the
 # project roadmap). Until that work lands the source must remain checked in
 # so the smoke + aspect + level tests have something to import.

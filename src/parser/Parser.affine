@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
-// Parser.res — Recursive descent parser for typed-wasm (.twasm) syntax.
+// Parser.affine — Recursive descent parser for typed-wasm (.twasm) syntax.
 //
-// Parses a stream of tokens (from Lexer.res) into an AST (from Ast.res).
+// Parses a stream of tokens (from Lexer.affine) into an AST (from Ast.affine).
 // The parser implements the grammar defined in spec/grammar.ebnf.
 //
 // This is Level 1 of the typed-wasm type safety stack: parse-time validity.
@@ -2132,7 +2132,7 @@ let parseConstDecl = (p: parserState): result<Ast.located<Ast.declaration>> => {
 // L13 adds three contextual keywords — `module`, `isolated`, `private_memory`,
 // `boundary` — that are lexed as plain `Ident(...)` and recognised here by
 // the parser when they appear at a declaration position. This follows the
-// contextual-reservation policy documented in Lexer.res and
+// contextual-reservation policy documented in Lexer.affine and
 // spec/L13-L16-reserved-syntax.adoc; the global lexer reservation attempted
 // earlier collided with field names like `state` in real .twasm sources.
 //
