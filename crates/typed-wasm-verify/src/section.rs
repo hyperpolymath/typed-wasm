@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //
-// `affinescript.ownership` custom-section codec.
+// `typedwasm.ownership` custom-section codec.
 //
 // Wire format (little-endian, byte-aligned):
 //
@@ -30,7 +30,7 @@ pub struct OwnershipEntry {
     pub ret_kind: OwnershipKind,
 }
 
-/// Parse the `affinescript.ownership` custom-section payload into
+/// Parse the `typedwasm.ownership` custom-section payload into
 /// structured entries.
 ///
 /// Matches OCaml `Tw_verify.parse_ownership_section_payload` exactly,
@@ -58,7 +58,7 @@ pub fn parse_ownership_section_payload(payload: &[u8]) -> Vec<OwnershipEntry> {
         .collect()
 }
 
-/// Encode entries to the `affinescript.ownership` custom-section
+/// Encode entries to the `typedwasm.ownership` custom-section
 /// payload format. The inverse of `parse_ownership_section_payload` for
 /// any input that doesn't truncate.
 ///

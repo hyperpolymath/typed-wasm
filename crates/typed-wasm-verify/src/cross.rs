@@ -205,7 +205,7 @@ mod tests {
     };
 
     /// Build a callee module with one exported function `name` whose
-    /// param kinds are recorded in an `affinescript.ownership` section.
+    /// param kinds are recorded in an `typedwasm.ownership` section.
     /// The function body is trivial (just returns).
     fn callee_module(export_name: &str, param_kinds: Vec<OwnershipKind>) -> Vec<u8> {
         let n_params = param_kinds.len() as u32;

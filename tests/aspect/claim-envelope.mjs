@@ -177,10 +177,10 @@ for (const [name, byte] of expectedWire) {
 }
 
 // Section name constant
-if (/OWNERSHIP_SECTION_NAME:\s*&str\s*=\s*"affinescript\.ownership"/.test(libRs)) {
-  ok("OWNERSHIP_SECTION_NAME = \"affinescript.ownership\" (matches doc claims)");
+if (/OWNERSHIP_SECTION_NAME:\s*&str\s*=\s*"typedwasm\.ownership"/.test(libRs)) {
+  ok("OWNERSHIP_SECTION_NAME = \"typedwasm.ownership\" (matches doc claims)");
 } else {
-  bad("OWNERSHIP_SECTION_NAME constant drifted from \"affinescript.ownership\"");
+  bad("OWNERSHIP_SECTION_NAME constant drifted from \"typedwasm.ownership\"");
 }
 
 // ----------------------------------------------------------------------

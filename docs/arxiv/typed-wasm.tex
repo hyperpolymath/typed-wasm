@@ -1135,7 +1135,7 @@ Wasm~1.0.  It follows The Elm Architecture (\textsc{tea})~\cite{elm2016}:
 where $\multimap$ is the linear function arrow from QTT
 (Section~\ref{sec:formal}).  Every \texttt{update} call consumes the old
 model and the incoming message exactly once, producing a fresh model.  The
-\texttt{affinescript.ownership} custom section records the linearity kind
+\texttt{typedwasm.ownership} custom section records the linearity kind
 (0 = Unrestricted, 1 = Linear) for each function parameter, enabling the
 typed-wasm verifier to enforce the invariant statically.
 
@@ -1164,7 +1164,7 @@ Five router messages are exported: \texttt{Push}, \texttt{Pop},
 \texttt{PresentPopup}, \texttt{DismissPopup}, and \texttt{Resize}.
 The \texttt{screen\_tag} parameter of \texttt{Push}, the \texttt{popup\_tag}
 of \texttt{PresentPopup}, and both dimension arguments of \texttt{Resize}
-are annotated \textbf{Linear} in the \texttt{affinescript.ownership}
+are annotated \textbf{Linear} in the \texttt{typedwasm.ownership}
 custom section.  This means each message is consumed exactly once per
 navigation event.  The typed-wasm verifier rejects any module that attempts
 to re-send the same tag value without an intervening update.
@@ -1184,7 +1184,7 @@ the Wasm module \emph{is} the back-stack, stored as a linear resource.
 
 \paragraph{Verification result.}
 The router module passes \texttt{WebAssembly.validate}.  The
-\texttt{affinescript.ownership} section is checked by the AffineScript
+\texttt{typedwasm.ownership} section is checked by the AffineScript
 toolchain at code-generation time; the typed-wasm Level~10 checker
 additionally verifies at load time that no function parameter marked
 \texttt{kind=1} (Linear) is reachable via two distinct call paths within

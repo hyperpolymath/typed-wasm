@@ -268,7 +268,7 @@ pub fn verify_function(
 // ----------------------------------------------------------------------
 
 /// Verify the L7+L10 ownership constraints across an entire wasm
-/// module by reading its embedded `affinescript.ownership` custom
+/// module by reading its embedded `typedwasm.ownership` custom
 /// section. Modules without the section verify trivially.
 ///
 /// Rust port of OCaml `Tw_verify.verify_from_module`.
@@ -396,7 +396,7 @@ mod tests {
     /// — `wasm_encoder::Function` adds it automatically). The function
     /// has `n_params` i32 params, no return value.
     ///
-    /// Optionally embeds an `affinescript.ownership` custom section
+    /// Optionally embeds an `typedwasm.ownership` custom section
     /// claiming the function (at global index 0, since there are no
     /// imports) has the given param kinds.
     fn module_with_body(

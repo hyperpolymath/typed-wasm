@@ -3,7 +3,7 @@
 // typed-wasm post-codegen verifier.
 //
 // Statically verifies typed-wasm L7 (aliasing safety) and L10 (linearity)
-// on emitted wasm modules. Reads the `affinescript.ownership` custom
+// on emitted wasm modules. Reads the `typedwasm.ownership` custom
 // section, then runs per-path min/max use-range analysis on every
 // function body in the module.
 //
@@ -26,7 +26,7 @@ pub use section::{
 pub use verify::{count_uses_range, verify_function};
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
-/// Wire encoding in the `affinescript.ownership` custom section: a single
+/// Wire encoding in the `typedwasm.ownership` custom section: a single
 /// u8 per kind, values 0/1/2/3 as below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OwnershipKind {
@@ -121,16 +121,17 @@ pub enum VerifyError {
     Cross(Vec<CrossError>),
 }
 
-/// Custom-section name carrying ownership annotations. Matches the OCaml
-/// emitter (`Codegen.build_ownership_section`) and reader.
-pub const OWNERSHIP_SECTION_NAME: &str = "affinescript.ownership";
+/// Custom-section name carrying ownership annotations. Producer-neutral as
+/// of the 2026-05-26 rename; both AffineScript (`Codegen.build_ownership_section`)
+/// and Ephapax (`ephapax-wasm`) emit and read this name.
+pub const OWNERSHIP_SECTION_NAME: &str = "typedwasm.ownership";
 
 // ----------------------------------------------------------------------
 // Public entry points (stubbed in C1; implementations land in C2-C4).
 // ----------------------------------------------------------------------
 
 /// Verify the L7+L10 ownership constraints on a wasm module by reading its
-/// embedded `affinescript.ownership` custom section. Returns `Ok(())` when
+/// embedded `typedwasm.ownership` custom section. Returns `Ok(())` when
 /// no violations are found; modules without the section verify trivially.
 ///
 /// Rust port of OCaml `Tw_verify.verify_from_module`.
