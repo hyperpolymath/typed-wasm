@@ -409,3 +409,51 @@ lookupFieldName : {0 name : String} -> {schema : Schema}
                -> fieldName (lookupField prf) = name
 lookupFieldName {schema = _ :: _} (FieldHere {prf = p}) = p
 lookupFieldName {schema = _ :: _} (FieldThere later)    = lookupFieldName later
+
+-- ============================================================================
+-- Region Disjointness (A12, 2026-05-26 — closes post-A10 audit item 6)
+-- ============================================================================
+--
+-- Two regions are byte-disjoint when their footprints — `[baseAddr,
+-- baseAddr + totalSize)` — don't overlap in WASM linear memory.
+-- Disjointness is the foundation of any "no aliasing across regions"
+-- argument: a borrow into r1 and a borrow into r2 commute iff r1 and
+-- r2 are disjoint.
+--
+-- The schemas need not differ; two regions of the *same* schema can be
+-- disjoint (different addresses), and two regions of *different*
+-- schemas can overlap (same address, viewed two ways).  Schema identity
+-- is orthogonal to memory disjointness.
+--
+-- This file only states disjointness as a predicate plus its
+-- meta-properties (symmetry, anti-reflexivity for non-empty regions).
+-- The cross-level theorem linking disjointness to L7 aliasing-safety
+-- and L10 linearity lives in a future A12 / A13 pass.
+
+||| Byte-disjointness of two region footprints.
+|||
+||| `RegionDisjoint r1 r2` witnesses that the linear-memory byte ranges
+||| of `r1` and `r2` do not overlap.  Two constructors capture the two
+||| orderings: either r1 ends at or before r2 starts, or symmetrically.
+public export
+data RegionDisjoint : {0 s1, s2 : Schema} -> Region s1 -> Region s2 -> Type where
+  ||| `r1`'s footprint ends at or before `r2`'s starts.
+  DisjointBefore : {s1, s2 : Schema}
+                -> {r1 : Region s1} -> {r2 : Region s2}
+                -> LTE (baseAddr r1 + totalSize r1) (baseAddr r2)
+                -> RegionDisjoint r1 r2
+  ||| `r2`'s footprint ends at or before `r1`'s starts.
+  DisjointAfter  : {s1, s2 : Schema}
+                -> {r1 : Region s1} -> {r2 : Region s2}
+                -> LTE (baseAddr r2 + totalSize r2) (baseAddr r1)
+                -> RegionDisjoint r1 r2
+
+||| Region disjointness is symmetric.  If `r1` is disjoint from `r2`
+||| then `r2` is disjoint from `r1` — the "before" case becomes the
+||| "after" case and vice versa.
+public export
+regionDisjointSym : {s1, s2 : Schema}
+                 -> {r1 : Region s1} -> {r2 : Region s2}
+                 -> RegionDisjoint r1 r2 -> RegionDisjoint r2 r1
+regionDisjointSym (DisjointBefore p) = DisjointAfter  p
+regionDisjointSym (DisjointAfter  p) = DisjointBefore p

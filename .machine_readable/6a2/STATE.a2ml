@@ -8,7 +8,7 @@ project = "typed-wasm"
 version = "0.1.0"
 last-updated = "2026-05-26"
 status = "active"  # active | paused | archived
-session = "2026-05-26 — Proof-debt pass A10+A11 (PR #72). A10 closes the last 2 NAMED deferred items from PROOF-NEEDS (L12 freshness propagation under concurrent writes via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness` projector; `compatCommute` mutual-subschema case + `noSpoofingBidir` corollary + 2nd worked example). Also fixed `tests/proof/regression.mjs` Layer 2 from silent no-op `--check` to real `--build`. A11 closes 3 of 8 untracked debts the A10 audit surfaced: (1) `Sync.WriteSync` now requires a `FieldVersion` witness with 3 projection equalities — adversarial writers ill-typed; (2) `Knowledge.Observed` now grounded in a `Sync` event — unfounded versions unconstructable; (4-partial) first algebraic laws for `composeCertificates` — `achievedAppendSplit`, list-level `composeAssocLists`, `composeAchievedSym`. Nat-min half deferred to A12 (`Prelude.min Nat` is non-structural). 13 new theorems, 44/44 regression passing. Items 3, 5, 6, 7, 8 + Nat-min-of-4 inherit to A12. Previous session (2026-05-24/25): Phase 0 closure pass landed 11 PRs (#46..#63)."
+session = "2026-05-26 — Proof-debt pass A10+A11+A12 (PR #72). A10 closes the last 2 NAMED deferred items from PROOF-NEEDS (L12 freshness propagation under concurrent writes via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness` projector; `compatCommute` mutual-subschema case + `noSpoofingBidir` corollary + 2nd worked example). Also fixed `tests/proof/regression.mjs` Layer 2 from silent no-op `--check` to real `--build`. A11 closes 3 of 8 untracked debts: (1) `Sync.WriteSync` now requires a `FieldVersion` witness; (2) `Knowledge.Observed` grounded in a `Sync` event; (4-partial) first algebraic laws for `composeCertificates`. A12 (post coordinator A12 go-ahead) closes 3 MORE untracked items in same PR: item 4 FULL (switched `composeCertificates` to `Data.Nat.minimum` → `composeAssoc` + `composeHighProvenComm`); item 6 (`RegionDisjoint` + `regionDisjointSym` in Region.idr); item 3 (`containedConcat` + `jointBudgetCompose` — L8↔L15 joint composition in ResourceCapabilities.idr). 19 new theorems total across A10+A11+A12 (8+5+6), regression 25→50. Items 5, 7, 8 inherit to A13. Previous session (2026-05-24/25): Phase 0 closure pass landed 11 PRs (#46..#63)."
 
 [project-context]
 name = "typed-wasm"
@@ -54,7 +54,9 @@ milestones = [
   { name = "L12 (Epistemic) freshness propagation proof", completion = 100 },  # 2026-05-26 (A10, PR #72) — closes PROOF-NEEDS §P1.2
   { name = "MultiModule mutual-subschema commutativity (compatCommute)", completion = 100 },  # 2026-05-26 (A10, PR #72)
   { name = "Sync/Knowledge constructor provenance tightening", completion = 100 },  # 2026-05-26 (A11, PR #72) — closes post-A10 audit items 1 + 2
-  { name = "composeCertificates algebraic laws", completion = 50 },  # 2026-05-26 (A11, PR #72) — list-level done, Nat-min half deferred to A12
+  { name = "composeCertificates algebraic laws", completion = 100 },  # 2026-05-26 — A11 list-side + A12 full assoc/comm (PR #72) — switched to Data.Nat.minimum, closes audit item 4
+  { name = "Region byte-disjointness predicate + symmetry", completion = 100 },  # 2026-05-26 (A12, PR #72) — closes audit item 6; L7/L10 cross-level theorem deferred
+  { name = "L8 ↔ L15 joint budget composition theorem", completion = 100 },  # 2026-05-26 (A12, PR #72) — closes audit item 3 via jointBudgetCompose
 ]
 
 [blockers-and-issues]
@@ -84,8 +86,8 @@ actions = [
 ]
 
 [maintenance-status]
-last-run-utc = "2026-05-26T19:30:00Z"
-last-report = "PROOF-NEEDS.md (RECONCILIATION 2026-05-26 A11 banner)"   # supersedes prior PRODUCTION-PATH-as-last-report; A10+A11 are the active record
+last-run-utc = "2026-05-26T20:00:00Z"
+last-report = "PROOF-NEEDS.md (RECONCILIATION 2026-05-26 A12 banner)"   # A10+A11+A12 are the active record; A12 banner is at the top
 last-result = "pass"  # unknown | pass | warn | fail
 open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + anti-pattern policy (fixed by Track A's ReScript cut)
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
@@ -100,7 +102,7 @@ surfaces = [
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
   { name = "property tests",                  assertions = 29,  file = "tests/property/property_test.mjs" }, # added 2026-05-24 (PR #57)
-  { name = "proof regression",                assertions = 44,  file = "tests/proof/regression.mjs" },        # 25→36 (A10, PR #72) → 44 (A11, PR #72): +8 L12 theorems +1 compatCommute +1 noSpoofingBidir +2 A11-Epistemic corollaries +3 A11-Proofs laws; Layer 2 fixed from --check no-op to --build
+  { name = "proof regression",                assertions = 50,  file = "tests/proof/regression.mjs" },        # 25→44 (A10+A11) → 50 (A12, PR #72): +composeAssoc +composeHighProvenComm +RegionDisjoint +regionDisjointSym +containedConcat +jointBudgetCompose; Layer 2 fixed from --check no-op to --build
   { name = "smoke E2E",                       assertions = 40,  file = "tests/smoke/e2e-smoke.mjs" },
   { name = "structural E2E",                  assertions = 53,  file = "tests/e2e.sh" },
   { name = "integration (airborne-step)",     assertions = 14,  file = "tests/contracts/airborne-step-state-contract.mjs" },

@@ -10,6 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Proof-debt pass A12 (2026-05-26, same-day continuation)
+
+Per coordinator clearance, three more untracked items from the post-A10
+audit are closed in the same PR ([#72](https://github.com/hyperpolymath/typed-wasm/pull/72)):
+
+- **Item 4 closed IN FULL.** A11's partial `composeAssocLists`
+  (list-side only) is superseded by `composeAssoc`, which proves
+  three-way associativity of `composeCertificates` across all three
+  fields. Enabled by switching `composeCertificates` from
+  `Prelude.min` to `Data.Nat.minimum` (structural Nat), making
+  `minimumAssociative` apply directly. `composeHighProvenComm` adds
+  Nat-side commutativity via `minimumCommutative`. The old
+  `composeAssocLists` kept as a back-compat corollary.
+- **Item 6 closed.** `Region.idr` gains `RegionDisjoint r1 r2` (two
+  constructors for byte-footprint non-overlap, both orderings) plus
+  `regionDisjointSym` proving symmetry. Cross-level theorem linking
+  disjointness to L7 + L10 deferred to a future pass — the predicate
+  itself was the missing primitive.
+- **Item 3 closed.** `ResourceCapabilities.idr` gains `containedConcat`
+  (proving `ContainedIn` distributes over `++`) plus
+  `jointBudgetCompose`, the L8 ↔ L15 joint composition theorem.
+  Composing two functions with individual `EffectSubsumes` and
+  `FunctionCaps` witnesses yields a single function whose combined
+  effects subsume combined actuals (via L8 `subsumeCompose`) AND
+  whose combined required caps are contained in the owner module's
+  declared caps (via the new `containedConcat` + the existing
+  `l15bSoundness`).
+
+**6 new theorems added** (`composeAssoc`, `composeHighProvenComm`,
+`RegionDisjoint`, `regionDisjointSym`, `containedConcat`,
+`jointBudgetCompose`). Regression: **50/50** under Idris2 0.8.0
+(both layers: source grep + `idris2 --build`).
+
+Open after A12 (→ A13): post-A10 audit items 5 (L13×L10, L14×L13
+cross-level), 7 (Rust verifier ↔ Idris2 spec equivalence), 8
+(source-checker ↔ verifier coverage agreement).
+
 ### Proof-debt pass A10 + A11 (2026-05-26)
 
 Two same-day rounds attacking proof debt against `PROOF-NEEDS.md`. PR

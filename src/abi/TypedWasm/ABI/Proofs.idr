@@ -152,10 +152,17 @@ attestL15_CapsSafe _ = MkAttestation 15 Proven
 ||| The composed certificate takes the MINIMUM highest level:
 ||| if Module A is proven to Level 8 and Module B to Level 6,
 ||| the combined guarantee is Level 6 (the weakest link).
+|||
+||| Uses `Data.Nat.minimum` (the structural Nat version) rather than the
+||| Ord-derived `Prelude.min` so that `minimumAssociative` /
+||| `minimumCommutative` from `Data.Nat` apply directly — this is what
+||| makes `composeAssoc` and `composeHighProvenComm` (A12, 2026-05-26) one
+||| line each.  The numeric behaviour is identical; only the proof
+||| ergonomics change.
 public export
 composeCertificates : ProofCertificate -> ProofCertificate -> ProofCertificate
 composeCertificates (MkCertificate ls1 h1 mm1) (MkCertificate ls2 h2 mm2) =
-  MkCertificate (ls1 ++ ls2) (min h1 h2) (mm1 ++ mm2)
+  MkCertificate (ls1 ++ ls2) (minimum h1 h2) (mm1 ++ mm2)
 
 -- ============================================================================
 -- Level-Specific Certificate Constructors (PROOF-NEEDS §P1.1 — A7)
@@ -546,17 +553,32 @@ composeAchievedR (MkCertificate a1 _ _) (MkCertificate _ _ _) p =
 -- "composeCertificates algebraic laws" residual debt item)
 -- ============================================================================
 
-||| `composeCertificates` is associative on the list components.
-||| Both the level-attestation list and the multi-module-certificate
-||| list are concatenated, and concatenation is associative under
-||| `appendAssociative`.  The `highestProven` Nat is combined via
-||| `min`; we punt on Nat-min associativity at the level of strict
-||| equality because `Prelude.min` is defined via `if .. < .. then`
-||| (the Ord-generic form) and does not have a definitional reduction
-||| on Z/S — proving it from scratch is multi-case Nat trichotomy and
-||| out of scope for this round.  Instead we state the *list-level*
-||| associativity, which is the part `composeAchievedSym` and the
-||| level-achievement layer actually consume.
+||| `composeCertificates` is **fully** associative — list parts,
+||| multi-module parts, and the `highestProven` Nat side all align.
+||| List components compose via `appendAssociative`; the Nat side
+||| via `minimumAssociative` from `Data.Nat` (now applicable because
+||| `composeCertificates` was switched from the Ord-generic
+||| `Prelude.min` to the structural `Data.Nat.minimum` at A12).
+|||
+||| Supersedes the A11 list-only `composeAssocLists` (kept as a
+||| corollary below for back-compat); closes post-A10 audit item 4 in
+||| full.
+public export
+composeAssoc :
+  (a, b, c : ProofCertificate) ->
+  composeCertificates (composeCertificates a b) c
+  = composeCertificates a (composeCertificates b c)
+composeAssoc (MkCertificate ls1 h1 mm1)
+             (MkCertificate ls2 h2 mm2)
+             (MkCertificate ls3 h3 mm3) =
+  rewrite appendAssociative ls1 ls2 ls3 in
+  rewrite appendAssociative mm1 mm2 mm3 in
+  rewrite minimumAssociative h1 h2 h3 in
+  Refl
+
+||| List-level associativity of `composeCertificates`.  Original A11
+||| statement; now derived as a corollary of the full A12 `composeAssoc`
+||| via projection on the first field of the equated certificates.
 public export
 composeAssocLists :
   (a, b, c : ProofCertificate) ->
@@ -567,6 +589,25 @@ composeAssocLists (MkCertificate ls1 _ _)
                   (MkCertificate ls2 _ _)
                   (MkCertificate ls3 _ _) =
   sym (appendAssociative ls1 ls2 ls3)
+
+||| The `highestProven` Nat component of `composeCertificates` is
+||| **commutative**: the minimum doesn't care which side an operand
+||| comes from.  This is the Nat-side counterpart of
+||| `composeAchievedSym`'s list-side achievement-swap.
+|||
+||| Closes the second half of post-A10 audit item 4 (algebraic laws
+||| for `composeCertificates`).  Coordinator hint (2026-05-26)
+||| pointed at `minimumCommutative` from `Data.Nat` as the right
+||| primitive — works because `composeCertificates` was switched to
+||| `minimum` at A12.
+public export
+composeHighProvenComm :
+  (a, b : ProofCertificate) ->
+  let MkCertificate _ ha _ = composeCertificates a b
+      MkCertificate _ hb _ = composeCertificates b a
+  in ha = hb
+composeHighProvenComm (MkCertificate _ h1 _) (MkCertificate _ h2 _) =
+  minimumCommutative h1 h2
 
 ||| Semantic commutativity of composition under `LevelAchieved`.
 ||| `composeCertificates` is NOT strictly commutative — the list

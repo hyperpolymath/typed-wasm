@@ -139,6 +139,16 @@ const EXPECTED = [
   ["Proofs.idr", /^achievedAppendSplit\s*:/m, "LevelAchievedIn decomposition over ++ (A11)"],
   ["Proofs.idr", /^composeAssocLists\s*:/m, "composeCertificates list-associativity (A11)"],
   ["Proofs.idr", /^composeAchievedSym\s*:/m, "composeCertificates achieved-set symmetry (A11)"],
+  ["Proofs.idr", /^composeAssoc\s*:/m, "composeCertificates FULL associativity (A12, closes item 4)"],
+  ["Proofs.idr", /^composeHighProvenComm\s*:/m, "composeCertificates Nat-side commutativity (A12, closes item 4)"],
+
+  // Region.idr — A12 disjointness (closes post-A10 audit item 6)
+  ["Region.idr", /^data\s+RegionDisjoint/m, "Region byte-disjointness predicate (A12)"],
+  ["Region.idr", /^regionDisjointSym\s*:/m, "Region disjointness symmetry (A12)"],
+
+  // ResourceCapabilities.idr — A12 L8↔L15 joint composition (closes audit item 3)
+  ["ResourceCapabilities.idr", /^containedConcat\s*:/m, "ContainedIn distributes over ++ (A12)"],
+  ["ResourceCapabilities.idr", /^jointBudgetCompose\s*:/m, "L8↔L15 joint budget compose (A12, closes item 3)"],
 ];
 
 // ----------------------------------------------------------------------

@@ -20,7 +20,51 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
-## RECONCILIATION 2026-05-26 (A11 follow-up — read this FIRST)
+## RECONCILIATION 2026-05-26 (A12 follow-up — read this FIRST)
+
+> **A12 follows A11 in the same calendar day.**  Per coordinator-routed
+> A12 go-ahead, this round closes **3 more** of the 8 untracked gaps
+> from `project_typed_wasm_proof_debt_post_a10.md`:
+>
+> 1. **Item 4 closed IN FULL.**  The A11 partial (`composeAssocLists`
+>    was list-side only) is now superseded by `composeAssoc` proving
+>    three-way associativity of `composeCertificates` across all three
+>    fields (list parts, multi-module parts, AND the `highestProven`
+>    Nat).  Made possible by switching `composeCertificates` from the
+>    Ord-derived `Prelude.min` to the structural `Data.Nat.minimum`
+>    (per coordinator hint), which makes `minimumAssociative` apply
+>    directly.  `composeHighProvenComm` adds Nat-side commutativity
+>    via `minimumCommutative`.  The original `composeAssocLists` is
+>    kept as a back-compat corollary.
+>
+> 2. **Item 6 closed.**  `RegionDisjoint r1 r2` in `Region.idr` —
+>    a two-constructor data type witnessing that two regions' byte
+>    footprints `[baseAddr, baseAddr + totalSize)` don't overlap in
+>    either ordering.  `regionDisjointSym` proves symmetry.  The
+>    cross-level theorem linking disjointness to L7 aliasing-safety
+>    and L10 linearity is left for a future pass — disjointness as a
+>    predicate is the missing primitive the audit flagged.
+>
+> 3. **Item 3 closed.**  `jointBudgetCompose` in
+>    `ResourceCapabilities.idr` proves L8 ↔ L15 joint composition:
+>    given individual `EffectSubsumes` witnesses + individual
+>    `FunctionCaps` witnesses for two functions sharing an owner
+>    module, the compound function satisfies both the combined L8
+>    envelope (via `subsumeCompose`) AND the combined L15 module
+>    envelope (via the new `containedConcat` + the existing
+>    `l15bSoundness`).
+>
+> All five new theorems (`composeAssoc`, `composeHighProvenComm`,
+> `RegionDisjoint`, `regionDisjointSym`, `jointBudgetCompose`,
+> `containedConcat`) are guarded by `tests/proof/regression.mjs`.
+> Regression now **50/50**.
+>
+> Items remaining from the original post-A10 audit (all explicitly
+> A12 → A13 inheritance per coordinator clearance): item 5 (L13×L10,
+> L14×L13 cross-level), item 7 (Rust verifier ↔ Idris2 spec
+> equivalence), item 8 (source-checker ↔ verifier coverage agreement).
+
+## RECONCILIATION 2026-05-26 (A11 follow-up)
 
 > **A11 follows A10 in the same calendar day.**  Where A10 closed the
 > *named* deferred items, A11 attacks three of the **untracked** gaps
