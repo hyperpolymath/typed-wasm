@@ -10,7 +10,7 @@ last-updated = "2026-03-30"
 
 [project-info]
 type = "library"
-languages = ["idris2", "rescript", "zig", "javascript", "ebnf", "latex", "asciidoc"]
+languages = ["idris2", "affinescript", "zig", "javascript", "ebnf", "latex", "asciidoc"]
 license = "MPL-2.0"
 author = "Jonathan D.A. Jewell (hyperpolymath)"
 
