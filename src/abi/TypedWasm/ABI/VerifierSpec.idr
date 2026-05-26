@@ -465,3 +465,99 @@ public export
 emptyModuleSourceAccepts :
      (n : String) -> SourceAccepts (MkModuleSummary n [])
 emptyModuleSourceAccepts n = SAStructural FANil
+
+-- ============================================================================
+-- Concrete instance proofs — non-empty module (alloc / free pair)
+-- ============================================================================
+--
+-- The minimal interesting case: a module exporting an allocator
+-- (`Produces 0`) and a deallocator (`Consumes 0`).  This is the
+-- smallest non-vacuous L10 single-consumption witness:
+--
+--   * `Produces 0` introduces handle token 0.
+--   * `Consumes 0` consumes it exactly once.
+--   * `TokenFresh 0 []` for each per-function obligation is trivial.
+--
+-- Demonstrates that the structural witness machinery scales past the
+-- empty list, and exercises every `ILA*` / `TF*` constructor needed to
+-- build a real witness.
+
+||| Demo module: one allocator + one deallocator, sharing token 0.
+||| The canonical "valid pair" example.  Used by the discrimination
+||| section below to contrast with `badDoubleConsumeModule`.
+public export
+allocFreeModule : ModuleSummary
+allocFreeModule = MkModuleSummary "allocFree"
+  [ MkFunctionSummary "alloc" [Produces 0]
+  , MkFunctionSummary "free"  [Consumes 0]
+  ]
+
+||| Spec acceptance witness for `allocFreeModule`.  Built from raw
+||| structural constructors: `ILAProduces` for the allocator,
+||| `ILAConsumes` for the deallocator, `TFNil` for the trivial
+||| per-function freshness obligations.
+public export
+allocFreeSpecAccepts : SpecAccepts VerifierSpec.allocFreeModule
+allocFreeSpecAccepts = MkSpecAccepts
+  (FACons (ILAProduces TFNil ILANil)
+    (FACons (ILAConsumes TFNil ILANil)
+      FANil))
+
+||| Verifier acceptance for `allocFreeModule`, derived via the
+||| structural spec→verifier direction.  Concrete demonstration that
+||| the agreement value works on a real, non-empty module.
+public export
+allocFreeVerifierAccepts : VerifierAccepts VerifierSpec.allocFreeModule
+allocFreeVerifierAccepts =
+  specImpliesVerifierStructural allocFreeSpecAccepts
+
+||| Source-checker acceptance for `allocFreeModule`, derived via the
+||| structural spec→source direction.  Closes the structural triangle
+||| for a real module.
+public export
+allocFreeSourceAccepts : SourceAccepts VerifierSpec.allocFreeModule
+allocFreeSourceAccepts =
+  specImpliesSourceStructural allocFreeSpecAccepts
+
+-- ============================================================================
+-- Discrimination — predicate rejects bad modules
+-- ============================================================================
+--
+-- A predicate is only useful if it discriminates: there must be some
+-- module the spec REJECTS.  Without a `Not (SpecAccepts badModule)`
+-- proof, the predicate could be vacuously true on everything and pass
+-- every regression test.  The proof below exhibits a concrete bad
+-- module and shows the L10 single-consumption rule has teeth.
+
+||| Bad module: one function double-consumes token 0.  Violates L10
+||| (a linear handle is consumed twice).  The structural witness
+||| machinery should make `SpecAccepts` of this module impossible.
+public export
+badDoubleConsumeModule : ModuleSummary
+badDoubleConsumeModule = MkModuleSummary "badDoubleConsume"
+  [ MkFunctionSummary "doubleFree" [Consumes 0, Consumes 0]
+  ]
+
+||| The spec does not accept `badDoubleConsumeModule`.  This is the
+||| discrimination proof: assuming an acceptance witness, we extract
+||| the `TokenFresh 0 [Consumes 0]` obligation that `ILAConsumes`
+||| requires.  The only constructor matching that shape is
+||| `TFConsumesOther (Not (0 = 0)) _`, and applying `Refl` to the
+||| `Not (0 = 0)` produces `Void`.  Demonstrates L10 has teeth.
+public export
+notSpecAcceptsBadDoubleConsume :
+     Not (SpecAccepts VerifierSpec.badDoubleConsumeModule)
+notSpecAcceptsBadDoubleConsume
+  (MkSpecAccepts (FACons (ILAConsumes (TFConsumesOther noteq _) _) _)) =
+    noteq Refl
+
+||| Symmetric: the structural verifier witness is also impossible for
+||| the bad module.  (The `VADifferential` case is not ruled out by
+||| this lemma — that escape hatch is by design and remains the
+||| differential-trust obligation.)
+public export
+notVerifierStructuralAcceptsBadDoubleConsume :
+     Not (FunctionsAccepted VerifierSpec.badDoubleConsumeModule.functions)
+notVerifierStructuralAcceptsBadDoubleConsume
+  (FACons (ILAConsumes (TFConsumesOther noteq _) _) _) =
+    noteq Refl
