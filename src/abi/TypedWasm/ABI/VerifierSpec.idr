@@ -561,3 +561,221 @@ notVerifierStructuralAcceptsBadDoubleConsume :
 notVerifierStructuralAcceptsBadDoubleConsume
   (FACons (ILAConsumes (TFConsumesOther noteq _) _) _) =
     noteq Refl
+
+||| A second L10 rejection path: `[Produces 0, Produces 0]`.
+||| The L10 single-consumption rule forbids any token from appearing
+||| twice in a function's intent list, regardless of `Consumes` /
+||| `Produces` direction.  Distinct from `badDoubleConsumeModule`
+||| because it exercises the `ILAProduces` / `TFProducesOther`
+||| constructor pair instead of the `ILAConsumes` / `TFConsumesOther`
+||| pair.
+public export
+badDoubleProduceModule : ModuleSummary
+badDoubleProduceModule = MkModuleSummary "badDoubleProduce"
+  [ MkFunctionSummary "doubleAlloc" [Produces 0, Produces 0]
+  ]
+
+||| The spec does not accept `badDoubleProduceModule`.  Mirror of
+||| `notSpecAcceptsBadDoubleConsume` for the `Produces` branch.
+public export
+notSpecAcceptsBadDoubleProduce :
+     Not (SpecAccepts VerifierSpec.badDoubleProduceModule)
+notSpecAcceptsBadDoubleProduce
+  (MkSpecAccepts (FACons (ILAProduces (TFProducesOther noteq _) _) _)) =
+    noteq Refl
+
+||| A third L10 rejection path: a token mixes `Consumes` with
+||| `Produces` in the same function.  `[Consumes 0, Produces 0]`
+||| violates the per-function single-occurrence rule because the
+||| `ILAConsumes` constructor demands `TokenFresh 0 [Produces 0]`,
+||| which only `TFProducesOther` can witness, which in turn requires
+||| `Not (0 = 0)`.
+public export
+badConsumeProduceMixModule : ModuleSummary
+badConsumeProduceMixModule = MkModuleSummary "badConsumeProduceMix"
+  [ MkFunctionSummary "mixed" [Consumes 0, Produces 0]
+  ]
+
+||| The spec does not accept `badConsumeProduceMixModule`.  Exercises
+||| the cross-direction case: the rejection witness is
+||| `TFProducesOther (Not (0 = 0)) _` inside an `ILAConsumes` shell.
+public export
+notSpecAcceptsBadConsumeProduceMix :
+     Not (SpecAccepts VerifierSpec.badConsumeProduceMixModule)
+notSpecAcceptsBadConsumeProduceMix
+  (MkSpecAccepts (FACons (ILAConsumes (TFProducesOther noteq _) _) _)) =
+    noteq Refl
+
+-- ============================================================================
+-- Extended allocFreeModule — exercises all four OwnershipIntent
+-- constructors (Produces / Consumes / Borrows / BorrowsExclusive)
+-- ============================================================================
+--
+-- The base `allocFreeModule` exercises only the linear pair
+-- (Produces 0 / Consumes 0).  The extended variant adds a borrowing
+-- pattern alongside, exercising both `Borrows` (read-only) and
+-- `BorrowsExclusive` (mutable), and shows the structural witness
+-- machinery handles all four constructors in a single module.
+--
+-- Schema tags 1 and 2 are used so the borrow intents don't collide
+-- structurally with the linear token 0 (which lives in a separate
+-- index namespace anyway, but keeping them distinct makes the
+-- intent table easier to read).
+
+||| Demo module exercising all four `OwnershipIntent` constructors.
+|||
+|||   * `alloc` produces a linear handle (token 0).
+|||   * `read` borrows schema 1 (read-only).
+|||   * `update` borrows schema 2 exclusively (mutable).
+|||   * `free` consumes the linear handle.
+public export
+allocFreeWithBorrowModule : ModuleSummary
+allocFreeWithBorrowModule = MkModuleSummary "allocFreeWithBorrow"
+  [ MkFunctionSummary "alloc"  [Produces 0]
+  , MkFunctionSummary "read"   [Borrows 1]
+  , MkFunctionSummary "update" [BorrowsExclusive 2]
+  , MkFunctionSummary "free"   [Consumes 0]
+  ]
+
+||| Spec acceptance witness for `allocFreeWithBorrowModule`.  Exercises
+||| `ILAProduces` / `ILABorrows` / `ILABorrowsExclusive` / `ILAConsumes`
+||| in a single witness — the full four-constructor coverage of
+||| `IntentsLinearAcceptable`.
+public export
+allocFreeWithBorrowSpecAccepts :
+     SpecAccepts VerifierSpec.allocFreeWithBorrowModule
+allocFreeWithBorrowSpecAccepts = MkSpecAccepts
+  (FACons (ILAProduces TFNil ILANil)
+    (FACons (ILABorrows ILANil)
+      (FACons (ILABorrowsExclusive ILANil)
+        (FACons (ILAConsumes TFNil ILANil)
+          FANil))))
+
+||| Verifier acceptance for the four-constructor demo module, derived
+||| via `specImpliesVerifierStructural`.
+public export
+allocFreeWithBorrowVerifierAccepts :
+     VerifierAccepts VerifierSpec.allocFreeWithBorrowModule
+allocFreeWithBorrowVerifierAccepts =
+  specImpliesVerifierStructural allocFreeWithBorrowSpecAccepts
+
+||| Source-checker acceptance for the four-constructor demo module.
+public export
+allocFreeWithBorrowSourceAccepts :
+     SourceAccepts VerifierSpec.allocFreeWithBorrowModule
+allocFreeWithBorrowSourceAccepts =
+  specImpliesSourceStructural allocFreeWithBorrowSpecAccepts
+
+-- ============================================================================
+-- ExtendedAgreement — constructive bridge from VADifferential to spec
+-- ============================================================================
+--
+-- The `StructuralAgreement` value above closes the structural
+-- sublattice but leaves `VADifferential` evidence dangling: there is
+-- no provable `(m : ModuleSummary) -> VerifierAccepts m -> SpecAccepts m`
+-- that handles `VADifferential` cases, because a fixture name + id
+-- alone carry no structural information.
+--
+-- The trust pattern below relocates the trust-injection moment from
+-- "every VADifferential witness use" to "fixture registration time".
+-- A `TrustedFixture` packages a fixture name + id with the structural
+-- witness the fixture is claimed to certify.  Constructing a
+-- `TrustedFixture` IS the trust-injection — but once constructed, the
+-- witness is structural, so downstream proofs of agreement use the
+-- structural directions only.
+--
+-- This is the constructive bridge: the trust still has to be injected
+-- somewhere (because the Rust verifier inspects wasm bytes; Idris2
+-- cannot do that itself), but it's injected once per fixture, with
+-- the fixture name pinned in the witness type, instead of being
+-- injected anew at every consumer of `VerifierSpecAgreement`.
+
+||| A trusted fixture: pairs the differential evidence (fixture name +
+||| id) with the structural witness the fixture is supposed to
+||| certify.  Constructing one is the trust-injection moment.  Search
+||| for `MkTrustedFixture` to enumerate every fixture trust-injection.
+public export
+record TrustedFixture (m : ModuleSummary) where
+  constructor MkTrustedFixture
+  trustedFixtureName : String
+  trustedFixtureId   : Nat
+  trustedWitness     : FunctionsAccepted m.functions
+
+||| A `TrustedFixture` projects to `VerifierAccepts` via the
+||| structural constructor — no further trust injection at use site.
+public export
+trustedToVerifier : TrustedFixture m -> VerifierAccepts m
+trustedToVerifier (MkTrustedFixture _ _ w) = VAStructural w
+
+||| A `TrustedFixture` projects to `SpecAccepts` similarly.
+public export
+trustedToSpec : TrustedFixture m -> SpecAccepts m
+trustedToSpec (MkTrustedFixture _ _ w) = MkSpecAccepts w
+
+||| A `TrustedFixture` projects to `SourceAccepts` similarly.
+public export
+trustedToSource : TrustedFixture m -> SourceAccepts m
+trustedToSource (MkTrustedFixture _ _ w) = SAStructural w
+
+||| `ExtendedAgreement` — `StructuralAgreement` plus a fixture lookup.
+||| A consumer with an `ExtendedAgreement` and a `VADifferential`
+||| witness can ask the lookup for the matching `TrustedFixture` and
+||| obtain a structural witness — turning the dangling differential
+||| case into a structural one.
+|||
+||| The lookup returns `Maybe` because not every fixture name will be
+||| registered.  An empty `ExtendedAgreement` (returning `Nothing`
+||| everywhere) trivially exists; populated ones grow as fixtures are
+||| audited.  See `emptyExtendedAgreement` for the empty witness.
+public export
+record ExtendedAgreement where
+  constructor MkExtendedAgreement
+  baseStructural : StructuralAgreement
+  fixtureLookup :
+       (m         : ModuleSummary)
+    -> (fixtureName : String)
+    -> (fixtureId   : Nat)
+    -> Maybe (TrustedFixture m)
+
+||| The empty `ExtendedAgreement`: structural agreement plus a lookup
+||| that returns `Nothing` for every fixture.  Concrete inhabitant
+||| showing the record is constructible without external trust.
+||| Future fixture audits replace the lookup with non-empty
+||| dispatchers.
+public export
+emptyExtendedAgreement : ExtendedAgreement
+emptyExtendedAgreement = MkExtendedAgreement
+  structuralAgreement
+  (\_, _, _ => Nothing)
+
+||| Promote a `VADifferential` witness to `SpecAccepts` using an
+||| `ExtendedAgreement`.  Returns `Nothing` if the fixture is not
+||| registered.  Total — no `believe_me`, no `assert_total`.
+|||
+||| This is the constructive bridge promised by the section header:
+||| a `VADifferential` witness plus a registered fixture produces a
+||| structural-grade spec acceptance.
+public export
+verifierImpliesSpecExtended :
+     ExtendedAgreement
+  -> (m : ModuleSummary)
+  -> VerifierAccepts m
+  -> Maybe (SpecAccepts m)
+verifierImpliesSpecExtended _   _ (VAStructural fa)         =
+  Just (MkSpecAccepts fa)
+verifierImpliesSpecExtended ext m (VADifferential name fid) =
+  map trustedToSpec (ext.fixtureLookup m name fid)
+
+||| Symmetric direction: `SADifferential` to `SpecAccepts` via the
+||| same fixture-lookup mechanism.  Both source and verifier
+||| differential cases route through the same fixture registry.
+public export
+sourceImpliesSpecExtended :
+     ExtendedAgreement
+  -> (m : ModuleSummary)
+  -> SourceAccepts m
+  -> Maybe (SpecAccepts m)
+sourceImpliesSpecExtended _   _ (SAStructural fa)        =
+  Just (MkSpecAccepts fa)
+sourceImpliesSpecExtended ext m (SADifferential name fid) =
+  map trustedToSpec (ext.fixtureLookup m name fid)
