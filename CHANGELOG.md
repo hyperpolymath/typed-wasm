@@ -10,6 +10,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Proof-debt pass A14 (2026-05-26, same-day continuation; PR #74)
+
+A13 (same-day, [#72](https://github.com/hyperpolymath/typed-wasm/pull/72))
+stated items 7 + 8 as typed obligations but kept the
+`VerifierAccepts` / `SourceAccepts` predicates **opaque** (single
+constructor carrying only an external-evidence string + fixture id).
+That made every agreement direction unprovable without external
+trust at every consumer site.
+
+A14 ([#74](https://github.com/hyperpolymath/typed-wasm/pull/74))
+reshapes the predicates and lands the first **concrete, total,
+no-`believe_me`** agreement value in the codebase between spec /
+verifier / source-checker.
+
+- **Design pass.**  `VerifierAccepts` / `SourceAccepts` refactored to
+  inductive types with two constructors each:
+  - `VAStructural FunctionsAccepted` / `SAStructural FunctionsAccepted`
+    — backed by the same structural predicate the spec uses.  No
+    trust-injection; introspectable in proofs.
+  - `VADifferential String Nat` / `SADifferential String Nat` —
+    external evidence pinned to a fixture row.  Single audit point;
+    grep these constructors to enumerate every trust-injection site.
+  `SpecAccepts` refactored to wrap the new `FunctionsAccepted`
+  predicate, so spec / verifier / source-checker now share one
+  canonical structural witness shape at the L7+L10 layer.
+- **First concrete agreement value.**  `structuralAgreement :
+  StructuralAgreement` — total, no `believe_me`, no `postulate`, no
+  external trust — closes the structural sublattice of items 7 + 8.
+  Six new total functions:
+  `functionsAcceptedImpliesSpec` / `specImpliesFunctionsAccepted`
+  (round-trip), `specImpliesVerifierStructural` /
+  `specImpliesSourceStructural` (total — uses the structural
+  constructors directly), `verifierImpliesSpecStructural` /
+  `sourceImpliesSpecStructural` (return `Maybe`; differential case is
+  honestly `Nothing`).
+- **Concrete inhabitants.**  `emptyFunctionsAccepted`,
+  `emptyModuleSpecAccepts`, `emptyModuleVerifierAccepts`,
+  `emptyModuleSourceAccepts` — show the predicates aren't vacuously
+  empty.  `allocFreeModule` + `allocFreeSpecAccepts` /
+  `allocFreeVerifierAccepts` / `allocFreeSourceAccepts` — first
+  non-empty witness, exercises `ILAProduces` / `ILAConsumes`.
+  `allocFreeWithBorrowModule` extends to all four
+  `OwnershipIntent` constructors with three witnesses each.
+- **Discrimination — predicate has teeth.**  Three rejection paths,
+  each exercising a distinct `TF*` / `ILA*` constructor combination:
+  - `notSpecAcceptsBadDoubleConsume` — `[Consumes 0, Consumes 0]`
+    rejected via `ILAConsumes` / `TFConsumesOther` / `Refl`.
+  - `notSpecAcceptsBadDoubleProduce` — `[Produces 0, Produces 0]`
+    rejected via `ILAProduces` / `TFProducesOther` / `Refl`.
+  - `notSpecAcceptsBadConsumeProduceMix` — `[Consumes 0, Produces 0]`
+    rejected via `ILAConsumes` / `TFProducesOther` / `Refl`.
+  Plus `notVerifierStructuralAcceptsBadDoubleConsume` showing the
+  structural verifier path is symmetric.
+- **ExtendedAgreement — constructive bridge for VADifferential.**
+  `record TrustedFixture m` packages a fixture name + id with the
+  structural witness it certifies; constructing one IS the
+  trust-injection moment (auditable by grepping `MkTrustedFixture`).
+  Projections `trustedToVerifier` / `trustedToSpec` /
+  `trustedToSource` carry the witness into each acceptance predicate
+  without further trust at use site.  `record ExtendedAgreement`
+  bundles `StructuralAgreement` with a fixture-lookup, and
+  `emptyExtendedAgreement` is the concrete inhabitant with an empty
+  registry.  `verifierImpliesSpecExtended` /
+  `sourceImpliesSpecExtended` are total `Maybe`-returning bridges:
+  structural witnesses pass through; differential witnesses consult
+  the fixture registry.  Net effect: the multi-week
+  `VerifierSpecAgreement` / `SourceVerifierAgreement` residual now
+  has a concrete shape (fixture-registry population) rather than
+  a "multi-week TODO".
+
+**~30 new named items added** including `FunctionsAccepted`,
+`VAStructural` / `VADifferential`, `SAStructural` / `SADifferential`,
+six structural-agreement directions + `StructuralAgreement` record +
+concrete `structuralAgreement` value, four empty-module inhabitants,
+six alloc/free + borrow inhabitants, four discrimination proofs +
+their bad modules, `TrustedFixture` record + three projections,
+`ExtendedAgreement` record + concrete empty inhabitant + two
+extended-bridge functions.  Regression: build green 22/22 modules
+under Idris2 0.8.0.  Zero new `believe_me`, `assert_total`,
+`postulate`, `sorry`, `assert_smaller`.  `%default total` preserved.
+
+**Open after A14** — full proof bodies for `VerifierSpecAgreement` /
+`SourceVerifierAgreement` (now down to: populate
+`emptyExtendedAgreement`'s fixture registry from the actual
+differential harness, then close the unconditional direction).
+Other long-tail items (`LevelAttestation` reindexed-by-witness
+redesign; WasmCert-Isabelle tie-back; emitted-wasm byte-equality)
+unchanged.
+
 ### Proof-debt pass A13 (2026-05-26, same-day continuation)
 
 Per coordinator pre-clearance for items 5 + 7 + 8, this round closes

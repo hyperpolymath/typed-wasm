@@ -175,6 +175,31 @@ const EXPECTED = [
   ["VerifierSpec.idr", /^record\s+SourceVerifierAgreement/m, "Source↔verifier coverage obligation (A13, item 8)"],
   ["VerifierSpec.idr", /^sourceImpliesSpec\s*:/m, "Source→spec composition under both agreements (A13)"],
   ["VerifierSpec.idr", /^specImpliesSource\s*:/m, "Spec→source composition under both agreements (A13)"],
+
+  // VerifierSpec.idr — A14 design pass + concrete agreement witnesses
+  ["VerifierSpec.idr", /^data\s+FunctionsAccepted/m, "Shared structural walk over the function list (A14)"],
+  ["VerifierSpec.idr", /^record\s+StructuralAgreement/m, "Structural sublattice agreement record (A14)"],
+  ["VerifierSpec.idr", /^structuralAgreement\s*:/m, "Concrete structural agreement value, items 7+8 (A14)"],
+  ["VerifierSpec.idr", /^functionsAcceptedImpliesSpec\s*:/m, "FunctionsAccepted → SpecAccepts (A14)"],
+  ["VerifierSpec.idr", /^specImpliesFunctionsAccepted\s*:/m, "SpecAccepts → FunctionsAccepted (A14)"],
+  ["VerifierSpec.idr", /^specImpliesVerifierStructural\s*:/m, "Spec → verifier structural direction (A14)"],
+  ["VerifierSpec.idr", /^specImpliesSourceStructural\s*:/m, "Spec → source structural direction (A14)"],
+  ["VerifierSpec.idr", /^verifierImpliesSpecStructural\s*:/m, "Verifier → spec structural direction (A14, Maybe)"],
+  ["VerifierSpec.idr", /^sourceImpliesSpecStructural\s*:/m, "Source → spec structural direction (A14, Maybe)"],
+  ["VerifierSpec.idr", /^emptyModuleSpecAccepts\s*:/m, "Empty-module spec inhabitant (A14)"],
+  ["VerifierSpec.idr", /^allocFreeModule\s*:/m, "Concrete alloc/free demo module (A14)"],
+  ["VerifierSpec.idr", /^allocFreeSpecAccepts\s*:/m, "Non-empty spec acceptance witness (A14)"],
+  ["VerifierSpec.idr", /^allocFreeWithBorrowModule\s*:/m, "Four-constructor demo module (A14)"],
+  ["VerifierSpec.idr", /^allocFreeWithBorrowSpecAccepts\s*:/m, "Four-constructor spec witness (A14)"],
+  ["VerifierSpec.idr", /^badDoubleConsumeModule\s*:/m, "Bad-module case (double Consumes) (A14)"],
+  ["VerifierSpec.idr", /^notSpecAcceptsBadDoubleConsume\s*:/m, "L10 discrimination proof (Consumes/Consumes) (A14)"],
+  ["VerifierSpec.idr", /^notSpecAcceptsBadDoubleProduce\s*:/m, "L10 discrimination proof (Produces/Produces) (A14)"],
+  ["VerifierSpec.idr", /^notSpecAcceptsBadConsumeProduceMix\s*:/m, "L10 discrimination proof (Consumes/Produces mix) (A14)"],
+  ["VerifierSpec.idr", /^record\s+TrustedFixture/m, "Fixture-pinned structural witness packaging (A14)"],
+  ["VerifierSpec.idr", /^record\s+ExtendedAgreement/m, "Structural agreement + fixture lookup (A14)"],
+  ["VerifierSpec.idr", /^emptyExtendedAgreement\s*:/m, "Concrete empty-registry ExtendedAgreement (A14)"],
+  ["VerifierSpec.idr", /^verifierImpliesSpecExtended\s*:/m, "Constructive bridge from VADifferential to spec (A14)"],
+  ["VerifierSpec.idr", /^sourceImpliesSpecExtended\s*:/m, "Constructive bridge from SADifferential to spec (A14)"],
 ];
 
 // ----------------------------------------------------------------------
