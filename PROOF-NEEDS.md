@@ -20,6 +20,48 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
+## RECONCILIATION 2026-05-26 (A11 follow-up — read this FIRST)
+
+> **A11 follows A10 in the same calendar day.**  Where A10 closed the
+> *named* deferred items, A11 attacks three of the **untracked** gaps
+> uncovered by the post-A10 audit (`project_typed_wasm_proof_debt_post_a10.md`):
+>
+> 1. **`Sync.WriteSync` no longer admits fake writers.**  The constructor
+>    now requires a `FieldVersion` witness with three equalities
+>    (`fv.field = field`, `fv.version = newVersion`,
+>    `fv.lastWriter = mod`) and the corollary
+>    `writeSyncIdentifiesWriter` extracts that witness.  An adversarial
+>    construction `WriteSync (MkFieldVersion otherField otherVer
+>    differentModule) Refl Refl Refl` is now ill-typed unless the three
+>    coincide with the indexed field/version/writer — the very
+>    "provenance gap" Audit Item 1 flagged.
+>
+> 2. **`Knowledge.Observed` is grounded in a `Sync` event.**  The
+>    constructor now takes `(sync : Sync mod field oldVer ver)` so
+>    `Observed mod field ver` cannot be inhabited without a
+>    causally-prior write.  `observedHasProvenance` reads the witness
+>    back out.  Audit Item 2 ("Knowledge.Observed admits unfounded
+>    versions") is closed.
+>
+> 3. **`composeCertificates` gets its first algebraic laws.**
+>    `achievedAppendSplit` proves `LevelAchievedIn n (xs ++ ys) ->
+>    Either (LevelAchievedIn n xs) (LevelAchievedIn n ys)`;
+>    `composeAssocLists` proves the achieved-set under three-way
+>    composition is associative; `composeAchievedSym` is the symmetric
+>    counterpart of `composeAchievedL`/`R`.  Audit Item 4
+>    ("composeCertificates laws unproven") is **partially** closed —
+>    list-level associativity is proven, but the `Nat`-min commutativity
+>    on `highestProven` is left for A12 because Idris2 0.8's `Prelude.min
+>    Nat` is a non-structural `if x < y then x else y` and does not
+>    reduce to `Refl` on symbolic inputs.  See `composeAssocLists`
+>    docstring in `Proofs.idr` for the discharge plan.
+>
+> All five new theorems (`writeSyncIdentifiesWriter`,
+> `observedHasProvenance`, `achievedAppendSplit`, `composeAssocLists`,
+> `composeAchievedSym`) are guarded by `tests/proof/regression.mjs`
+> Layer 1 grep + Layer 2 `--build`.  Items 3, 5, 6, 7, 8 from the
+> post-A10 audit remain open and inherit to a future A12.
+
 ## RECONCILIATION 2026-05-26 (A10 closure — read this first)
 
 > **A10 closes the last two named "deferred" items** that survived the

@@ -126,6 +126,8 @@ const EXPECTED = [
   ["Epistemic.idr", /^freshnessPropagatesUnderWrites\s*:/m, "Flagship: L12 propagation under concurrent writes (A10)"],
   ["Epistemic.idr", /^syncChainEndsFresh\s*:/m, "Chained syncs end fresh (A10)"],
   ["Epistemic.idr", /^epistemicFreshness\s*:/m, "Level12Proof projector — closes P1.2 (A10)"],
+  ["Epistemic.idr", /^writeSyncIdentifiesWriter\s*:/m, "WriteSync provenance corollary (A11)"],
+  ["Epistemic.idr", /^observedHasProvenance\s*:/m, "Observed always traces to a Sync event (A11)"],
 
   // Layout.idr — cross-language layout contracts (aggregate library role)
   ["Layout.idr", /^subTrans\s*:/m, "Subtype transitivity"],
@@ -134,6 +136,9 @@ const EXPECTED = [
   // Proofs.idr — main theorem suite
   ["Proofs.idr", /^composeCertificates\s*:/m, "Certificate composition"],
   ["Proofs.idr", /^buildCertificate\s*:/m, "Certificate construction"],
+  ["Proofs.idr", /^achievedAppendSplit\s*:/m, "LevelAchievedIn decomposition over ++ (A11)"],
+  ["Proofs.idr", /^composeAssocLists\s*:/m, "composeCertificates list-associativity (A11)"],
+  ["Proofs.idr", /^composeAchievedSym\s*:/m, "composeCertificates achieved-set symmetry (A11)"],
 ];
 
 // ----------------------------------------------------------------------

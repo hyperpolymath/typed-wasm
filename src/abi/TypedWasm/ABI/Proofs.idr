@@ -17,6 +17,8 @@
 
 module TypedWasm.ABI.Proofs
 
+import Data.List
+import Data.Nat
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.TypedAccess
 import TypedWasm.ABI.Levels
@@ -497,6 +499,22 @@ achievedAppendR : {0 n : Nat}
 achievedAppendR []        p = p
 achievedAppendR (_ :: xs) p = LAThere (achievedAppendR xs p)
 
+||| Decomposition: a level achieved in `xs ++ ys` was achieved in
+||| either `xs` or `ys`.  Inverse of `achievedAppendL` /
+||| `achievedAppendR`; needed for the `composeAchievedSym`
+||| semantic-commutativity theorem (A11.3).
+public export
+achievedAppendSplit : {0 n : Nat}
+                   -> (xs, ys : List LevelAttestation)
+                   -> LevelAchievedIn n (xs ++ ys)
+                   -> Either (LevelAchievedIn n xs) (LevelAchievedIn n ys)
+achievedAppendSplit []        ys p           = Right p
+achievedAppendSplit (_ :: _)  _  LAHere      = Left LAHere
+achievedAppendSplit (_ :: xs) ys (LAThere p) =
+  case achievedAppendSplit xs ys p of
+    Left  inXs => Left  (LAThere inXs)
+    Right inYs => Right inYs
+
 ||| Predicate lifted to full proof certificates: "this certificate
 ||| claims level `n`".
 public export
@@ -522,6 +540,56 @@ composeAchievedR : (c1, c2 : ProofCertificate)
                 -> LevelAchieved n (composeCertificates c1 c2)
 composeAchievedR (MkCertificate a1 _ _) (MkCertificate _ _ _) p =
   achievedAppendR a1 p
+
+-- ============================================================================
+-- Composition algebra (A11.3, 2026-05-26 — closes the unstated
+-- "composeCertificates algebraic laws" residual debt item)
+-- ============================================================================
+
+||| `composeCertificates` is associative on the list components.
+||| Both the level-attestation list and the multi-module-certificate
+||| list are concatenated, and concatenation is associative under
+||| `appendAssociative`.  The `highestProven` Nat is combined via
+||| `min`; we punt on Nat-min associativity at the level of strict
+||| equality because `Prelude.min` is defined via `if .. < .. then`
+||| (the Ord-generic form) and does not have a definitional reduction
+||| on Z/S — proving it from scratch is multi-case Nat trichotomy and
+||| out of scope for this round.  Instead we state the *list-level*
+||| associativity, which is the part `composeAchievedSym` and the
+||| level-achievement layer actually consume.
+public export
+composeAssocLists :
+  (a, b, c : ProofCertificate) ->
+  let MkCertificate as _ _ = composeCertificates (composeCertificates a b) c
+      MkCertificate bs _ _ = composeCertificates a (composeCertificates b c)
+  in as = bs
+composeAssocLists (MkCertificate ls1 _ _)
+                  (MkCertificate ls2 _ _)
+                  (MkCertificate ls3 _ _) =
+  sym (appendAssociative ls1 ls2 ls3)
+
+||| Semantic commutativity of composition under `LevelAchieved`.
+||| `composeCertificates` is NOT strictly commutative — the list
+||| components are concatenated and concatenation is not commutative
+||| on raw lists.  But for the property that actually matters at the
+||| certificate level — "level N is achieved" — the order is
+||| irrelevant: a level achieved in `compose a b` is also achieved in
+||| `compose b a`.
+|||
+||| Proved by splitting `achieved-in-append` into the two component
+||| cases and re-introducing on the swapped form.  Closes the
+||| "composeCertificates algebra not stated" residual gap from the
+||| post-A10 inventory.
+public export
+composeAchievedSym :
+  {n : Nat} ->
+  (a, b : ProofCertificate) ->
+  LevelAchieved n (composeCertificates a b) ->
+  LevelAchieved n (composeCertificates b a)
+composeAchievedSym {n} (MkCertificate as _ _) (MkCertificate bs _ _) p =
+  case achievedAppendSplit as bs p of
+    Left  inA => achievedAppendR bs inA
+    Right inB => achievedAppendL inB
 
 -- ============================================================================
 -- Proof Erasure Guarantee (PROOF-NEEDS §P3.1)

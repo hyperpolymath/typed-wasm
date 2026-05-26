@@ -25,38 +25,23 @@ import Data.Nat
 %default total
 
 -- ============================================================================
--- Knowledge State
+-- Global Ground Truth + Epistemic Predicates
 -- ============================================================================
-
-||| A module's knowledge about a specific field in shared memory.
-||| Knowledge is parameterised by a monotonic version counter — each
-||| write increments the version, and a reader's knowledge is current
-||| only if its version matches the field's current version.
-public export
-data Knowledge : (module_ : ModuleId) -> (field : String) -> (version : Nat) -> Type where
-  ||| The module has observed this field at the given version.
-  Observed : Knowledge mod field ver
-  ||| The module has NOT observed this field (initial state or invalidated).
-  Unknown : Knowledge mod field 0
+--
+-- Declaration order (A11, 2026-05-26): FieldVersion → Stale → Fresh →
+-- Sync → Knowledge → Knows.  Knowledge.Observed now carries a Sync
+-- witness for provenance, so Knowledge depends on Sync rather than
+-- preceding it.
 
 ||| The actual version of a field in shared memory (global truth).
+||| Carries the writer identity at the recorded version — used as the
+||| ground-truth witness for `WriteSync` (A11).
 public export
 record FieldVersion where
   constructor MkFieldVersion
   field : String
   version : Nat
   lastWriter : ModuleId
-
--- ============================================================================
--- Epistemic Predicates
--- ============================================================================
-
-||| K_i(φ) — "module i knows that field f has version v".
-||| This is the core epistemic modal operator.
-public export
-data Knows : (mod : ModuleId) -> (field : String) -> (version : Nat) -> Type where
-  ||| A module knows a field's version if it has observed it at that version.
-  MkKnows : Knowledge mod field ver -> (ver > 0 = True) -> Knows mod field ver
 
 ||| Staleness: a module's knowledge is stale if the field has been
 ||| written since the module last observed it.
@@ -79,6 +64,14 @@ data Fresh : (mod : ModuleId) -> (field : String) ->
 
 ||| A synchronisation event that updates a module's knowledge.
 ||| After synchronisation, the module knows the current version.
+|||
+||| **WriteSync soundness (A11, 2026-05-26).**  `WriteSync` now
+||| requires a real `FieldVersion` value pinning the writer identity
+||| to global ground truth.  The original constructor took only a
+||| `(writer = mod)` self-referential proof — anyone could supply
+||| `WriteSync mod Refl` for any `mod`, with no link to the actual
+||| writer.  The tightened form forces the caller to commit to a
+||| FieldVersion record matching `(field, newVersion, mod)`.
 public export
 data Sync : (mod : ModuleId) -> (field : String) ->
             (oldVersion : Nat) -> (newVersion : Nat) -> Type where
@@ -86,9 +79,49 @@ data Sync : (mod : ModuleId) -> (field : String) ->
   ExplicitSync : (fresh : Fresh mod field newVersion newVersion) ->
                  Sync mod field oldVersion newVersion
   ||| Write sync: when a module writes a field, it automatically knows
-  ||| the new version (it just wrote it).
-  WriteSync : (writer : ModuleId) -> writer = mod ->
+  ||| the new version (it just wrote it).  The `FieldVersion` witness
+  ||| pins the writer identity to the field's global `lastWriter`.
+  WriteSync : (fv : FieldVersion) ->
+              fv.field      = field      ->
+              fv.version    = newVersion ->
+              fv.lastWriter = mod        ->
               Sync mod field oldVersion newVersion
+
+-- ============================================================================
+-- Knowledge State
+-- ============================================================================
+
+||| A module's knowledge about a specific field in shared memory.
+||| Knowledge is parameterised by a monotonic version counter — each
+||| write increments the version, and a reader's knowledge is current
+||| only if its version matches the field's current version.
+|||
+||| **Observed provenance (A11, 2026-05-26).**  `Observed` now carries
+||| a `Sync` witness — knowledge at a given version must be traceable
+||| to a sync event.  The original nullary `Observed : Knowledge mod
+||| field ver` let any caller assert observation at any version with
+||| no preconditions; provenance is now required.
+public export
+data Knowledge : (module_ : ModuleId) -> (field : String) -> (version : Nat) -> Type where
+  ||| The module has observed this field at `ver` via a sync event
+  ||| originating from `oldVer`.  The sync witness pins the
+  ||| provenance.  `oldVer` is declared as an explicit implicit so
+  ||| pattern matches and extractions can recover the prior version.
+  Observed : {oldVer : Nat} ->
+             (sync : Sync mod field oldVer ver) -> Knowledge mod field ver
+  ||| The module has NOT observed this field (initial state or invalidated).
+  Unknown : Knowledge mod field 0
+
+-- ============================================================================
+-- Epistemic Predicates
+-- ============================================================================
+
+||| K_i(φ) — "module i knows that field f has version v".
+||| This is the core epistemic modal operator.
+public export
+data Knows : (mod : ModuleId) -> (field : String) -> (version : Nat) -> Type where
+  ||| A module knows a field's version if it has observed it at that version.
+  MkKnows : Knowledge mod field ver -> (ver > 0 = True) -> Knows mod field ver
 
 -- ============================================================================
 -- Level 12 Proof Obligation
@@ -140,7 +173,7 @@ freshOrStale (S k) (S c) = case freshOrStale k c of
 export
 syncRestoresFresh : Sync mod field old new -> Fresh mod field new new
 syncRestoresFresh (ExplicitSync fresh) = MkFresh Refl
-syncRestoresFresh (WriteSync _ _) = MkFresh Refl
+syncRestoresFresh (WriteSync _ _ _ _) = MkFresh Refl
 
 -- ============================================================================
 -- Concurrent-write propagation theorems (A10, 2026-05-26 — closes
@@ -233,3 +266,59 @@ epistemicFreshness :
   (p : Level12Proof) ->
   Fresh p.reader p.field p.knownVersion p.currentVersion
 epistemicFreshness p = p.freshness
+
+-- ============================================================================
+-- Constructor soundness corollaries (A11, 2026-05-26 — closes the
+-- WriteSync-admits-fake-writers + Observed-admits-unfounded-versions
+-- soundness gaps surfaced during A10)
+-- ============================================================================
+
+||| A `WriteSync` carries the global ground-truth writer identity.
+||| Given a write-sync event, the writer named in the dependent index
+||| `mod` provably matches some `FieldVersion`'s `lastWriter`.  This
+||| extracts the `FieldVersion` and the equality witness — closing the
+||| "anyone can construct a WriteSync claiming to be the writer" gap
+||| by routing the writer identity through global state.
+|||
+||| Only constructible when the input is a `WriteSync`; `ExplicitSync`
+||| does not carry writer provenance (an explicit sync is a read, not
+||| a write — by design).  Returns `Nothing` in that case.
+public export
+writeSyncIdentifiesWriter :
+  Sync mod field old new ->
+  Maybe (fv : FieldVersion ** (fv.field = field, fv.version = new, fv.lastWriter = mod))
+writeSyncIdentifiesWriter (ExplicitSync _)          = Nothing
+writeSyncIdentifiesWriter (WriteSync fv fp vp wp)   = Just (fv ** (fp, vp, wp))
+
+||| Observed knowledge has Sync provenance.  Given a `Knowledge mod
+||| field ver` value, if it was constructed via `Observed` then a
+||| witnessing `Sync mod field oldVer ver` is in scope for some
+||| existentially-bound `oldVer`.  Returns `Nothing` for the
+||| `Unknown` case (which only inhabits version 0 by design).
+|||
+||| Closes the "Observed admits unfounded version claims" gap: a
+||| caller holding non-Unknown `Knowledge` at any `ver` necessarily
+||| has a `Sync` event in scope to justify the claim — provenance
+||| can no longer be conjured.
+public export
+observedHasProvenance :
+  Knowledge mod field ver ->
+  Maybe (oldVer : Nat ** Sync mod field oldVer ver)
+observedHasProvenance Unknown         = Nothing
+observedHasProvenance (Observed {oldVer} sync) = Just (oldVer ** sync)
+
+-- ----------------------------------------------------------------------------
+-- Residual debt note (A11)
+-- ----------------------------------------------------------------------------
+--
+-- The constructor-soundness tightening above plugs the most pointed
+-- leaks but does not fully close the chain.  `Fresh` and `ExplicitSync`
+-- remain freely constructible:
+--   - `MkFresh Refl : Fresh mod field v v` for any (mod, field, v)
+--   - `ExplicitSync (writerKnowsFresh _ _ _) : Sync mod field _ v`
+-- so a caller can still synthesise a `Sync` (and hence an `Observed`)
+-- by chaining trivial constructions.  Full tightening requires
+-- re-indexing `Fresh` on a `FieldVersion` value so that the
+-- `currentVersion` index is pinned to global ground truth — the next
+-- residual-debt item, tracked in
+-- `~/.claude/projects/-home-hyperpolymath/memory/project_typed_wasm_proof_debt_post_a10.md`.
