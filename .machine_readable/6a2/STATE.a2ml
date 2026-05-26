@@ -6,9 +6,9 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-05-25"
+last-updated = "2026-05-26"
 status = "active"  # active | paused | archived
-session = "2026-05-24/25 — Phase 0 closure pass. 11 PRs landed (#46 CI triage, #47 PRODUCTION-PATH doc, #55 cargo-audit CI, #57 Track C complete +64 assertions and 2 real bugs fixed, #58 tree-sitter scaffold, #59 CI hardening non-blocking, #60 ROADMAP truthfulness audit + drift-detection aspect §8, #61 wiki source-of-truth + STATE.a2ml comprehensive, #62 tree-sitter v1 parses example 01 end-to-end with 0 ERROR, #63 repo tidy RSR-aligned + smoke fix + duplication scrub). Phase 0 gates 1 + 3 met; gate 2 (codegen v0) is the terminal Phase-1-handoff item."
+session = "2026-05-26 — Proof-debt pass A10+A11 (PR #72). A10 closes the last 2 NAMED deferred items from PROOF-NEEDS (L12 freshness propagation under concurrent writes via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness` projector; `compatCommute` mutual-subschema case + `noSpoofingBidir` corollary + 2nd worked example). Also fixed `tests/proof/regression.mjs` Layer 2 from silent no-op `--check` to real `--build`. A11 closes 3 of 8 untracked debts the A10 audit surfaced: (1) `Sync.WriteSync` now requires a `FieldVersion` witness with 3 projection equalities — adversarial writers ill-typed; (2) `Knowledge.Observed` now grounded in a `Sync` event — unfounded versions unconstructable; (4-partial) first algebraic laws for `composeCertificates` — `achievedAppendSplit`, list-level `composeAssocLists`, `composeAchievedSym`. Nat-min half deferred to A12 (`Prelude.min Nat` is non-structural). 13 new theorems, 44/44 regression passing. Items 3, 5, 6, 7, 8 + Nat-min-of-4 inherit to A12. Previous session (2026-05-24/25): Phase 0 closure pass landed 11 PRs (#46..#63)."
 
 [project-context]
 name = "typed-wasm"
@@ -51,11 +51,15 @@ milestones = [
   { name = "Wiki source-of-truth at docs/wiki/", completion = 100 },  # 2026-05-25 (PR #61)
   { name = "RSR-template taxonomy alignment (AUDIT.adoc + onboarding/status/proposals stubs)", completion = 100 },  # 2026-05-25 (PR #63)
   { name = "Parser migration ReScript -> AffineScript -> Idris2", completion = 50 },  # ReScript->AffineScript landed; AffineScript->Idris2 still ahead
+  { name = "L12 (Epistemic) freshness propagation proof", completion = 100 },  # 2026-05-26 (A10, PR #72) — closes PROOF-NEEDS §P1.2
+  { name = "MultiModule mutual-subschema commutativity (compatCommute)", completion = 100 },  # 2026-05-26 (A10, PR #72)
+  { name = "Sync/Knowledge constructor provenance tightening", completion = 100 },  # 2026-05-26 (A11, PR #72) — closes post-A10 audit items 1 + 2
+  { name = "composeCertificates algebraic laws", completion = 50 },  # 2026-05-26 (A11, PR #72) — list-level done, Nat-min half deferred to A12
 ]
 
 [blockers-and-issues]
 issues = [
-  "L11-L12 research modules are not part of the checked package and currently fail standalone type-checking.",
+  "L11 (Tropical) remains research-only at the spec level; theorems live in-package but no surface or FFI exposure. L12 (Epistemic) is now spec-complete for freshness propagation (A10, 2026-05-26) but still lacks surface/FFI exposure.",
   "Venue-facing paper and benchmark claims still outrun the evidence present in-repo (now caught by tests/aspect/claim-envelope §8 drift detection).",
   "generated/abi/ C header pipeline not yet implemented (milestone at 0%).",
   "HostType F32 = Double in TypedAccess.idr — Idris2 lacks Float32; documented limitation.",
@@ -80,8 +84,8 @@ actions = [
 ]
 
 [maintenance-status]
-last-run-utc = "2026-05-25T20:00:00Z"
-last-report = "docs/PRODUCTION-PATH.adoc"   # the canonical strategic doc supersedes one-off audit reports
+last-run-utc = "2026-05-26T19:30:00Z"
+last-report = "PROOF-NEEDS.md (RECONCILIATION 2026-05-26 A11 banner)"   # supersedes prior PRODUCTION-PATH-as-last-report; A10+A11 are the active record
 last-result = "pass"  # unknown | pass | warn | fail
 open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + anti-pattern policy (fixed by Track A's ReScript cut)
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
@@ -96,7 +100,7 @@ surfaces = [
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
   { name = "property tests",                  assertions = 29,  file = "tests/property/property_test.mjs" }, # added 2026-05-24 (PR #57)
-  { name = "proof regression",                assertions = 25,  file = "tests/proof/regression.mjs" },        # added 2026-05-24 (PR #57)
+  { name = "proof regression",                assertions = 44,  file = "tests/proof/regression.mjs" },        # 25→36 (A10, PR #72) → 44 (A11, PR #72): +8 L12 theorems +1 compatCommute +1 noSpoofingBidir +2 A11-Epistemic corollaries +3 A11-Proofs laws; Layer 2 fixed from --check no-op to --build
   { name = "smoke E2E",                       assertions = 40,  file = "tests/smoke/e2e-smoke.mjs" },
   { name = "structural E2E",                  assertions = 53,  file = "tests/e2e.sh" },
   { name = "integration (airborne-step)",     assertions = 14,  file = "tests/contracts/airborne-step-state-contract.mjs" },

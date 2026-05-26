@@ -10,6 +10,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Proof-debt pass A10 + A11 (2026-05-26)
+
+Two same-day rounds attacking proof debt against `PROOF-NEEDS.md`. PR
+[#72](https://github.com/hyperpolymath/typed-wasm/pull/72).
+
+**A10 (named, deferred)** — closes the last two items the 2026-05-18
+reconciliation banner still called "deferred":
+
+- **L12 freshness propagation under concurrent writes** (Epistemic.idr).
+  8 new theorems headlined by `freshnessPropagatesUnderWrites :
+  Fresh mod field v v -> LT v cur -> Sync mod field v cur ->
+  Fresh mod field cur cur`. Supporting: `concurrentWriteStales`,
+  `resyncRecoversFresh`, `freshNotStale`, `freshImpliesEqual`,
+  `staleImpliesLT`, `syncChainEndsFresh`, and the
+  `epistemicFreshness : (p : Level12Proof) -> Fresh …` projector that
+  closes PROOF-NEEDS §P1.2 directly.
+- **`compatCommute` mutual-subschema case** (MultiModule.idr).
+  `compatCommute : ModuleCompat from to imp exp -> SchemaSub exp imp ->
+  ModuleCompat to from exp imp` + `noSpoofingBidir` corollary.
+  Second worked example (`serviceA`/`serviceB` with permuted schemas)
+  exercises the theorem on a non-trivial input.
+- **`tests/proof/regression.mjs` Layer 2 fixed** from a silent no-op
+  (`--check typed-wasm.ipkg` tried to parse the ipkg as `.idr`) to an
+  actual `idris2 --build`.
+
+**A11 (untracked, audit-driven)** — closes 3 of 8 untracked gaps the
+A10 post-mortem surfaced (full inventory:
+`project_typed_wasm_proof_debt_post_a10.md`):
+
+- **Item 1** — `Sync.WriteSync` no longer admits fake writers. The
+  constructor now requires a `FieldVersion` witness with three
+  projection equalities (`fv.field = field`, `fv.version = newVersion`,
+  `fv.lastWriter = mod`). Adversarial constructions like
+  `WriteSync (MkFieldVersion otherField …) Refl Refl Refl` are now
+  ill-typed unless the witness coincides with the indexed
+  field/version/writer. Corollary `writeSyncIdentifiesWriter`
+  extracts the witness.
+- **Item 2** — `Knowledge.Observed` is grounded in a `Sync` event.
+  Constructor now takes `(sync : Sync mod field oldVer ver)`, so
+  `Observed mod field ver` cannot be inhabited without a
+  causally-prior write. Corollary `observedHasProvenance` reads the
+  prior version + Sync witness back out.
+- **Item 4 (partial)** — first algebraic laws for
+  `composeCertificates`. `achievedAppendSplit` proves
+  `LevelAchievedIn n (xs ++ ys) -> Either (LevelAchievedIn n xs)
+  (LevelAchievedIn n ys)`; `composeAssocLists` proves list-level
+  associativity of three-way composition; `composeAchievedSym` is the
+  symmetric counterpart of `composeAchievedL`/`R`. The `Nat`-min
+  commutativity on `highestProven` is **deferred to A12**:
+  `Prelude.min Nat = if x < y then x else y` is non-structural and
+  does not reduce to `Refl` on symbolic inputs.
+
+**Test surface:** 13 named theorems added (8 in A10, 5 in A11), all
+guarded by both `tests/proof/regression.mjs` layers (Layer 1 source
+grep + Layer 2 `idris2 --build`). Total: **44/44 passing** under
+Idris2 0.8.0.
+
+**Open after A11** (→ A12): post-A10-audit items 3 (L8↔L15 joint
+budget), 5 (L13×L10, L14×L13 cross-level), 6 (region disjointness in
+linear memory), 7 (Rust verifier ↔ Idris2 spec equivalence), 8
+(source-checker ↔ verifier coverage agreement), plus the Nat-min half
+of item 4.
+
 ### Phase 0 closure pass (2026-05-24 / 2026-05-25)
 
 Two sessions of focused engineering-surface stabilisation, closing the
