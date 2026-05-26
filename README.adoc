@@ -11,6 +11,31 @@ image:https://img.shields.io/badge/OpenSSF-Best_Practices-green?logo=opensources
 image:https://img.shields.io/badge/believe__me-0-brightgreen[believe_me: 0]
 image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_draft)-blue[Levels: checked core]
 
+[NOTE]
+.typed-wasm is a meeting point for two unrelated languages
+====
+Two distinct languages target this format and interface with the
+`crates/typed-wasm-verify/` crate inside this repo:
+
+- **AffineScript** at https://github.com/hyperpolymath/affinescript[`hyperpolymath/affinescript`]
+  — a successor to JS / TypeScript / ReScript (application language, OCaml compiler).
+- **Ephapax** at https://github.com/hyperpolymath/ephapax[`hyperpolymath/ephapax`]
+  — a research language for WebAssembly memory safety (Rust + Coq + Idris2).
+
+The two **share nothing else**: separate ASTs, separate type checkers,
+separate compilers, separate proof stories. The word `affine` overlapping
+in both names is substructural-logic-family terminology, not a project
+relationship. Specifically: Ephapax is internally dyadic and contains an
+`ephapax-affine` *sublanguage* — that sublanguage is *not* AffineScript.
+
+When working on `crates/typed-wasm-verify/`, the agreement theorems against
+each consumer are independent — a fix that aligns the verifier with one
+language's invariants says nothing about the other.
+
+Canonical disambiguation:
+link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md[nextgen-languages/docs/disambiguation/ephapax-vs-affinescript.md].
+====
+
 **Progressive type safety for WebAssembly linear memory — checked L1-L10 core, 0 believe_me in the checked proof package.**
 
 == Two Roles (ADR-004)
