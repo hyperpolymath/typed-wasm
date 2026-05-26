@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 0 closure pass (2026-05-24 / 2026-05-25)
+
+Two sessions of focused engineering-surface stabilisation, closing the
+foundation gates of `docs/PRODUCTION-PATH.adoc` §Phase 0. Gates 1
+(CI green-or-advisory) and 3 (ROADMAP truthful + drift-detected) met;
+gate 2 (codegen v0 round-trips through verifier) remains as the
+terminal Phase-1-handoff item.
+
+**11 PRs landed**:
+
+- **#46** — CI triage round 1 (3 of 6 reds fixed: cargo install, structural E2E, hypatia exemption)
+- **#47** — `docs/PRODUCTION-PATH.adoc` canonical 6-phase plan + ROADMAP version↔phase mapping + README pointer
+- **#55** — `cargo audit` workflow (RustSec advisories, weekly cron)
+- **#57** — Track C complete: `tests/property/property_test.mjs` (29 assertions), `tests/aspect/security-envelope.mjs` (10), `tests/proof/regression.mjs` (25 + optional idris2 layer). Caught + fixed 2 real bugs (`.well-known/security.txt` template residue, missing SPDX on `ffi/zig/src/main.zig` and `.machine_readable/scripts/forge/git-cleanup.sh`).
+- **#58** — `tools/tree-sitter-twasm/` scaffold (Track A kickoff): region-decls grammar v0
+- **#59** — A2ML / K9 / Build+E2E persistent-red jobs marked non-blocking with documented removal preconditions
+- **#60** — ROADMAP truthfulness audit (3 real path drifts fixed: `spec/10-levels-for-wasm.adoc` rename → `type-safety-levels-for-wasm.adoc` in 5 callers; EXPLAINME.adoc pre-restructure file table; stray `src/abi/Foreign.idr` reference) + `claim-envelope.mjs` §8 drift-detection aspect
+- **#61** — Wiki source-of-truth at `docs/wiki/` (`Home.md`, `Production-Path.md`, `Phase-0-Status.md`, `Comparison.md`, sync workflow) + comprehensive `.machine_readable/6a2/STATE.a2ml` update
+- **#62** — tree-sitter v1 grammar — parses `examples/01-single-module.twasm` end-to-end with 0 ERROR nodes (~270 lines covering memory decls, functions, parameters, statements, expressions, nested field paths)
+- **#63** — Repo tidy: RSR-template taxonomy alignment (added `AUDIT.adoc`, `docs/onboarding/`, `docs/status/`, `docs/proposals/`, `docs/architecture/ABI-PIPELINE.adoc`); deleted 8 worthless files (3 template-residue QUICKSTARTs, 2 heuristic `.invariants.md` artefacts, empty `docs/wikis/`, stray `generated/abi/README.adoc`); README Quick Tour rebuilt; smoke job made graceful for the in-flight parser migration; `claim-envelope.mjs` §4 tolerates build outputs whose source exists; stale ReScript references scrubbed from `.hypatia-ignore`, `README.adoc`, `AUDIT.adoc`
+
+**Test surface after Phase 0 pass**: 545+ assertions across 11 surfaces (88 parser + 53 verify + 56 per-level + 53+10 aspect + 29 property + 25 proof + 40 smoke + 53 structural + 14 integration + 124 ECHIDNA). Up from ~430 pre-session.
+
+**Out of scope for this pass** (multi-week / cross-repo): Track A's full `spec/grammar.ebnf` parity + Idris2 parser at 188-test parity + codegen v0; Track B's cross-repo AffineScript verifier migration (requires separate session pointed at `hyperpolymath/affinescript`).
+
+**Tracking**: GitHub issue #48 carries the live ledger; phases 1–6 at #49–#54.
+
 ### Added
 - **typed-wasm-verify** Rust crate (`crates/typed-wasm-verify/`) — post-codegen verifier for L7 (aliasing) + L10 (linearity) on emitted wasm modules. Rust port of `hyperpolymath/affinescript:lib/{tw_verify,tw_interface}.ml`. 50/50 tests pass (40 unit + 10 cross-compat integration). Replaces the AffineScript verifier path which is on its way out.
   - C1 (#19) — Scaffold: crate skeleton, public types (`OwnershipKind`, `OwnershipError`, `CrossError`, `FuncInterface`, `VerifyError`), `OWNERSHIP_SECTION_NAME` constant, stubbed entry points.

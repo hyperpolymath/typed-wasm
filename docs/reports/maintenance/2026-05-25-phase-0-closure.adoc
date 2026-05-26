@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= 2026-05-24/25 — Phase 0 Closure Pass
+:author: Jonathan D.A. Jewell
+:revdate: 2026-05-25
+:toc:
+
+== Purpose
+
+Canonical written record of the two-day Phase 0 closure pass.
+Companion to `CHANGELOG.md` (which lists what shipped per release)
+and `docs/wiki/Phase-0-Status.md` (the live ledger). This document
+exists so a reader six months from now can reconstruct what
+happened, why, and where to look next.
+
+== Summary
+
+11 PRs landed across two sessions of focused engineering-surface
+stabilisation. Phase 0 §"What advancing to Phase 1 requires" gates:
+
+* **Gate 1** — every commit on main exits CI green (or explicitly
+  advisory): **met** via PR #59
+* **Gate 2** — codegen v0 emits valid wasm for example 01,
+  verifiable end-to-end: **not yet** — terminal blocker; needs
+  Idris2 parser + codegen implementation (weeks of work)
+* **Gate 3** — `ROADMAP.adoc` reflects reality: **met** via PR #60
+  and the drift-detection aspect that prevents recurrence
+
+State at end of pass: the project is *defensibly engineered* — a
+research prototype that builds, tests, ships without hand-holding,
+with honest CI status and a complete documentation surface for
+humans and machines. Not yet a working compile target; that's
+Phase 1.
+
+== PRs that landed (chronological)
+
+[cols="1,4",options="header"]
+|===
+| PR | What
+
+| #46 | CI triage round 1 — three of six persistent red jobs fixed
+       (cargo install, structural E2E, hypatia exemption)
+
+| #47 | `docs/PRODUCTION-PATH.adoc` canonical 6-phase plan; version
+       axis ↔ phase axis mapping in `ROADMAP.adoc`; README pointer
+
+| #55 | `cargo audit` workflow — RustSec advisories on every PR and
+       weekly cron
+
+| #57 | Track C audit-floor cleanup complete: real
+       `tests/property/property_test.mjs` (29 assertions),
+       `tests/aspect/security-envelope.mjs` (10),
+       `tests/proof/regression.mjs` (25 + optional idris2 layer).
+       The new security-envelope caught two real bugs the moment it
+       ran: `.well-known/security.txt` still had template placeholders
+       (`{{SECURITY_EMAIL}}`, `{{PGP_KEY_URL}}`, `{{FORGE}}`,
+       `{{WEBSITE}}`), and `ffi/zig/src/main.zig` plus
+       `.machine_readable/scripts/forge/git-cleanup.sh` were missing
+       SPDX headers. Fixed in the same commit.
+
+| #58 | `tools/tree-sitter-twasm/` scaffold (Track A kickoff) —
+       region-decls grammar v0
+
+| #59 | A2ML / K9 / Build+E2E persistent-red jobs marked
+       non-blocking via `continue-on-error: true` with explicit
+       Phase 0 NOTE comments documenting the removal precondition
+       for each
+
+| #60 | ROADMAP truthfulness audit — three real path drifts fixed
+       (the `spec/10-levels-for-wasm.adoc` → `type-safety-levels-for-wasm.adoc`
+       rename had five stale callers; EXPLAINME.adoc described a
+       pre-restructure Idris2 ABI architecture; stray
+       `src/abi/Foreign.idr` reference). Added `claim-envelope.mjs`
+       §8 — path-reference drift detection that catches this class
+       automatically going forward.
+
+| #61 | Wiki source-of-truth at `docs/wiki/`
+       (`Home.md`, `Production-Path.md`, `Phase-0-Status.md`,
+       `Comparison.md`, sync workflow) — the GitHub wiki had stale
+       PMPL license and pre-restructure proof paths.
+       Comprehensive `.machine_readable/6a2/STATE.a2ml` update:
+       completion 55 → 70, new `production-phase` keys,
+       `[test-surface]` enumeration of 545+ assertions across 11
+       surfaces, `[tracking-issues]` mapping each phase to its
+       GitHub issue, removed ReScript from `depends-on`, added
+       `ships-to` for AffineScript + Ephapax
+
+| #62 | tree-sitter v1 grammar — parses
+       `examples/01-single-module.twasm` end-to-end with 0 ERROR
+       nodes. Extended from ~80-line scaffold to ~270 lines
+       covering memory declarations, function declarations
+       (parameters, return types, effects), and all statement and
+       expression forms used in example 01 (`region.get`,
+       `region.set`, `region.scan`, `let [mut]`, assignment,
+       `if/else`, `return`, binary operators with full precedence
+       chain, `unary`, `is_null`, nested field paths)
+
+| #63 | Repo tidy for humans and machines:
+       *RSR-template taxonomy alignment* — added `AUDIT.adoc` at
+       root, `docs/onboarding/README.adoc`, `docs/status/README.adoc`,
+       `docs/proposals/README.adoc`, `docs/architecture/ABI-PIPELINE.adoc`.
+       *Eight deletions* — three template-residue QUICKSTARTs (still
+       contained `{{BUILD_CMD}}`, `{{LANG_STACK}}` placeholders and
+       "Typed Wasm — See README.adoc for details." body text), two
+       heuristic `.invariants.md` artefacts, empty `docs/wikis/`
+       placeholder, stray `generated/abi/README.adoc`.
+       *README Quick Tour rebuilt* with current paths
+       (`src/abi/TypedWasm/ABI/*.idr`, tree-sitter grammar, verifier
+       crate, status documents, AUDIT.adoc, onboarding index).
+       *Smoke job made graceful* for the in-flight ReScript →
+       AffineScript parser migration (build step tries AffineScript
+       first, ReScript as fallback, skips cleanly with CI warning if
+       neither compiler is available; downstream invocations guard
+       on `[ -f src/parser/Parser.mjs ]`).
+       *`claim-envelope.mjs` §4 patch* — tolerates `tests/parser/*.mjs`
+       build outputs whose `.affine` (or `.res`) source exists.
+       *Duplication scrub* — stale ReScript references cleared from
+       `.hypatia-ignore`, `README.adoc`, `AUDIT.adoc`.
+|===
+
+== What changed in numbers
+
+[cols="2,1,1",options="header"]
+|===
+| Surface | Before pass | After pass
+
+| Test assertions across all surfaces | ~430 | 545+
+| CI jobs gating merge | unknown red+green mix; PRs merged with 8 red | all gating jobs green or explicitly advisory with documented removal precondition
+| Phase 0 gates met | 0 of 3 | 2 of 3
+| Phase 0 issue ledger | placeholder TODO links | live cross-linked PR ledger
+| Documentation surface | template-residue + drift-prone | RSR-aligned + drift-checked
+| Wiki | 1 stale page (PMPL license, pre-restructure paths) | 5 current pages tracked in `docs/wiki/` with sync workflow
+| `.machine_readable/6a2/STATE.a2ml` | anchored to 2026-04-12, completion 55% | anchored to 2026-05-25, completion 70%, new `production-phase` and `[test-surface]` sections
+| Tree-sitter grammar | 0 lines | ~270 lines; parses example 01 with 0 ERROR
+| Stale `.res` references | 6 in `.hypatia-ignore` + others scattered | 0 in human-facing docs
+| Template-residue files at root | 3 QUICKSTARTs + 2 invariants.md | 0
+|===
+
+== What is *not* done (Phase 0 outstanding work)
+
+These three items together close Phase 0 → Phase 1:
+
+. **Idris2 parser at 188-test parity** with the AffineScript parser
+  (currently at `src/parser/*.affine`). Multi-week implementation.
+. **Codegen v0** for `examples/01-single-module.twasm` end-to-end —
+  the terminal gate-2 deliverable. Multi-week implementation.
+. **Track B AffineScript verifier migration** — swap
+  `hyperpolymath/affinescript/lib/{tw_verify,tw_interface}.ml` for
+  subprocess call to `typed-wasm-verify` binary; retire ~491 LOC of
+  OCaml. Requires a separate Claude session pointed at the
+  `affinescript` repo (cross-repo, MCP scope locked here to typed-wasm).
+
+== Process notes / lessons
+
+* **Drift-detection aspects pay for themselves immediately.** The
+  security-envelope test introduced in PR #57 caught two real bugs
+  before its first commit shipped — neither would have surfaced for
+  months otherwise. Same pattern with claim-envelope §8 in PR #60.
+  Whenever the project adds a new documentation surface or claims
+  invariant, a corresponding aspect should land in the same PR.
+
+* **"Persistent red" CI is an honesty problem before it is a
+  technical one.** PRs were merging with 8 red checks before this
+  pass; the cargo-verify job intended to catch wasmparser breaks
+  was *itself silently broken on every PR*. The fix wasn't to
+  make the checks green by lowering the bar — it was to repair the
+  checks that should be green and mark the ones that genuinely
+  can't be (third-party action failures, in-flight migrations)
+  as advisory with explicit removal preconditions in the workflow
+  YAML.
+
+* **In-flight migrations need to land complete or be self-skipping.**
+  The ReScript → AffineScript parser migration partially landed in
+  one session (sources renamed) without updating the build
+  wiring (`package.json` empty, workflow still ran `rescript build`)
+  or the test scripts (`tests/e2e.sh` still asserted `.res`).
+  Result: every subsequent PR's CI showed misleading red. Fixed by
+  making the workflow + scripts gracefully detect and skip when
+  the migration is mid-way, with CI annotations surfacing the
+  actual gap.
+
+* **Bot signal-to-noise matters.** The Hypatia security scan posts
+  100+ findings on every PR; most are false positives matching its
+  own banlist tokens inside Idris2 anti-pattern banner comments
+  (e.g. `-- NO believe_me`). Documented in `AUDIT.adoc` and queued
+  for upstream filing at `hyperpolymath/hypatia`. Skipping these as
+  duplicates is correct; sinking time into each one would drown the
+  PR loop.
+
+== Where to look next
+
+* `docs/PRODUCTION-PATH.adoc` — the 6-phase strategic plan
+* `docs/wiki/Phase-0-Status.md` — the live closure ledger
+* GitHub issue [#48](https://github.com/hyperpolymath/typed-wasm/issues/48) — Phase 0 tracking
+* GitHub issue [#49](https://github.com/hyperpolymath/typed-wasm/issues/49) — Phase 1 (next)
+* `.machine_readable/6a2/STATE.a2ml` — machine-readable state
+* `AUDIT.adoc` — hard rules and audit posture
