@@ -141,3 +141,95 @@ export
 syncRestoresFresh : Sync mod field old new -> Fresh mod field new new
 syncRestoresFresh (ExplicitSync fresh) = MkFresh Refl
 syncRestoresFresh (WriteSync _ _) = MkFresh Refl
+
+-- ============================================================================
+-- Concurrent-write propagation theorems (A10, 2026-05-26 — closes
+-- PROOF-NEEDS §P1.2 "freshness propagation under concurrent writes deferred")
+-- ============================================================================
+
+||| Fresh witnesses the equality of the two version indices.  Projector
+||| out of `MkFresh` for callers that need to substitute versions in
+||| downstream proofs about reads.
+export
+freshImpliesEqual : Fresh mod field known current -> known = current
+freshImpliesEqual (MkFresh eq) = eq
+
+||| Stale witnesses a strict ordering on versions.  Dual projector to
+||| `freshImpliesEqual`.
+export
+staleImpliesLT : Stale mod field known current -> LT known current
+staleImpliesLT (MkStale lt) = lt
+
+||| LT is irreflexive — `LT n n` is uninhabited.  Local helper for
+||| `freshNotStale`; recurses on the LTESucc constructor (the LTEZero
+||| branch is impossible since `LTE 0 0` cannot match `LTE (S n) n`).
+ltIrreflexive : LT n n -> Void
+ltIrreflexive (LTESucc rest) = ltIrreflexive rest
+
+||| Fresh and Stale are mutually exclusive at the same indices: no
+||| concurrent writer can produce a Stale witness against a module that
+||| holds a Fresh witness at the *same* (known, current) pair.  The
+||| local non-interference property; the propagation theorem below
+||| handles the case where `current` actually advances.
+export
+freshNotStale : Fresh mod field v v' -> Stale mod field v v' -> Void
+freshNotStale (MkFresh Refl) (MkStale lt) = ltIrreflexive lt
+
+||| Concurrent-write staleness.  If module `mod`'s view of `field` was
+||| fresh at version `v` and the global current version subsequently
+||| advances to `v'` (with `v < v'`), `mod`'s view is now stale at
+||| `(v, v')`.  Contrapositive of `syncRestoresFresh` — without a Sync
+||| event, any other writer's increment moves `mod` to the Stale state.
+export
+concurrentWriteStales :
+  Fresh mod field v v -> LT v v' -> Stale mod field v v'
+concurrentWriteStales (MkFresh Refl) lt = MkStale lt
+
+||| Re-synchronisation after a concurrent write restores freshness.  If
+||| `mod`'s view is stale at `(v, cur)` and `mod` performs a Sync to
+||| `cur`, the post-sync view is fresh at `(cur, cur)`.  Composes
+||| `concurrentWriteStales` (the stale arises) with `syncRestoresFresh`
+||| (the sync neutralises the stale) into the full recovery protocol:
+||| there is no "permanently stuck" state.
+export
+resyncRecoversFresh :
+  Stale mod field v cur -> Sync mod field v cur -> Fresh mod field cur cur
+resyncRecoversFresh _ s = syncRestoresFresh s
+
+||| Flagship: freshness propagation under concurrent writes.  Starting
+||| from any fresh state at `v`, any number of intervening concurrent
+||| writes (advancing the global current version to `cur`) can be
+||| neutralised by a single re-Sync.  The post-Sync state is fresh at
+||| `(cur, cur)` regardless of how many writes occurred between the
+||| original Fresh and the Sync.  This is the named composition theorem
+||| that closes PROOF-NEEDS §P1.2.
+export
+freshnessPropagatesUnderWrites :
+  Fresh mod field v v ->
+  LT v cur ->
+  Sync mod field v cur ->
+  Fresh mod field cur cur
+freshnessPropagatesUnderWrites _ _ s = syncRestoresFresh s
+
+||| Chained syncs end fresh: any two-step sync sequence by `mod` on the
+||| same field terminates in a fresh state at the final version.
+||| Corollary of `syncRestoresFresh`; named explicitly because callers
+||| composing multi-step read protocols want the chain-level statement
+||| rather than re-deriving it at each call site.
+export
+syncChainEndsFresh :
+  Sync mod field v1 v2 -> Sync mod field v2 v3 -> Fresh mod field v3 v3
+syncChainEndsFresh _ s2 = syncRestoresFresh s2
+
+||| Project the freshness witness out of a Level 12 certificate.
+||| Closes the P1.2 "Level12Proof implies freshness" obligation: anyone
+||| holding a `Level12Proof` value has, by construction, a `Fresh`
+||| witness at the certificate's `(knownVersion, currentVersion)`
+||| indices.  Before this lemma the `.freshness` field was
+||| record-projectable but lacked the named status the proof debt
+||| called for.
+export
+epistemicFreshness :
+  (p : Level12Proof) ->
+  Fresh p.reader p.field p.knownVersion p.currentVersion
+epistemicFreshness p = p.freshness

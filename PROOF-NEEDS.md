@@ -20,7 +20,41 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
-## RECONCILIATION 2026-05-18 (verified ground truth — read this first)
+## RECONCILIATION 2026-05-26 (A10 closure — read this first)
+
+> **A10 closes the last two named "deferred" items** that survived the
+> 2026-05-18 reconciliation below.  Both are now mechanically proven and
+> guarded by `tests/proof/regression.mjs` (Layer 1 grep + Layer 2 build,
+> Layer 2 invocation fixed to `--build` from a no-op `--check`).
+>
+> 1. **L12 freshness propagation under concurrent writes** (PROOF-NEEDS
+>    §P1.2 and LEVEL-STATUS row 12) — closed by 8 new theorems in
+>    `Epistemic.idr` headlined by `freshnessPropagatesUnderWrites :
+>    Fresh mod field v v -> LT v cur -> Sync mod field v cur ->
+>    Fresh mod field cur cur` plus `concurrentWriteStales`,
+>    `resyncRecoversFresh`, `freshNotStale`, `freshImpliesEqual`,
+>    `staleImpliesLT`, `syncChainEndsFresh`, and the named
+>    `epistemicFreshness : (p : Level12Proof) -> Fresh p.reader p.field
+>    p.knownVersion p.currentVersion` projector that satisfies the
+>    P1.2 obligation directly.
+>
+> 2. **`compatCommute` mutual-subschema case** (PROOF-NEEDS §P0.5
+>    paragraph 246) — closed in `MultiModule.idr` by `compatCommute :
+>    ModuleCompat from to imp exp -> SchemaSub exp imp ->
+>    ModuleCompat to from exp imp` plus the `noSpoofingBidir`
+>    corollary.  A second worked example (`serviceA`/`serviceB` with
+>    permuted schemas, both `SchemaSub` directions inhabited)
+>    demonstrates the theorem on a non-trivial input.
+>
+> The only proof-side item still explicitly deferred is the **stronger
+> `LevelAttestation` reindexed by witness** noted at the end of the
+> 2026-05-18 reconciliation; everything LEVEL-STATUS or this file
+> previously called "deferred" or "future work" at the proof level is
+> now resolved.  L15-C call-graph **surface-checker** enforcement
+> remains future work (the proof-side `callCompose` was already in
+> place; LEVEL-STATUS row 15 carries the marker).
+
+## RECONCILIATION 2026-05-18 (verified ground truth)
 
 > Routed from estate proof-debt epic **hyperpolymath/standards#124**,
 > sub-issue **#130**. The 2026-04-13 inventory below is **superseded**

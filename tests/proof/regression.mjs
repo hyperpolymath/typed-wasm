@@ -18,11 +18,13 @@
 //     is what the Idris2 totality checker is for.
 //
 //   Layer 2 (runs only when idris2 is on PATH)
-//     `idris2 --check src/abi/typed-wasm.ipkg` — actually typechecks the
-//     proof package. Catches the case where a theorem name still exists
-//     but its body no longer typechecks. This is the strong test; it
-//     requires an Idris2 toolchain at the version pinned in
-//     src/abi/typed-wasm.ipkg (currently 0.8.0).
+//     `idris2 --build src/abi/typed-wasm.ipkg` — actually typechecks +
+//     builds the proof package. Catches the case where a theorem name
+//     still exists but its body no longer typechecks. This is the strong
+//     test; it requires an Idris2 toolchain at the version pinned in
+//     src/abi/typed-wasm.ipkg (currently 0.8.0).  `--build` is used
+//     instead of `--check` because the latter expects a single .idr
+//     source file and tries to parse the .ipkg as Idris syntax.
 //
 // Phase 0 / Track C deliverable. See:
 //   - TEST-NEEDS.md "11 Idris2 proof modules with 0 proof verification tests"
@@ -109,6 +111,21 @@ const EXPECTED = [
   ["MultiModule.idr", /^LinkGraph\s*:/m, "Link graph type"],
   ["MultiModule.idr", /^schemaSubRefl\s*:/m, "Schema-subtype reflexivity"],
   ["MultiModule.idr", /^schemaSubTrans\s*:/m, "Schema-subtype transitivity"],
+  ["MultiModule.idr", /^compatCommute\s*:/m, "Compat commutativity (mutual subschema, A10)"],
+  ["MultiModule.idr", /^noSpoofingBidir\s*:/m, "Bidirectional no-spoofing (mutual subschema, A10)"],
+
+  // Epistemic.idr — L12 freshness propagation (A10, 2026-05-26)
+  ["Epistemic.idr", /^writerKnowsFresh\s*:/m, "Writer-knows-fresh reflexivity"],
+  ["Epistemic.idr", /^freshOrStale\s*:/m, "Fresh/stale trichotomy"],
+  ["Epistemic.idr", /^syncRestoresFresh\s*:/m, "Sync restores freshness"],
+  ["Epistemic.idr", /^freshImpliesEqual\s*:/m, "Fresh -> known=current projector (A10)"],
+  ["Epistemic.idr", /^staleImpliesLT\s*:/m, "Stale -> known<current projector (A10)"],
+  ["Epistemic.idr", /^freshNotStale\s*:/m, "Fresh/Stale mutual exclusion (A10)"],
+  ["Epistemic.idr", /^concurrentWriteStales\s*:/m, "Concurrent-write staleness (A10)"],
+  ["Epistemic.idr", /^resyncRecoversFresh\s*:/m, "Re-sync recovers freshness (A10)"],
+  ["Epistemic.idr", /^freshnessPropagatesUnderWrites\s*:/m, "Flagship: L12 propagation under concurrent writes (A10)"],
+  ["Epistemic.idr", /^syncChainEndsFresh\s*:/m, "Chained syncs end fresh (A10)"],
+  ["Epistemic.idr", /^epistemicFreshness\s*:/m, "Level12Proof projector — closes P1.2 (A10)"],
 
   // Layout.idr — cross-language layout contracts (aggregate library role)
   ["Layout.idr", /^subTrans\s*:/m, "Subtype transitivity"],
@@ -165,16 +182,16 @@ if (!idris2Path) {
   if (!existsSync(ipkg)) {
     bad(`ipkg missing at ${ipkg}`);
   } else {
-    console.log(`  Running: ${idris2Path} --check ${ipkg}`);
-    const check = spawnSync(idris2Path, ["--check", "typed-wasm.ipkg"], {
+    console.log(`  Running: ${idris2Path} --build ${ipkg}`);
+    const check = spawnSync(idris2Path, ["--build", "typed-wasm.ipkg"], {
       cwd: join(ROOT, "src/abi"),
       encoding: "utf8",
       timeout: 300_000,
     });
     if (check.status === 0) {
-      ok(`Idris2 --check typed-wasm.ipkg succeeded`);
+      ok(`Idris2 --build typed-wasm.ipkg succeeded`);
     } else {
-      bad(`Idris2 --check failed (exit ${check.status})\n${check.stderr.slice(0, 400)}`);
+      bad(`Idris2 --build failed (exit ${check.status})\n${check.stderr.slice(0, 400)}`);
     }
   }
 }

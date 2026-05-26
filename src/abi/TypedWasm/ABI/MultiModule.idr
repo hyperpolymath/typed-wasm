@@ -396,6 +396,52 @@ noTypeSpoofing : ModuleCompat from to imp expS
 noTypeSpoofing cert name ty fm = noSpoofing cert (MkField name ty) fm
 
 -- ============================================================================
+-- Mutual-subschema commutativity (A10, 2026-05-26 — closes PROOF-NEEDS §P0.5
+-- "compatCommute" deferred item)
+-- ============================================================================
+
+||| Compat commutativity, mutual-subschema case.
+|||
+||| PROOF-NEEDS §P0.5 notes that `compatCommute` only holds when the
+||| two subschema relations are mutually witnessed — at which point
+||| the import and export schemas are equal up to reordering, and the
+||| commutativity is a one-line corollary of `noSpoofing` in both
+||| directions.  This lemma states the mutual case explicitly.
+|||
+||| Given a forward compatibility certificate and an explicit
+||| reverse-subschema witness, the reverse compatibility certificate
+||| is constructible directly.  Without the reverse witness the
+||| theorem does *not* hold — a strict-subset import (Example's
+||| `rescriptImportSchema ⊂ rustExportSchema` below) cannot commute,
+||| because the export's `score` and `banned` fields are absent from
+||| the import schema and no `SchemaSub rustExportSchema
+||| rescriptImportSchema` can be constructed.
+public export
+compatCommute : ModuleCompat from to imp expS
+             -> SchemaSub expS imp
+             -> ModuleCompat to from expS imp
+compatCommute (MkModuleCompat _) reverseSub = MkModuleCompat reverseSub
+
+||| Bidirectional no-spoofing.  When two modules' schemas are mutually
+||| subschemas, every field witness transports in both directions.
+||| Returned as a pair of field-transport functions, one per direction.
+|||
+||| Composition of `noSpoofing` with `compatCommute` at the call site;
+||| named explicitly so multi-direction call sites need not re-derive
+||| the construction.
+public export
+noSpoofingBidir : ModuleCompat from to imp expS
+               -> SchemaSub expS imp
+               -> (f : Field)
+               -> ( FieldMatches f imp  -> FieldMatches f expS
+                  , FieldMatches f expS -> FieldMatches f imp
+                  )
+noSpoofingBidir compat reverseSub f =
+  ( noSpoofing compat f
+  , noSpoofing (compatCommute compat reverseSub) f
+  )
+
+-- ============================================================================
 -- Worked Example: Rust exports, ReScript imports (strict subset)
 -- ============================================================================
 --
@@ -474,3 +520,66 @@ namespace Example
                                    Example.rustExportSchema
   exampleNoSpoofing =
     noSpoofing exampleCompat (MkField "id" U64) FMHere
+
+  -- --------------------------------------------------------------------
+  -- Permutation example: compatCommute applied (A10, 2026-05-26)
+  -- --------------------------------------------------------------------
+  --
+  -- The strict-subset example above CANNOT commute (rust's score/banned
+  -- are not in rescript's import).  This second example uses a pair of
+  -- modules whose schemas differ only in field order — both directions
+  -- of SchemaSub hold, so compatCommute applies.
+
+  ||| Service A exports `[id, age]` in that order.
+  public export
+  serviceASchema : Schema
+  serviceASchema =
+    [ MkField "id"  U64
+    , MkField "age" U8
+    ]
+
+  ||| Service B publishes the same two fields but in reverse order.
+  public export
+  serviceBSchema : Schema
+  serviceBSchema =
+    [ MkField "age" U8
+    , MkField "id"  U64
+    ]
+
+  public export
+  serviceA : ModuleId
+  serviceA = MkModuleId "service_a"
+
+  public export
+  serviceB : ModuleId
+  serviceB = MkModuleId "service_b"
+
+  ||| A→B: every field in A's schema appears in B's schema (in the
+  ||| swapped position).
+  public export
+  subAB : SchemaSub Example.serviceASchema Example.serviceBSchema
+  subAB =
+    SSCons (FMThere FMHere)             -- "id"  at position 1 in B
+      (SSCons FMHere SSNil)             -- "age" at head      in B
+
+  ||| B→A: the reverse holds too — every field in B's schema appears
+  ||| in A's schema.  The pair (subAB, subBA) witnesses mutual
+  ||| containment, so compatCommute applies.
+  public export
+  subBA : SchemaSub Example.serviceBSchema Example.serviceASchema
+  subBA =
+    SSCons (FMThere FMHere)             -- "age" at position 1 in A
+      (SSCons FMHere SSNil)             -- "id"  at head      in A
+
+  ||| Forward compatibility certificate A→B.
+  public export
+  compatAB : ModuleCompat Example.serviceA Example.serviceB
+                          Example.serviceASchema Example.serviceBSchema
+  compatAB = MkModuleCompat subAB
+
+  ||| Reverse compatibility certificate, derived via `compatCommute`
+  ||| from `compatAB` plus the reverse subschema witness `subBA`.
+  public export
+  compatBA : ModuleCompat Example.serviceB Example.serviceA
+                          Example.serviceBSchema Example.serviceASchema
+  compatBA = compatCommute Example.compatAB Example.subBA
