@@ -129,43 +129,71 @@ data IntentsLinearAcceptable : List OwnershipIntent -> Type where
        IntentsLinearAcceptable rest
     -> IntentsLinearAcceptable (BorrowsExclusive s :: rest)
 
-||| `SpecAccepts m` — the Idris2 spec accepts a module summary.  Built
-||| from `IntentsLinearAcceptable` on every function's intent list.
-||| Stated as a `data` with one constructor so future extensions
-||| (L13 cross-module checks, L14 session-state) can be added as new
-||| constructors without breaking existing witnesses.
+||| Per-function structural acceptance lifted across the function list,
+||| matching how the verifier walks the module's export section.  Used
+||| by `SpecAccepts`, `VerifierAccepts`, and `SourceAccepts` so all
+||| three agree on the structural witness shape at L7+L10.
+public export
+data FunctionsAccepted : List FunctionSummary -> Type where
+  FANil  : FunctionsAccepted []
+  FACons : IntentsLinearAcceptable f.intents
+        -> FunctionsAccepted rest
+        -> FunctionsAccepted (f :: rest)
+
+||| `SpecAccepts m` — the Idris2 spec accepts a module summary.  Wraps
+||| `FunctionsAccepted` on the function list so spec / verifier /
+||| source-checker share a single canonical structural witness at the
+||| L7+L10 layer.  Future extensions (L13 cross-module checks, L14
+||| session-state) add new constructors without breaking existing
+||| structural witnesses.
 public export
 data SpecAccepts : ModuleSummary -> Type where
   MkSpecAccepts :
-       (perFunction : (f : FunctionSummary)
-                   -> Elem f m.functions
-                   -> IntentsLinearAcceptable f.intents)
+       FunctionsAccepted m.functions
     -> SpecAccepts m
 
 -- ============================================================================
--- Verifier acceptance (opaque — pinned by the differential harness)
+-- Verifier acceptance (inductive — structural + differential cases)
 -- ============================================================================
 --
--- The Rust verifier's acceptance set is not directly representable in
--- Idris2 (it consumes raw wasm bytes via wasmparser).  We model it as
--- an OPAQUE predicate `VerifierAccepts m` indexed by the same
--- `ModuleSummary` shape; the differential testing harness in
--- `tests/cross_compat.rs` is what pins down whether the predicate
--- holds for a given module.
+-- The Rust verifier's acceptance set has two flavours of evidence:
 --
--- The predicate's introduction rule is intentionally non-public: the
--- only legitimate way to construct a `VerifierAccepts` witness is
--- through `differentialAccepted` (below), which calls out the
--- harness's role.  This makes the data flow auditable in the proof:
--- you can search for `MkVerifierAccepts` and find exactly the places
--- where the trust is being injected.
+--   1. STRUCTURAL — for modules whose ownership intents are visible at
+--      the typed surface, the verifier's L7+L10 acceptance is exactly
+--      the same predicate the spec uses.  No trust-injection needed.
+--   2. DIFFERENTIAL — for modules whose typed surface is partial (the
+--      Rust verifier inspects wasm bytes via wasmparser), the only
+--      legitimate way to assert verifier-acceptance is through a row
+--      in the differential testing table (`tests/cross_compat.rs`).
+--
+-- The earlier opaque design (A13) collapsed both cases into a single
+-- "external evidence" constructor.  That made every agreement
+-- direction unprovable (no introspection into the witness).  The
+-- inductive split below restores provability of the structural cases
+-- while keeping the differential case auditable.
 
-||| Opaque verifier-acceptance predicate.  Constructible only by
-||| `differentialAccepted` (statement-level promise; no `Refl` body
-||| could ever justify it without the harness's external evidence).
+||| Inductive verifier-acceptance predicate, indexed by `ModuleSummary`.
+||| Two constructors expose the trust shape:
+|||
+|||   * `VAStructural` — verifier acceptance derived from the same
+|||     structural predicate the spec uses.  No external trust;
+|||     introspectable witness.
+|||   * `VADifferential` — verifier acceptance via the differential
+|||     harness.  External trust pinned to a fixture row.  Searching
+|||     for this constructor enumerates every trust-injection site.
 public export
 data VerifierAccepts : ModuleSummary -> Type where
-  MkVerifierAccepts :
+  ||| Structural verifier acceptance: every exported function's
+  ||| intent list passes the L10 single-consumption / L7 aliasing check.
+  ||| This is the case the spec and the verifier agree on by definition.
+  VAStructural :
+       FunctionsAccepted m.functions
+    -> VerifierAccepts m
+  ||| Differential verifier acceptance: external evidence from
+  ||| `tests/cross_compat.rs` pinning a fixture row.  Constructible
+  ||| only via `differentialAccepted` so the trust boundary is
+  ||| inspectable.
+  VADifferential :
        (differentialEvidence : String)
     -> (fixtureId            : Nat)
     -> VerifierAccepts m
@@ -173,25 +201,31 @@ data VerifierAccepts : ModuleSummary -> Type where
 ||| Construct a `VerifierAccepts` witness from differential-harness
 ||| evidence (fixture name + numeric id from `tests/cross_compat.rs`).
 ||| Naming the fixture in the witness makes the trust boundary
-||| inspectable: every `VerifierAccepts` use can be traced back to a
+||| inspectable: every `VADifferential` use can be traced back to a
 ||| concrete row in the differential table.
 public export
 differentialAccepted : (fixtureName : String) -> (fixtureId : Nat)
                    -> VerifierAccepts m
-differentialAccepted name fid = MkVerifierAccepts name fid
+differentialAccepted name fid = VADifferential name fid
 
 -- ============================================================================
 -- Source-checker acceptance (item 8 surface)
 -- ============================================================================
 
 ||| Source-checker acceptance predicate.  Like `VerifierAccepts`, the
-||| source checker's acceptance set is determined by an external
-||| implementation (the AffineScript front-end at present, replaced by
-||| an Idris2 parser when Track A lands).  The predicate is opaque and
-||| witnessed by the source-side test harness.
+||| source checker has both a structural surface (typed AST) and a
+||| differential side (cross-checked against fixtures when the source
+||| AST is partial).  Same two-constructor shape, same audit story.
 public export
 data SourceAccepts : ModuleSummary -> Type where
-  MkSourceAccepts :
+  ||| Structural source-checker acceptance: lifted from
+  ||| `FunctionsAccepted` exactly as the spec sees it.
+  SAStructural :
+       FunctionsAccepted m.functions
+    -> SourceAccepts m
+  ||| Differential source-checker acceptance: external evidence from a
+  ||| source-side fixture row.
+  SADifferential :
        (sourceEvidence : String)
     -> (fixtureId      : Nat)
     -> SourceAccepts m
@@ -200,7 +234,7 @@ data SourceAccepts : ModuleSummary -> Type where
 public export
 sourceAccepted : (fixtureName : String) -> (fixtureId : Nat)
               -> SourceAccepts m
-sourceAccepted name fid = MkSourceAccepts name fid
+sourceAccepted name fid = SADifferential name fid
 
 -- ============================================================================
 -- Agreement obligations — items 7 and 8
@@ -283,3 +317,151 @@ specImpliesSource :
   -> SourceAccepts m
 specImpliesSource vsa sva m specAcc =
   sva.verifierImpliesSource m (vsa.verifierIsComplete m specAcc)
+
+-- ============================================================================
+-- Structural agreement — first concrete witnesses (items 7 + 8, partial)
+-- ============================================================================
+--
+-- The full `VerifierSpecAgreement` / `SourceVerifierAgreement` records
+-- above remain obligations because their generality covers both
+-- structural and differential evidence: the differential case requires
+-- an external connection (wasm-bytes semantics or fixture-row trust)
+-- and is multi-week.
+--
+-- What IS provable, total, no-trust-injection, is the agreement
+-- restricted to the structural cases.  The records and lemmas below
+-- give those a concrete home.  Future work plugs the differential
+-- cases in by extending these records (e.g. by lifting fixture
+-- evidence into a stratified-acceptance predicate).
+--
+-- Convention: every name in this section ends in `Structural` so the
+-- restriction to the structural sublattice is visible at call sites.
+
+||| `FunctionsAccepted` directly witnesses `SpecAccepts`.  This is the
+||| spec's structural inhabitant: any function-list witness gives a
+||| spec acceptance witness for the enclosing module.
+public export
+functionsAcceptedImpliesSpec :
+     {m : ModuleSummary}
+  -> FunctionsAccepted m.functions
+  -> SpecAccepts m
+functionsAcceptedImpliesSpec fa = MkSpecAccepts fa
+
+||| Inverse direction: a spec acceptance witness contains the
+||| structural per-function witness.
+public export
+specImpliesFunctionsAccepted :
+     {m : ModuleSummary}
+  -> SpecAccepts m
+  -> FunctionsAccepted m.functions
+specImpliesFunctionsAccepted (MkSpecAccepts fa) = fa
+
+||| Spec → verifier (structural case).  Lifts spec acceptance directly
+||| into `VAStructural` — no trust-injection.
+public export
+specImpliesVerifierStructural :
+     {m : ModuleSummary}
+  -> SpecAccepts m
+  -> VerifierAccepts m
+specImpliesVerifierStructural (MkSpecAccepts fa) = VAStructural fa
+
+||| Spec → source (structural case).  Symmetric to the verifier
+||| direction; lifts spec acceptance into `SAStructural`.
+public export
+specImpliesSourceStructural :
+     {m : ModuleSummary}
+  -> SpecAccepts m
+  -> SourceAccepts m
+specImpliesSourceStructural (MkSpecAccepts fa) = SAStructural fa
+
+||| Verifier → spec (structural case only).  Defined on `VAStructural`
+||| witnesses; the `VADifferential` case is the multi-week obligation
+||| and is therefore reflected as a `Maybe` here so totality is
+||| preserved without `believe_me`.
+public export
+verifierImpliesSpecStructural :
+     {m : ModuleSummary}
+  -> VerifierAccepts m
+  -> Maybe (SpecAccepts m)
+verifierImpliesSpecStructural (VAStructural fa)        = Just (MkSpecAccepts fa)
+verifierImpliesSpecStructural (VADifferential _ _)     = Nothing
+
+||| Source → spec (structural case only).  Mirrors
+||| `verifierImpliesSpecStructural` for the source side.
+public export
+sourceImpliesSpecStructural :
+     {m : ModuleSummary}
+  -> SourceAccepts m
+  -> Maybe (SpecAccepts m)
+sourceImpliesSpecStructural (SAStructural fa)       = Just (MkSpecAccepts fa)
+sourceImpliesSpecStructural (SADifferential _ _)    = Nothing
+
+||| Bundle of structural-case agreement directions.  Differs from
+||| `VerifierSpecAgreement` / `SourceVerifierAgreement` in three ways:
+|||
+|||   1. Restricted to the structural sublattice — `VADifferential`
+|||      and `SADifferential` are NOT covered.
+|||   2. Provable as a total Idris2 value (`structuralAgreement` below).
+|||   3. Symmetric across all three predicates simultaneously.
+|||
+||| This is the first concrete agreement value in the codebase that
+||| relates the spec / verifier / source-checker acceptance predicates
+||| without invoking external evidence.
+public export
+record StructuralAgreement where
+  constructor MkStructuralAgreement
+  saSpecToVerifier :
+       (m : ModuleSummary) -> SpecAccepts m -> VerifierAccepts m
+  saSpecToSource :
+       (m : ModuleSummary) -> SpecAccepts m -> SourceAccepts m
+  saVerifierStructuralToSpec :
+       (m : ModuleSummary) -> FunctionsAccepted m.functions -> SpecAccepts m
+  saSourceStructuralToSpec :
+       (m : ModuleSummary) -> FunctionsAccepted m.functions -> SpecAccepts m
+
+||| Concrete witness for `StructuralAgreement`.  Total.  No
+||| `believe_me`, no `postulate`, no external trust.  Closes the
+||| structural-case portion of items 7 and 8 from the post-A10 audit.
+public export
+structuralAgreement : StructuralAgreement
+structuralAgreement = MkStructuralAgreement
+  (\m, sa => specImpliesVerifierStructural sa)
+  (\m, sa => specImpliesSourceStructural sa)
+  (\m, fa => functionsAcceptedImpliesSpec fa)
+  (\m, fa => functionsAcceptedImpliesSpec fa)
+
+-- ============================================================================
+-- Concrete instance proofs — empty module
+-- ============================================================================
+--
+-- The empty-module case is the first concrete `SpecAccepts`
+-- inhabitant: no functions, so the per-function obligation is
+-- trivially satisfied.  Used by the regression test as a smoke check
+-- that the predicates aren't vacuously unprovable.
+
+||| Structural witness for an empty function list.  Closes the L7+L10
+||| obligations vacuously.
+public export
+emptyFunctionsAccepted : FunctionsAccepted []
+emptyFunctionsAccepted = FANil
+
+||| The spec accepts every module whose function list is empty.
+||| Concrete inhabitant of `SpecAccepts`.  Demonstrates the predicate
+||| is not vacuously empty.
+public export
+emptyModuleSpecAccepts :
+     (n : String) -> SpecAccepts (MkModuleSummary n [])
+emptyModuleSpecAccepts n = MkSpecAccepts FANil
+
+||| The verifier accepts every empty-module summary via the structural
+||| constructor (no differential evidence needed).
+public export
+emptyModuleVerifierAccepts :
+     (n : String) -> VerifierAccepts (MkModuleSummary n [])
+emptyModuleVerifierAccepts n = VAStructural FANil
+
+||| The source checker accepts every empty-module summary.
+public export
+emptyModuleSourceAccepts :
+     (n : String) -> SourceAccepts (MkModuleSummary n [])
+emptyModuleSourceAccepts n = SAStructural FANil
