@@ -1,8 +1,17 @@
 # Phase 0 Status
 
-**Foundation defensibly engineered as of 2026-05-24.**
+**Foundation defensibly engineered as of 2026-05-25. Gates 1 + 3 met; gate 2 (codegen v0) remains as the Phase-1-handoff item.**
 
 Phase 0 closes the engineering-surface fragility around the proofs so all subsequent phases have a load-bearing foundation. See [Production-Path](Production-Path) §Phase 0 for the full statement and [#48](https://github.com/hyperpolymath/typed-wasm/issues/48) for live tracking.
+
+## Headline numbers
+
+- **11 PRs landed** across two sessions
+- **545+ test assertions** across 11 surfaces (up from ~430)
+- **2 of 3 Phase 0 gates met** (gate 2 needs Idris2 parser + codegen v0)
+- **8 deletions** of worthless / template-residue files
+- **4 new RSR-aligned taxonomy stubs** (`AUDIT.adoc`, `docs/onboarding/`, `docs/status/`, `docs/proposals/`)
+- **2 real bugs caught and fixed** by drift-detection aspects (`.well-known/security.txt` template residue, missing SPDX headers)
 
 ## Sub-tracks
 
@@ -58,7 +67,7 @@ Phase 0 closes the engineering-surface fragility around the proofs so all subseq
 | ROADMAP truthfulness audit (3 real drifts fixed) | ✅ Shipped | [#60](https://github.com/hyperpolymath/typed-wasm/pull/60) |
 | claim-envelope §8 drift-detection (catches rename + missing-file drift) | ✅ Shipped | #60 |
 | Wiki source-of-truth at `docs/wiki/` + comprehensive STATE.a2ml update | ✅ Shipped | [#61](https://github.com/hyperpolymath/typed-wasm/pull/61) |
-| Repo taxonomy tidy: RSR-aligned (AUDIT.adoc, docs/status/, docs/onboarding/, docs/proposals/); deletions (3 template-residue QUICKSTARTs, 2 .invariants.md heuristic artefacts, empty docs/wikis/, stray generated/abi/README); ABI-PIPELINE doc move | 🟡 In flight | This PR |
+| Repo taxonomy tidy: RSR-aligned (AUDIT.adoc, docs/status/, docs/onboarding/, docs/proposals/); deletions (3 template-residue QUICKSTARTs, 2 .invariants.md heuristic artefacts, empty docs/wikis/, stray generated/abi/README); ABI-PIPELINE doc move; smoke job graceful for in-flight parser migration; duplication scrub (stale ReScript references) | ✅ Shipped | [#63](https://github.com/hyperpolymath/typed-wasm/pull/63) |
 
 ## When does Phase 0 "close"?
 
