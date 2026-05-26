@@ -149,6 +149,32 @@ const EXPECTED = [
   // ResourceCapabilities.idr — A12 L8↔L15 joint composition (closes audit item 3)
   ["ResourceCapabilities.idr", /^containedConcat\s*:/m, "ContainedIn distributes over ++ (A12)"],
   ["ResourceCapabilities.idr", /^jointBudgetCompose\s*:/m, "L8↔L15 joint budget compose (A12, closes item 3)"],
+
+  // ModuleIsolation.idr — A13 L13×L10 cross-level (closes item 5a)
+  ["ModuleIsolation.idr", /^data\s+LinearAcrossBoundary/m, "L13×L10 cross-boundary linear handle predicate (A13)"],
+  ["ModuleIsolation.idr", /^linearTransferRequiresBoundary\s*:/m, "L13×L10 no-bypass theorem (A13, closes item 5a)"],
+  ["ModuleIsolation.idr", /^linearTransferLocal\s*:/m, "L13×L10 local-case constructor (A13)"],
+
+  // SessionProtocol.idr — A13 L14×L13 cross-level (closes item 5b)
+  ["SessionProtocol.idr", /^data\s+SessionAcrossBoundary/m, "L14×L13 cross-boundary session-handle predicate (A13)"],
+  ["SessionProtocol.idr", /^sessionAcrossPreservesState\s*:/m, "L14×L13 state-preservation theorem (A13)"],
+  ["SessionProtocol.idr", /^sessionTransferRequiresBoundary\s*:/m, "L14×L13 no-bypass theorem (A13, closes item 5b)"],
+  ["SessionProtocol.idr", /^sessionTransferLocal\s*:/m, "L14×L13 local-case constructor (A13)"],
+
+  // Region.idr — A13 leave-behind: RegionDisjoint × byte separation
+  ["Region.idr", /^data\s+RegionsOverlap/m, "Region byte-overlap predicate (A13)"],
+  ["Region.idr", /^disjointImpliesNoOverlap\s*:/m, "Disjointness → byte non-overlap theorem (A13)"],
+  ["Region.idr", /^regionsOverlapSym\s*:/m, "RegionsOverlap symmetry (A13)"],
+
+  // VerifierSpec.idr — A13 items 7 + 8 obligations (statement-level)
+  ["VerifierSpec.idr", /^data\s+SpecAccepts/m, "Idris2 spec acceptance predicate (A13, item 7)"],
+  ["VerifierSpec.idr", /^data\s+VerifierAccepts/m, "Rust verifier acceptance predicate (A13, item 7)"],
+  ["VerifierSpec.idr", /^data\s+SourceAccepts/m, "Source-checker acceptance predicate (A13, item 8)"],
+  ["VerifierSpec.idr", /^data\s+IntentsLinearAcceptable/m, "L10 single-consumption structural witness (A13)"],
+  ["VerifierSpec.idr", /^record\s+VerifierSpecAgreement/m, "Verifier↔spec agreement obligation (A13, item 7)"],
+  ["VerifierSpec.idr", /^record\s+SourceVerifierAgreement/m, "Source↔verifier coverage obligation (A13, item 8)"],
+  ["VerifierSpec.idr", /^sourceImpliesSpec\s*:/m, "Source→spec composition under both agreements (A13)"],
+  ["VerifierSpec.idr", /^specImpliesSource\s*:/m, "Spec→source composition under both agreements (A13)"],
 ];
 
 // ----------------------------------------------------------------------

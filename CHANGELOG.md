@@ -10,6 +10,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Proof-debt pass A13 (2026-05-26, same-day continuation)
+
+Per coordinator pre-clearance for items 5 + 7 + 8, this round closes
+the last of the post-A10 audit items at the **statement level**
+(same PR [#72](https://github.com/hyperpolymath/typed-wasm/pull/72)).
+No items remain from that audit; items 7 + 8 are stated as typed
+obligations (full proofs are multi-week and out of one-session
+scope).
+
+- **Item 5a closed** (L13 × L10 cross-level).
+  `ModuleIsolation.idr` imports `Linear` and gains
+  `LinearAcrossBoundary from to regName bs token` (an L13
+  `AccessWitness` paired with an L10 `LinHandle`) plus three
+  theorems: `linearTransferRequiresBoundary` (no-bypass — any
+  non-local handle move requires a concrete boundary in `bs`),
+  `linearTransferLocal` (local-case constructor), and projections
+  `acrossWitness` / `acrossHandle`.
+- **Item 5b closed** (L14 × L13 cross-level).
+  `SessionProtocol.idr` imports `ModuleIsolation` and gains
+  `SessionAcrossBoundary` with `sessionAcrossPreservesState` (the
+  state index survives transfer), `sessionTransferRequiresBoundary`
+  (no-bypass), `sessionTransferLocal` (local-case), and projections.
+  Together they prove a session handle cannot silently change state
+  or escape its module without an L13 witness.
+- **A12 leave-behind closed.**  `Region.idr` gains `RegionsOverlap`
+  (an address inside both region footprints) and
+  `disjointImpliesNoOverlap`, the L7/L10-flavour cross-level lemma
+  that `RegionDisjoint` implies byte-level non-overlap.  Closes the
+  link the A12 disjointness section header explicitly deferred.
+- **Items 7 + 8 stated as obligations.**  New module
+  `TypedWasm.ABI.VerifierSpec` introduces three predicates —
+  `SpecAccepts m` (Idris2 L7+L10 structural acceptance on
+  `ModuleSummary`), `VerifierAccepts m` (opaque; witnessed only by
+  the Rust differential harness via `differentialAccepted`), and
+  `SourceAccepts m` (opaque; witnessed by the source-side harness)
+  — plus two agreement records: `VerifierSpecAgreement` (item 7,
+  Rust verifier ↔ Idris2 spec) and `SourceVerifierAgreement` (item
+  8, source-checker ↔ verifier coverage).  Each record bundles
+  soundness + completeness so partial proofs can land one face at
+  a time.  `sourceImpliesSpec` / `specImpliesSource` are the
+  composition lemmas under both agreements.  The opaque acceptance
+  predicates make the trust boundary inspectable: every
+  `VerifierAccepts` / `SourceAccepts` use traces back to a named
+  fixture id.
+
+**15 new named items added** (`LinearAcrossBoundary`,
+`linearTransferRequiresBoundary`, `linearTransferLocal`,
+`SessionAcrossBoundary`, `sessionAcrossPreservesState`,
+`sessionTransferRequiresBoundary`, `sessionTransferLocal`,
+`RegionsOverlap`, `disjointImpliesNoOverlap`, `regionsOverlapSym`,
+`SpecAccepts`, `VerifierAccepts`, `SourceAccepts`,
+`IntentsLinearAcceptable`, `VerifierSpecAgreement` /
+`SourceVerifierAgreement` / `sourceImpliesSpec` /
+`specImpliesSource`).  Regression: **68/68** under Idris2 0.8.0
+(both layers: source grep + `idris2 --build`).  Package now 22
+modules (was 21 — `VerifierSpec` is the only addition).
+
+**Closed after A13** (post-A10 audit complete): items 5a, 5b, 6
+leave-behind, 7-statement, 8-statement.  Long-tail: full proofs of
+the two agreement records; `LevelAttestation` reindexed-by-witness
+redesign (standards#130 / epic standards#124); WasmCert-Isabelle
+tie-back; emitted-wasm byte-equality.
+
 ### Proof-debt pass A12 (2026-05-26, same-day continuation)
 
 Per coordinator clearance, three more untracked items from the post-A10

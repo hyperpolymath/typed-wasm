@@ -20,7 +20,79 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
-## RECONCILIATION 2026-05-26 (A12 follow-up — read this FIRST)
+## RECONCILIATION 2026-05-26 (A13 follow-up — read this FIRST)
+
+> **A13 follows A12 in the same calendar day.**  Per coordinator
+> pre-clearance for items 5 + 7 + 8 (and the small A12 leave-behind),
+> this round closes **the remaining post-A10 audit items in their
+> statement-level form**:
+>
+> 1. **Item 5a (L13 × L10) closed.**  `ModuleIsolation.idr` gains
+>    `LinearAcrossBoundary from to regName bs token`, pairing an L13
+>    `AccessWitness` with an L10 `LinHandle`.  The no-bypass theorem
+>    `linearTransferRequiresBoundary` proves that any non-local
+>    linear-handle transfer requires a concrete boundary in `bs` — a
+>    linear handle cannot leave an isolated module without an L13
+>    boundary declaration.  `linearTransferLocal` is the local-case
+>    constructor.  Proof shape reuses `crossAccessImpliesBoundary`
+>    from L13 directly; the cross-level claim is a clean lift.
+>
+> 2. **Item 5b (L14 × L13) closed.**  `SessionProtocol.idr` now
+>    imports `ModuleIsolation` and gains `SessionAcrossBoundary` with
+>    three theorems: `sessionAcrossPreservesState` (the state index
+>    survives the transfer), `sessionTransferRequiresBoundary` (the
+>    same no-bypass shape as L10), and `sessionTransferLocal`
+>    (local-case).  Together they prove a session handle cannot
+>    silently change state or escape its module without an L13
+>    witness.
+>
+> 3. **A12 leave-behind closed.**  `Region.idr` gains `RegionsOverlap`
+>    (an address lying inside both region footprints) and
+>    `disjointImpliesNoOverlap` proving `RegionDisjoint -> Not
+>    RegionsOverlap`.  This is the L7/L10 cross-level link the A12
+>    section header promised — disjointness now has byte-level
+>    teeth.  `regionsOverlapSym` is the symmetry companion.
+>
+> 4. **Items 7 + 8 stated as obligations.**  New module
+>    `VerifierSpec.idr` introduces `SpecAccepts m` (the Idris2 L7+L10
+>    structural acceptance predicate on `ModuleSummary`),
+>    `VerifierAccepts m` (opaque; witnessed by the Rust differential
+>    harness via `differentialAccepted`), and `SourceAccepts m`
+>    (opaque; witnessed by the source-side harness).  Two record
+>    obligations — `VerifierSpecAgreement` (item 7) and
+>    `SourceVerifierAgreement` (item 8) — bundle the soundness and
+>    completeness directions so partial proofs can land one face at
+>    a time.  Composition lemmas `sourceImpliesSpec` and
+>    `specImpliesSource` give the test harness end-to-end targets.
+>
+>    **What this does NOT do.**  Items 7 and 8 are stated, not
+>    proven.  The full equivalence proofs require either a full
+>    simulation between two implementations (multi-week) or
+>    extending the verifier's coverage to every level the source
+>    checker promises.  A13 pins the obligations as typed Idris2
+>    predicates so the long-tail work has a fixed target.
+>
+> **15 new named theorems / data types** (`LinearAcrossBoundary`,
+> `acrossWitness`, `acrossHandle`, `linearTransferRequiresBoundary`,
+> `linearTransferLocal`, `SessionAcrossBoundary`,
+> `sessionAcrossPreservesState`, `sessionTransferRequiresBoundary`,
+> `sessionTransferLocal`, `RegionsOverlap`,
+> `disjointImpliesNoOverlap`, `regionsOverlapSym`, `SpecAccepts`,
+> `VerifierAccepts`, `SourceAccepts` plus `VerifierSpecAgreement` /
+> `SourceVerifierAgreement` / `sourceImpliesSpec` /
+> `specImpliesSource`).  Regression **68/68** under Idris2 0.8.0
+> (both layers).
+>
+> **Open after A13.**  No items remain from the original post-A10
+> 8-item audit.  Long-tail work that exceeds a one-session scope:
+> the actual proof bodies for `VerifierSpecAgreement` /
+> `SourceVerifierAgreement`; the `LevelAttestation` reindexed-by-
+> witness redesign (standards#130 / epic standards#124); WasmCert-
+> Isabelle tie-back; emitted-wasm byte-equality for erasure
+> (P3.1(a), blocked on emitter); parser round-trip in Idris2
+> (ECHIDNA-only at present).
+
+## RECONCILIATION 2026-05-26 (A12 follow-up)
 
 > **A12 follows A11 in the same calendar day.**  Per coordinator-routed
 > A12 go-ahead, this round closes **3 more** of the 8 untracked gaps
