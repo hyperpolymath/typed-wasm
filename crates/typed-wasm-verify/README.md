@@ -5,7 +5,7 @@ Post-codegen verifier for typed-wasm **L7 (aliasing safety)** and **L10 (lineari
 
 ## What it does
 
-Given a wasm module that carries an `affinescript.ownership` custom section, this crate:
+Given a wasm module that carries an `typedwasm.ownership` custom section, this crate:
 
 1. **Intra-function check** — walks every function body and computes per-path `(min_uses, max_uses)` for each parameter. Linear params must be `(1, 1)` on every path; ExclBorrow params must have `max_uses ≤ 1`.
 2. **Cross-module check** — given a callee's exported ownership interface plus a caller module that imports those functions, verifies that Linear-param imports are invoked exactly once per execution path.

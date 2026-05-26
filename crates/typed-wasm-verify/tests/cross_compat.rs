@@ -21,7 +21,7 @@
 //      The Rust verdict asserted here must match the OCaml one;
 //      divergence either side is a parity bug.
 //   3. **Anchor the wire format** — the fixtures emit the exact same
-//      `affinescript.ownership` custom-section bytes that
+//      `typedwasm.ownership` custom-section bytes that
 //      `Codegen.build_ownership_section` would emit, exercising the C2
 //      codec end-to-end.
 //
@@ -56,7 +56,7 @@ use wasm_encoder::{
 // ----------------------------------------------------------------------
 
 /// Builder for an `affinescript`-shaped module with multiple functions
-/// and an `affinescript.ownership` custom section.
+/// and an `typedwasm.ownership` custom section.
 struct ModuleBuilder {
     types: TypeSection,
     funcs: FunctionSection,

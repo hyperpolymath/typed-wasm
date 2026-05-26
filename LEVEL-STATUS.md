@@ -115,7 +115,7 @@ codegen actually obeys the discipline.
 
 `crates/typed-wasm-verify/` (added 2026-05-15) closes that loop on the
 **post-codegen** side. Given a wasm module plus an
-`affinescript.ownership` custom section, the crate runs a per-path
+`typedwasm.ownership` custom section, the crate runs a per-path
 `(min, max)` use-range analysis over every function body and reports
 L7 (aliasing) + L10 (linearity) violations. It's a second line of
 defence: the source-level checker enforces the rules during compilation;
@@ -138,6 +138,6 @@ L1-L6, L13-L16 enforcement on emitted wasm is future work.
 **Consumers** (live as of 2026-05-15):
 
 - `hyperpolymath/ephapax:src/ephapax-wasm/` — emits the
-  `affinescript.ownership` section on every compile
+  `typedwasm.ownership` section on every compile
 - `hyperpolymath/ephapax:src/ephapax-cli/` — exposes the verifier via
   `ephapax compile --verify-ownership`
