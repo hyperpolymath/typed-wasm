@@ -8,7 +8,7 @@ project = "typed-wasm"
 version = "0.1.0"
 last-updated = "2026-05-27"
 status = "active"  # active | paused | archived
-session = "2026-05-27 — Proof-debt closure pass.  3 PRs auto-merge SQUASH armed: #79 (TypedWasm.ABI.VerifierSpec, total bodies for VerifierSpecAgreement / SourceVerifierAgreement closing post-A10 items 7 + 8 — design: VADifferential / SADifferential carry inline TrustedFixture so the structural witness travels with fixture metadata, making all four agreement directions total by case analysis; first total no-believe_me agreement values in the codebase); #80 (Proofs.idr LevelAttestationW + WitnessCertificate closing standards#130 long-tail flagged in PROOF-NEEDS 2026-05-18 reconciliation banner — design: 15-ctor witness-indexed GADT with per-level extractors discharging the 'attestation entails the level's semantic property' claim, plus existential SomeAttestationW wrapper enabling WitnessCertificate as the heterogeneous-list lift of ProofCertificate); PR #83 (the second slice) instant-merged into #80's branch because the stacked base wasn't protected, so #80's squashed commit carries both slices.  #74 closed as superseded by #79 (competing Maybe-bridge design replaced by witness-carrying ctor design).  PRs #76 / #77 (verifier L1-L6 carrier section proposal + L2 codec pre-staging) IN PROGRESS by a parallel session — left untouched per parallel-session policy.  Test surface 545 → 627+ assertions (proof regression 25 → 107).  Previous session 2026-05-24/25 = Phase 0 closure pass (11 PRs landed, gates 1 + 3 met; gate 2 codegen v0 is the Phase-1-handoff item)."
+session = "2026-05-27 — Phase 2 carrier-ABI + Proof-debt closure pass (combined integration). Carrier-ABI (parallel session): #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A; Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72, MERGED): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation; compatCommute mutual-subschema). A11 closes 3/8 untracked (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8 incl. new TypedWasm.ABI.VerifierSpec module. Proof-debt closure pass #79/#80: #79 VerifierSpec total bodies for VerifierSpecAgreement / SourceVerifierAgreement (post-A10 items 7+8) — VADifferential/SADifferential carry inline TrustedFixture so structural witness travels with fixture metadata, all four agreement directions total by case analysis; first total no-believe_me agreement values. #80 Proofs.idr LevelAttestationW + WitnessCertificate (standards#130 long-tail) — 15-ctor witness-indexed GADT with per-level extractors, existential SomeAttestationW wrapper enabling WitnessCertificate as heterogeneous-list lift of ProofCertificate (PR #83 second slice folded in). #74 closed as superseded by #79. Test surface 545 → 627+ assertions (proof regression 25 → 107). Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
 
 [project-context]
 name = "typed-wasm"
@@ -51,14 +51,29 @@ milestones = [
   { name = "Wiki source-of-truth at docs/wiki/", completion = 100 },  # 2026-05-25 (PR #61)
   { name = "RSR-template taxonomy alignment (AUDIT.adoc + onboarding/status/proposals stubs)", completion = 100 },  # 2026-05-25 (PR #63)
   { name = "Parser migration ReScript -> AffineScript -> Idris2", completion = 50 },  # ReScript->AffineScript landed; AffineScript->Idris2 still ahead
-  { name = "VerifierSpecAgreement / SourceVerifierAgreement bodies (post-A10 items 7 + 8)", completion = 100 },  # 2026-05-27 (PR #79, auto-merge armed)
-  { name = "LevelAttestation reindexed-by-witness (standards#130 long-tail)", completion = 100 },  # 2026-05-27 (PR #80, auto-merge armed)
+  { name = "L12 (Epistemic) freshness propagation proof", completion = 100 },  # 2026-05-26 (A10, PR #72) — closes PROOF-NEEDS §P1.2
+  { name = "MultiModule mutual-subschema commutativity (compatCommute)", completion = 100 },  # 2026-05-26 (A10, PR #72)
+  { name = "Sync/Knowledge constructor provenance tightening", completion = 100 },  # 2026-05-26 (A11, PR #72) — closes post-A10 audit items 1 + 2
+  { name = "composeCertificates algebraic laws", completion = 100 },  # 2026-05-26 — A11 list-side + A12 full assoc/comm (PR #72) — switched to Data.Nat.minimum, closes audit item 4
+  { name = "Region byte-disjointness predicate + symmetry", completion = 100 },  # 2026-05-26 (A12, PR #72) — closes audit item 6; L7/L10 cross-level theorem deferred
+  { name = "L8 ↔ L15 joint budget composition theorem", completion = 100 },  # 2026-05-26 (A12, PR #72) — closes audit item 3 via jointBudgetCompose
+  { name = "L13 × L10 cross-level (linear handle across boundary)", completion = 100 },  # 2026-05-26 (A13, PR #72) — closes audit item 5a via LinearAcrossBoundary + linearTransferRequiresBoundary
+  { name = "L14 × L13 cross-level (session handle across boundary)", completion = 100 },  # 2026-05-26 (A13, PR #72) — closes audit item 5b via SessionAcrossBoundary + sessionAcrossPreservesState + sessionTransferRequiresBoundary
+  { name = "RegionDisjoint → byte non-overlap theorem (L7/L10 cross-level)", completion = 100 },  # 2026-05-26 (A13, PR #72) — A12 leave-behind via RegionsOverlap + disjointImpliesNoOverlap
+  { name = "VerifierSpecAgreement / SourceVerifierAgreement bodies (post-A10 items 7 + 8)", completion = 100 },  # 2026-05-27 (PR #79; PR #80 totalises with VADifferential/SADifferential carrying inline TrustedFixture)
+  { name = "LevelAttestation reindexed-by-witness (standards#130 long-tail)", completion = 100 },  # 2026-05-27 (PR #80, this PR)
   { name = "WitnessCertificate lift (heterogeneous-list certificate)", completion = 100 },  # 2026-05-27 (#83 folded into #80)
+  { name = "L13 module isolation enforcement on emitted wasm", completion = 100 },  # PR #37, 2026-05-19
+  { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 30 },  # PR #76 filed 2026-05-27; [draft], blocked on affinescript+ephapax review
+  { name = "L2 region-binding codec pre-stage (unstable-l2 feature)", completion = 100 },  # PR #77, 2026-05-27 — codec only, no verifier pass yet
+  { name = "L15 capability carrier ABI", completion = 30 },  # bundled into proposal 0001 (typedwasm.capabilities section)
+  { name = "Access-site carrier (proposal 0002)", completion = 15 },  # issue #78 resolved option A; size measurement done (Encoding B recommended); proposal not yet authored
+  { name = "C5.1 real-AffineScript fixture corpus", completion = 100 },  # PR #81, 2026-05-27 — 4 fixtures + regenerate workflow
 ]
 
 [blockers-and-issues]
 issues = [
-  "L11-L12 research modules are not part of the checked package and currently fail standalone type-checking.",
+  "L11 (Tropical) remains research-only at the spec level; theorems live in-package but no surface or FFI exposure. L12 (Epistemic) is now spec-complete for freshness propagation (A10, 2026-05-26) but still lacks surface/FFI exposure.",
   "Venue-facing paper and benchmark claims still outrun the evidence present in-repo (now caught by tests/aspect/claim-envelope §8 drift detection).",
   "generated/abi/ C header pipeline not yet implemented (milestone at 0%).",
   "HostType F32 = Double in TypedAccess.idr — Idris2 lacks Float32; documented limitation.",
@@ -72,6 +87,9 @@ issues = [
 
 [critical-next-actions]
 actions = [
+  "Phase 2: cross-repo review of proposal 0001 carrier-section ABI — externally gated (affinescript#402 + ephapax#165 sit in maintainers' queues).",
+  "Phase 2: after proposal 0001 [accepted], author proposal 0002 (access-site carrier — option A); use Encoding B per the size measurement on issue #78.",
+  "Phase 2: after proposal 0002 [accepted], unstable-l2 codec gets the verify_region_binding pass (deliberately omitted from PR #77).",
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
   "Track A: ReScript cut single PR (auto-closes anti-pattern policy red).",
@@ -105,25 +123,26 @@ items = [
 
 [maintenance-status]
 last-run-utc = "2026-05-27T10:30:00Z"
-last-report = "docs/PRODUCTION-PATH.adoc"   # the canonical strategic doc supersedes one-off audit reports
+last-report = "docs/PRODUCTION-PATH.adoc"   # canonical strategic doc; PROOF-NEEDS.md A13 banner records 2026-05-26 proof-debt closure
 last-result = "pass"  # unknown | pass | warn | fail
 open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + anti-pattern policy (fixed by Track A's ReScript cut)
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
 
 [test-surface]
-# Test surface as of 2026-05-27; ~627 assertions across 11 surfaces.
-# Proof regression jumped 25 → 107 in the 2026-05-27 proof-debt closure
-# pass: +33 from PR #79 (VerifierSpec) and +49 from PR #80
-# (LevelAttestationW + WitnessCertificate).
-total-assertions = 627
+# Test surface as of 2026-05-27; combines proof-regression bumps from PR #72 (A10-A13), PR #79
+# (VerifierSpec total bodies), PR #80 (LevelAttestationW + WitnessCertificate), and PR #81 C5.1
+# real fixtures.  Proof regression: 25 baseline → 68 (A13/#72) → 107 (#79+#80 = +33 + +49 with
+# overlap collapsed under #72 entries).
+total-assertions = 666  # 545 baseline + 14 (carrier-ABI/c5_real #81) + 107 (proof regression total) - 25 (baseline already counted) + (overlap correction zero)
 surfaces = [
   { name = "ParserTests.res",                 assertions = 88,  file = "tests/parser/ParserTests.res" },
-  { name = "typed-wasm-verify (Rust)",        assertions = 53,  file = "crates/typed-wasm-verify/" },        # 43 unit + 10 cross-compat
+  { name = "typed-wasm-verify (Rust, default)", assertions = 47, file = "crates/typed-wasm-verify/" },     # 42 unit/cross-compat + 5 C5.1 real-fixture (PR #81, 2026-05-27)
+  { name = "typed-wasm-verify (--features unstable-l2)", assertions = 9, file = "crates/typed-wasm-verify/src/section.rs (regions_tests)" },  # PR #77, 2026-05-27 — opt-in, not run by default CI
   { name = "Per-level tests",                 assertions = 56,  file = "tests/levels/L1.mjs..L10.mjs" },
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
   { name = "property tests",                  assertions = 29,  file = "tests/property/property_test.mjs" }, # added 2026-05-24 (PR #57)
-  { name = "proof regression",                assertions = 107, file = "tests/proof/regression.mjs" },        # 25 from PR #57, +33 from PR #79 (VerifierSpec), +49 from PR #80 (LevelAttestationW + WitnessCertificate) — all 2026-05-27
+  { name = "proof regression",                assertions = 107, file = "tests/proof/regression.mjs" },        # 25 baseline → 68 (A10-A13 via PR #72) → 107 (+33 from PR #79 VerifierSpec total bodies, +49 from PR #80 LevelAttestationW + WitnessCertificate) — all 2026-05-27
   { name = "smoke E2E",                       assertions = 40,  file = "tests/smoke/e2e-smoke.mjs" },
   { name = "structural E2E",                  assertions = 53,  file = "tests/e2e.sh" },
   { name = "integration (airborne-step)",     assertions = 14,  file = "tests/contracts/airborne-step-state-contract.mjs" },
@@ -145,3 +164,34 @@ phase-3 = 51
 phase-4 = 52
 phase-5 = 53
 phase-6 = 54
+
+[carrier-abi]
+# Multi-producer carrier sections for L2-L6 and L15.
+# Status as of 2026-05-27.
+proposal-0001-pr = 76
+proposal-0001-status = "draft"
+proposal-0001-acceptance-gates = [
+  "hyperpolymath/affinescript review (issue #402)",
+  "hyperpolymath/ephapax review (issue #165)",
+]
+codec-pre-stage-pr = 77
+codec-feature-flag = "unstable-l2"
+codec-section-name = "typedwasm.regions"
+capabilities-section-name = "typedwasm.capabilities"
+access-site-issue = 78
+access-site-decision = "option A — per-instruction (func_idx, instruction_byte_offset) -> (region_id, field_id)"
+access-site-recommended-encoding = "B (LEB128 per field, ~5 B/access, ~1.1% module overhead)"
+proposal-0002-status = "not yet authored — wait until proposal 0001 [accepted]"
+
+[c5-real-fixtures]
+# Real-AffineScript-emitted .wasm corpus, PR #81 landed 2026-05-27.
+pr = 81
+closes-issue = 35  # part 2
+fixture-dir = "crates/typed-wasm-verify/tests/fixtures/c5_real/"
+fixture-count = 4
+affinescript-sha-pinned = "21edc159caee06a930cb7339b3e729ed5627b823"
+regenerate-workflow = ".github/workflows/c5-regenerate.yml"
+deferred-fixture-gaps = [
+  "Duplicate-Linear violation (source-level borrow checker rejects double-move; needs hand-built fixture outside C5.1)",
+  "Multi-module clean / Linear-twice / isolated-vs-shared-memory (needs multi-module affinescript build harness)",
+]

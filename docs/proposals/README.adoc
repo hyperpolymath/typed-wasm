@@ -16,7 +16,16 @@ Status legend:
 
 == Current proposals
 
-None yet. The strategic decisions (D1–D6) from
+[cols="1,4,1"]
+|===
+| Number | Title | Status
+
+| link:0001-multi-producer-carrier-section.adoc[0001]
+| Multi-producer carrier sections for L2–L6 and L15
+| `[draft]`
+|===
+
+The strategic decisions (D1–D6) from
 link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] §"Load-bearing
 decisions" are tracked there directly; each will land an ADR under
 `docs/decisions/` when made rather than first landing as a proposal.

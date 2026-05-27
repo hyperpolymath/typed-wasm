@@ -36,6 +36,7 @@ import Data.List.Elem
 
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.MultiModule
+import TypedWasm.ABI.Linear
 
 %default total
 
@@ -328,3 +329,101 @@ boundariesOf m = m.boundaries
 public export
 idOf : IsolatedModule -> IsolatedModuleId
 idOf m = m.modId
+
+-- ============================================================================
+-- A13 — Cross-Level: L13 (isolation) × L10 (linearity)
+-- ============================================================================
+--
+-- Closes the post-A10 audit item 5a (L13 × L10 interaction):
+-- when an L10 `LinHandle` "moves" from one isolated module to another,
+-- the move is only legal if the L13 isolation discipline witnesses it
+-- with a boundary.  The cross-level claim has two faces:
+--
+--   1. **Existence**: pairing an `AccessWitness` with a `LinHandle`
+--      produces a `LinearAcrossBoundary` token.  This is the data type.
+--   2. **No-bypass**: any non-local `LinearAcrossBoundary` requires a
+--      boundary on the source module's declared list.  The proof is a
+--      direct reuse of the L13-only `crossAccessImpliesBoundary` lifted
+--      through the pairing — there is no way to construct a
+--      LinearAcrossBoundary that bypasses the L13 boundary check.
+--
+-- The interaction does NOT model dual-ownership transfer (sender loses
+-- the handle, receiver gains it) — QTT's linearity quantity does that
+-- structurally at the call site.  This module only states the
+-- propositional shape that downstream tooling can refer to.
+
+||| L13 × L10 cross-level witness: an L10 linear handle paired with the
+||| L13 access witness that authorises its move from `from` to `to`.
+|||
+||| Constructing this type requires BOTH halves: a `LinHandle token`
+||| (the L10 resource) and an `AccessWitness from to regName bs`
+||| (the L13 right to reach `to`'s region).  No constructor lets a
+||| linear handle cross modules without an L13 witness.
+public export
+data LinearAcrossBoundary : (from, to : IsolatedModuleId)
+                         -> (regName : String)
+                         -> (bs : BoundaryList)
+                         -> (token : Nat)
+                         -> Type where
+  MkLinearAcrossBoundary :
+       (aw : AccessWitness from to regName bs)
+    -> (h  : LinHandle token)
+    -> LinearAcrossBoundary from to regName bs token
+
+||| Project the L13 access witness from a cross-boundary linear handle.
+public export
+acrossWitness : {from, to : IsolatedModuleId}
+             -> {regName : String}
+             -> {bs : BoundaryList}
+             -> {token : Nat}
+             -> LinearAcrossBoundary from to regName bs token
+             -> AccessWitness from to regName bs
+acrossWitness (MkLinearAcrossBoundary aw _) = aw
+
+||| Project the L10 linear handle from a cross-boundary linear handle.
+public export
+acrossHandle : {from, to : IsolatedModuleId}
+            -> {regName : String}
+            -> {bs : BoundaryList}
+            -> {token : Nat}
+            -> LinearAcrossBoundary from to regName bs token
+            -> LinHandle token
+acrossHandle (MkLinearAcrossBoundary _ h) = h
+
+||| L13 × L10 soundness (no-bypass).
+|||
+||| Statement: if a linear handle has moved from `from` to `to` and
+||| `from /= to`, then the boundary list `bs` of `from` MUST contain a
+||| concrete boundary witnessing the transfer.  Contrapositive: with no
+||| boundary in `bs`, no `LinearAcrossBoundary` witness exists for a
+||| non-local pair — the linear handle cannot leave `from`'s memory.
+|||
+||| Proof: directly reuse `crossAccessImpliesBoundary` on the embedded
+||| access witness.  The L13 mechanism does all the work; this lemma
+||| just lifts it through the L10 pairing.
+public export
+linearTransferRequiresBoundary :
+     {from, to : IsolatedModuleId}
+  -> {regName : String}
+  -> {bs : BoundaryList}
+  -> {token : Nat}
+  -> (xfer : LinearAcrossBoundary from to regName bs token)
+  -> (notLocal : Not (from = to))
+  -> (b : Boundary ** Elem b bs)
+linearTransferRequiresBoundary xfer notLocal =
+  crossAccessImpliesBoundary (acrossWitness xfer) notLocal
+
+||| L13 × L10 soundness (local-case).
+|||
+||| Statement: if a linear handle moves WITHIN one isolated module
+||| (`from = to = m`), the `LocalAccess` witness suffices and no
+||| boundary is required.  Used by the surface checker to short-circuit
+||| boundary lookup on intra-module handle passes.
+public export
+linearTransferLocal :
+     (m : IsolatedModuleId)
+  -> (regName : String)
+  -> (bs : BoundaryList)
+  -> (h : LinHandle token)
+  -> LinearAcrossBoundary m m regName bs token
+linearTransferLocal m _ _ h = MkLinearAcrossBoundary LocalAccess h

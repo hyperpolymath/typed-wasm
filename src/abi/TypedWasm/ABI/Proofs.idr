@@ -17,6 +17,8 @@
 
 module TypedWasm.ABI.Proofs
 
+import Data.List
+import Data.Nat
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.TypedAccess
 import TypedWasm.ABI.Levels
@@ -150,10 +152,17 @@ attestL15_CapsSafe _ = MkAttestation 15 Proven
 ||| The composed certificate takes the MINIMUM highest level:
 ||| if Module A is proven to Level 8 and Module B to Level 6,
 ||| the combined guarantee is Level 6 (the weakest link).
+|||
+||| Uses `Data.Nat.minimum` (the structural Nat version) rather than the
+||| Ord-derived `Prelude.min` so that `minimumAssociative` /
+||| `minimumCommutative` from `Data.Nat` apply directly — this is what
+||| makes `composeAssoc` and `composeHighProvenComm` (A12, 2026-05-26) one
+||| line each.  The numeric behaviour is identical; only the proof
+||| ergonomics change.
 public export
 composeCertificates : ProofCertificate -> ProofCertificate -> ProofCertificate
 composeCertificates (MkCertificate ls1 h1 mm1) (MkCertificate ls2 h2 mm2) =
-  MkCertificate (ls1 ++ ls2) (min h1 h2) (mm1 ++ mm2)
+  MkCertificate (ls1 ++ ls2) (minimum h1 h2) (mm1 ++ mm2)
 
 -- ============================================================================
 -- Level-Specific Certificate Constructors (PROOF-NEEDS §P1.1 — A7)
@@ -497,6 +506,22 @@ achievedAppendR : {0 n : Nat}
 achievedAppendR []        p = p
 achievedAppendR (_ :: xs) p = LAThere (achievedAppendR xs p)
 
+||| Decomposition: a level achieved in `xs ++ ys` was achieved in
+||| either `xs` or `ys`.  Inverse of `achievedAppendL` /
+||| `achievedAppendR`; needed for the `composeAchievedSym`
+||| semantic-commutativity theorem (A11.3).
+public export
+achievedAppendSplit : {0 n : Nat}
+                   -> (xs, ys : List LevelAttestation)
+                   -> LevelAchievedIn n (xs ++ ys)
+                   -> Either (LevelAchievedIn n xs) (LevelAchievedIn n ys)
+achievedAppendSplit []        ys p           = Right p
+achievedAppendSplit (_ :: _)  _  LAHere      = Left LAHere
+achievedAppendSplit (_ :: xs) ys (LAThere p) =
+  case achievedAppendSplit xs ys p of
+    Left  inXs => Left  (LAThere inXs)
+    Right inYs => Right inYs
+
 ||| Predicate lifted to full proof certificates: "this certificate
 ||| claims level `n`".
 public export
@@ -522,6 +547,90 @@ composeAchievedR : (c1, c2 : ProofCertificate)
                 -> LevelAchieved n (composeCertificates c1 c2)
 composeAchievedR (MkCertificate a1 _ _) (MkCertificate _ _ _) p =
   achievedAppendR a1 p
+
+-- ============================================================================
+-- Composition algebra (A11.3, 2026-05-26 — closes the unstated
+-- "composeCertificates algebraic laws" residual debt item)
+-- ============================================================================
+
+||| `composeCertificates` is **fully** associative — list parts,
+||| multi-module parts, and the `highestProven` Nat side all align.
+||| List components compose via `appendAssociative`; the Nat side
+||| via `minimumAssociative` from `Data.Nat` (now applicable because
+||| `composeCertificates` was switched from the Ord-generic
+||| `Prelude.min` to the structural `Data.Nat.minimum` at A12).
+|||
+||| Supersedes the A11 list-only `composeAssocLists` (kept as a
+||| corollary below for back-compat); closes post-A10 audit item 4 in
+||| full.
+public export
+composeAssoc :
+  (a, b, c : ProofCertificate) ->
+  composeCertificates (composeCertificates a b) c
+  = composeCertificates a (composeCertificates b c)
+composeAssoc (MkCertificate ls1 h1 mm1)
+             (MkCertificate ls2 h2 mm2)
+             (MkCertificate ls3 h3 mm3) =
+  rewrite appendAssociative ls1 ls2 ls3 in
+  rewrite appendAssociative mm1 mm2 mm3 in
+  rewrite minimumAssociative h1 h2 h3 in
+  Refl
+
+||| List-level associativity of `composeCertificates`.  Original A11
+||| statement; now derived as a corollary of the full A12 `composeAssoc`
+||| via projection on the first field of the equated certificates.
+public export
+composeAssocLists :
+  (a, b, c : ProofCertificate) ->
+  let MkCertificate as _ _ = composeCertificates (composeCertificates a b) c
+      MkCertificate bs _ _ = composeCertificates a (composeCertificates b c)
+  in as = bs
+composeAssocLists (MkCertificate ls1 _ _)
+                  (MkCertificate ls2 _ _)
+                  (MkCertificate ls3 _ _) =
+  sym (appendAssociative ls1 ls2 ls3)
+
+||| The `highestProven` Nat component of `composeCertificates` is
+||| **commutative**: the minimum doesn't care which side an operand
+||| comes from.  This is the Nat-side counterpart of
+||| `composeAchievedSym`'s list-side achievement-swap.
+|||
+||| Closes the second half of post-A10 audit item 4 (algebraic laws
+||| for `composeCertificates`).  Coordinator hint (2026-05-26)
+||| pointed at `minimumCommutative` from `Data.Nat` as the right
+||| primitive — works because `composeCertificates` was switched to
+||| `minimum` at A12.
+public export
+composeHighProvenComm :
+  (a, b : ProofCertificate) ->
+  let MkCertificate _ ha _ = composeCertificates a b
+      MkCertificate _ hb _ = composeCertificates b a
+  in ha = hb
+composeHighProvenComm (MkCertificate _ h1 _) (MkCertificate _ h2 _) =
+  minimumCommutative h1 h2
+
+||| Semantic commutativity of composition under `LevelAchieved`.
+||| `composeCertificates` is NOT strictly commutative — the list
+||| components are concatenated and concatenation is not commutative
+||| on raw lists.  But for the property that actually matters at the
+||| certificate level — "level N is achieved" — the order is
+||| irrelevant: a level achieved in `compose a b` is also achieved in
+||| `compose b a`.
+|||
+||| Proved by splitting `achieved-in-append` into the two component
+||| cases and re-introducing on the swapped form.  Closes the
+||| "composeCertificates algebra not stated" residual gap from the
+||| post-A10 inventory.
+public export
+composeAchievedSym :
+  {n : Nat} ->
+  (a, b : ProofCertificate) ->
+  LevelAchieved n (composeCertificates a b) ->
+  LevelAchieved n (composeCertificates b a)
+composeAchievedSym {n} (MkCertificate as _ _) (MkCertificate bs _ _) p =
+  case achievedAppendSplit as bs p of
+    Left  inA => achievedAppendR bs inA
+    Right inB => achievedAppendL inB
 
 -- ============================================================================
 -- Proof Erasure Guarantee (PROOF-NEEDS §P3.1)

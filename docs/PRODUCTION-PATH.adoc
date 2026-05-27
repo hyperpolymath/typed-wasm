@@ -159,6 +159,25 @@ Gate to Phase 2:
 Today AffineScript is the only realistic adopter (and only via Track B).
 For typed-wasm to be a real target, other compilers must target it.
 
+Active design work:
+
+* **Proposal 0001** —
+  link:proposals/0001-multi-producer-carrier-section.adoc[Multi-producer
+  carrier sections for L2–L6 and L15] (PR #76, `[draft]` 2026-05-27).
+  Proposes two new producer-neutral custom sections
+  (`typedwasm.regions`, `typedwasm.capabilities`) alongside the
+  existing `typedwasm.ownership`. Blocks L2–L6 / L15 enforcement on
+  emitted wasm. Cross-repo review at affinescript#402 + ephapax#165
+  gates promotion to `[review]`.
+* **Codec pre-stage** (PR #77) — `cargo feature = "unstable-l2"`
+  enables the `typedwasm.regions` codec ahead of `[accepted]` so
+  the wire format gets stress-tested through round-trip tests.
+* **Access-site carrier** — issue #78 (resolved option A;
+  proposal 0002 to be authored once 0001 settles). Closes the
+  "L2-the-enforcement" gap (region/field carriers say *what
+  exists*; access-site carrier says *which load/store hits which
+  field*).
+
 Deliverables:
 
 * **Producer specification document.** Normative: what a third-party
