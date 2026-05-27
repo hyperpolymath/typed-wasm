@@ -289,6 +289,24 @@ verification, not debug info, and must not be optimised out.
   cross-module.  Out of scope of v1 (single-module L2–L6 is the v1
   milestone); needs its own proposal.
 
+. **Access-site carrier (RESOLVED — option A).** Discovered during
+  the pre-stage codec in PR #77: this proposal's `typedwasm.regions`
+  section says *which regions exist* but does **not** say which
+  `(region_id, field_id)` any individual wasm load/store targets.
+  The source-level checker sees `region.get $r .f`; post-codegen
+  that's just `i32.load offset=N align=A`, with the `($r, .f)`
+  annotation gone. So this proposal is sufficient for
+  L2-the-spec (schema agreement) but insufficient for
+  L2-the-enforcement (every typed access resolves to a declared
+  region/field). Owner-resolved 2026-05-27 (see typed-wasm#78):
+  **adopt option A — a per-instruction access-site carrier
+  (`typedwasm.access-sites`) mapping
+  `(func_idx, instruction_byte_offset) → (region_id, field_id)`**.
+  Wire-format design for that section lands in a follow-up proposal
+  (`docs/proposals/0002-...adoc`); the L2 verifier pass
+  (`verify_region_binding`, omitted from PR #77) is gated on
+  that proposal's acceptance.
+
 == Acceptance criteria
 
 . Reviewed and signed off by maintainers of `affinescript` and
