@@ -1235,3 +1235,203 @@ attestLW_AchievedIn :
   -> (att : LevelAttestationW n)
   -> LevelAchievedIn n [toLegacy att]
 attestLW_AchievedIn _ = LAHere
+
+-- ============================================================================
+-- WitnessCertificate — the certificate lifted to witness-carrying form
+-- ============================================================================
+--
+-- `LevelAttestationW n` upgrades a single attestation to witness-
+-- carrying form.  `ProofCertificate` still uses `List LevelAttestation`
+-- (unindexed) for its `levels` field, so a heterogeneous certificate
+-- (different levels with different witness types) can't be built
+-- directly out of `LevelAttestationW n`s — Idris2 lists are
+-- homogeneous, and each `LevelAttestationW n` lives at a different
+-- type per level.
+--
+-- The standard fix is an existential wrapper: `SomeAttestationW`
+-- packages a `LevelAttestationW n` for *some* `n`, hiding the index
+-- under the constructor.  A `List SomeAttestationW` is then
+-- homogeneous and can replace `List LevelAttestation` in a
+-- witness-carrying certificate.
+--
+-- The level number is RETAINED on `SomeAttestationW` (no `{0}`
+-- erasure) so it can be projected at the consumer side without
+-- losing information.  This mirrors the design choice on
+-- `LevelAttestationW` itself.
+--
+-- Bridge `witnessToLegacy : WitnessCertificate -> ProofCertificate`
+-- projects each `SomeAttestationW` down to the legacy unindexed shape
+-- and reassembles a `ProofCertificate`.  Pure projection; no trust
+-- injection.
+
+||| Existential wrapper hiding the level index.  Constructing one
+||| packages a `LevelAttestationW n` for *some* `n`; pattern-matching
+||| recovers both `n` and the witness-carrying attestation.
+|||
+||| The level index is RETAINED at runtime (no `{0}` erasure) so
+||| consumers can project the level number without losing the
+||| index-witness pairing.
+public export
+data SomeAttestationW : Type where
+  MkSomeAttW : {n : Nat}
+            -> (att : LevelAttestationW n)
+            -> SomeAttestationW
+
+||| Project the level index of a wrapped witness attestation.
+public export
+someAttLevel : SomeAttestationW -> Nat
+someAttLevel (MkSomeAttW {n} _) = n
+
+||| Project the wrapped attestation back down to the legacy unindexed
+||| `LevelAttestation` shape via `toLegacy`.
+public export
+someAttToLegacy : SomeAttestationW -> LevelAttestation
+someAttToLegacy (MkSomeAttW {n} att) = toLegacy att
+
+||| `WitnessCertificate` — `ProofCertificate` lifted to
+||| witness-carrying form.  Same three fields as `ProofCertificate`
+||| but `levels` carries `SomeAttestationW` (witness-retained) instead
+||| of `LevelAttestation` (witness-discarded).
+|||
+||| `witnessToLegacy` below projects a `WitnessCertificate` down to a
+||| `ProofCertificate` for back-compat with existing consumers
+||| (`LevelAchieved`, `composeAchievedL`/`R`, etc.).
+public export
+record WitnessCertificate where
+  constructor MkWitnessCert
+  witnessLevels       : List SomeAttestationW
+  witnessHighestProven : Nat
+  witnessMultiModule  : List CompatCertificate
+
+||| Project each `SomeAttestationW` to legacy `LevelAttestation`
+||| via explicit recursion (not `map`-eta, so it reduces on `Nil`
+||| definitionally — needed for the bridge round-trip `Refl`s below).
+public export
+witnessLevelsToLegacy :
+     List SomeAttestationW -> List LevelAttestation
+witnessLevelsToLegacy []        = []
+witnessLevelsToLegacy (x :: xs) = someAttToLegacy x :: witnessLevelsToLegacy xs
+
+||| Bridge: `WitnessCertificate -> ProofCertificate`.  Each
+||| `SomeAttestationW` in the levels list is downgraded to
+||| `LevelAttestation`; the other two fields pass through unchanged.
+||| Total, no `believe_me`, no `assert_total`.
+public export
+witnessToLegacy : WitnessCertificate -> ProofCertificate
+witnessToLegacy (MkWitnessCert ls hi mm) =
+  MkCertificate (witnessLevelsToLegacy ls) hi mm
+
+-- ----------------------------------------------------------------------------
+-- Composition of witness certificates
+-- ----------------------------------------------------------------------------
+--
+-- Mirrors `composeCertificates : ProofCertificate ->
+-- ProofCertificate -> ProofCertificate` but operates on the
+-- witness-carrying record.  Concatenates the witness-attestation
+-- lists, takes the minimum highest-proven, concatenates the
+-- multi-module compatibility lists.
+--
+-- Compatibility with the legacy composition is captured by the
+-- `composeWitnessLegacyAgree` lemma below: legacy composition of
+-- the projections equals projection of the witness composition.
+
+||| Compose two witness certificates by concatenation + minimum.
+public export
+composeWitness :
+     WitnessCertificate -> WitnessCertificate -> WitnessCertificate
+composeWitness (MkWitnessCert ls1 h1 mm1) (MkWitnessCert ls2 h2 mm2) =
+  MkWitnessCert (ls1 ++ ls2) (min h1 h2) (mm1 ++ mm2)
+
+-- ----------------------------------------------------------------------------
+-- Bridge / composition compatibility lemma
+-- ----------------------------------------------------------------------------
+
+||| Helper: `witnessLevelsToLegacy` distributes over `++`.  This is
+||| just `mapAppend` from the standard library (`map` over `++`),
+||| but we prove it inline so the next lemma can be a one-line
+||| rewrite without depending on the exact stdlib export name.
+public export
+witnessLevelsToLegacyAppend :
+     (xs, ys : List SomeAttestationW)
+  -> witnessLevelsToLegacy (xs ++ ys)
+   = witnessLevelsToLegacy xs ++ witnessLevelsToLegacy ys
+witnessLevelsToLegacyAppend []        ys = Refl
+witnessLevelsToLegacyAppend (x :: xs) ys =
+  rewrite witnessLevelsToLegacyAppend xs ys in Refl
+
+||| Composition compatibility: composing the projections equals
+||| projecting the composition.  Pin-down lemma ensuring the
+||| witness-side composition stays consistent with the legacy one
+||| under projection.
+|||
+||| `composeCertificates (witnessToLegacy c1) (witnessToLegacy c2) =
+||| witnessToLegacy (composeWitness c1 c2)`
+public export
+composeWitnessLegacyAgree :
+     (c1, c2 : WitnessCertificate)
+  -> composeCertificates (witnessToLegacy c1) (witnessToLegacy c2)
+   = witnessToLegacy (composeWitness c1 c2)
+composeWitnessLegacyAgree (MkWitnessCert ls1 _ _) (MkWitnessCert ls2 _ _) =
+  rewrite witnessLevelsToLegacyAppend ls1 ls2 in Refl
+
+-- ----------------------------------------------------------------------------
+-- WitnessAchieved — predicate lifted to the new certificate
+-- ----------------------------------------------------------------------------
+--
+-- The legacy `LevelAchieved n c` is `LevelAchievedIn n c.levels`,
+-- where `levels : List LevelAttestation`.  The witness-side analogue
+-- `WitnessAchieved n c` first projects to legacy via
+-- `witnessToLegacy` and then asks for the same predicate on the
+-- result.  This keeps the surface identical and makes the bridge
+-- proof a one-liner.
+
+||| `WitnessAchieved n c` — witness certificate `c` claims level `n`,
+||| under the back-compat projection to `ProofCertificate`.
+public export
+WitnessAchieved : (n : Nat) -> WitnessCertificate -> Type
+WitnessAchieved n c = LevelAchieved n (witnessToLegacy c)
+
+||| Identity bridge: `WitnessAchieved` is definitionally equal to
+||| `LevelAchieved` on the projection — there is no information loss
+||| in the bridge from the achievement-predicate's point of view.
+public export
+witnessAchievedIsLegacy :
+     {n : Nat} -> {c : WitnessCertificate}
+  -> WitnessAchieved n c = LevelAchieved n (witnessToLegacy c)
+witnessAchievedIsLegacy = Refl
+
+-- ----------------------------------------------------------------------------
+-- Smart constructors / inhabitants
+-- ----------------------------------------------------------------------------
+
+||| Empty witness certificate.  No attestations, `highestProven = 0`,
+||| no multi-module entries.  Concrete inhabitant proving the record
+||| is constructible without external trust.
+public export
+emptyWitnessCertificate : WitnessCertificate
+emptyWitnessCertificate = MkWitnessCert [] 0 []
+
+||| Smart constructor: wrap a single witness attestation as a
+||| `SomeAttestationW`.  Inferred level index.
+public export
+someAtt : {n : Nat} -> LevelAttestationW n -> SomeAttestationW
+someAtt {n} att = MkSomeAttW {n} att
+
+||| Singleton witness certificate: one attestation, `highestProven = n`,
+||| no multi-module entries.
+public export
+singletonWitnessCertificate :
+     {n : Nat} -> LevelAttestationW n -> WitnessCertificate
+singletonWitnessCertificate {n} att =
+  MkWitnessCert [MkSomeAttW {n} att] n []
+
+||| Empty bridge round-trip: the legacy projection of an empty
+||| witness certificate is the empty proof certificate.  Inlined LHS
+||| (no `emptyWitnessCertificate` indirection) to keep the equality
+||| at definitional depth — `let`-bound top-level values don't unfold
+||| through `Refl` in Idris2 0.8.0.
+public export
+emptyWitnessToLegacy :
+     witnessToLegacy (MkWitnessCert [] 0 [])
+   = MkCertificate [] 0 []
+emptyWitnessToLegacy = Refl
