@@ -8,6 +8,16 @@ description = "Post-codegen verifier for typed-wasm L7 (aliasing) and L10 (linea
 repository = "https://github.com/hyperpolymath/typed-wasm"
 readme = "README.md"
 
+[features]
+default = []
+# Pre-stages the L2 region-binding carrier codec for typed-wasm proposal
+# 0001 (typed-wasm#76, refs #34). UNSTABLE: wire format may change before
+# the proposal is [accepted]. Enables `parse_regions_section_payload` /
+# `build_regions_section_payload` and the `RegionEntry` / `FieldEntry`
+# types. Does NOT enable a `verify_region_binding` pass — that needs an
+# access-site carrier still under design (see proposal §Open Questions).
+unstable-l2 = []
+
 [dependencies]
 # Exact pins: wasmparser's 0.x line ships API breaks on every minor bump
 # (0.221 -> 0.250 reshaped the import iterator). Keep these locked so the

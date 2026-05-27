@@ -6,9 +6,9 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-05-26"
+last-updated = "2026-05-27"
 status = "active"  # active | paused | archived
-session = "2026-05-26 — Proof-debt pass A10+A11+A12+A13 (PR #72). A10 closes the last 2 NAMED deferred items from PROOF-NEEDS (L12 freshness propagation under concurrent writes via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness` projector; `compatCommute` mutual-subschema case + `noSpoofingBidir` corollary + 2nd worked example). Also fixed `tests/proof/regression.mjs` Layer 2 from silent no-op `--check` to real `--build`. A11 closes 3 of 8 untracked debts: (1) `Sync.WriteSync` now requires a `FieldVersion` witness; (2) `Knowledge.Observed` grounded in a `Sync` event; (4-partial) first algebraic laws for `composeCertificates`. A12 closes 3 MORE untracked items: item 4 FULL (`Data.Nat.minimum` → `composeAssoc` + `composeHighProvenComm`); item 6 (`RegionDisjoint` + `regionDisjointSym`); item 3 (`jointBudgetCompose` — L8↔L15). A13 (post coordinator pre-clearance for items 5+7+8) closes the rest: item 5a `LinearAcrossBoundary` + `linearTransferRequiresBoundary` (L13×L10 cross-level in ModuleIsolation.idr); item 5b `SessionAcrossBoundary` + `sessionAcrossPreservesState` + `sessionTransferRequiresBoundary` (L14×L13 in SessionProtocol.idr); A12 leave-behind `RegionsOverlap` + `disjointImpliesNoOverlap` (RegionDisjoint→byte-separation in Region.idr); items 7+8 stated as typed obligations in new `TypedWasm.ABI.VerifierSpec` module (`SpecAccepts` / `VerifierAccepts` / `SourceAccepts` predicates, `VerifierSpecAgreement` / `SourceVerifierAgreement` records, `sourceImpliesSpec` / `specImpliesSource` composition lemmas). 34 new theorems total across A10+A11+A12+A13 (8+5+6+15), regression 25→68, package 17→22 modules. Original 8-item post-A10 audit fully closed (items 7+8 at statement level; full proof bodies are multi-week and tracked as long-tail). Previous session (2026-05-24/25): Phase 0 closure pass landed 11 PRs (#46..#63)."
+session = "2026-05-27 — Phase 2 carrier-ABI kickoff + proof-debt closure pass (PR #72) integrated. Carrier-ABI: 3 PRs filed + 1 issue resolved — #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A (per-instruction (func_idx, instruction_byte_offset) -> (region_id, field_id)); Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness`; `compatCommute` mutual-subschema + `noSpoofingBidir` corollary). Fixed `tests/proof/regression.mjs` Layer 2 from `--check` no-op to real `--build`. A11 closes 3/8 untracked debts (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8: LinearAcrossBoundary L13×L10, SessionAcrossBoundary L14×L13, RegionsOverlap + disjointImpliesNoOverlap, and new TypedWasm.ABI.VerifierSpec module (SpecAccepts/VerifierAccepts/SourceAccepts predicates, agreement records, composition lemmas). 34 new theorems across A10+A11+A12+A13, regression 25→68, package 17→22 modules. Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
 
 [project-context]
 name = "typed-wasm"
@@ -62,6 +62,12 @@ milestones = [
   { name = "RegionDisjoint → byte non-overlap theorem (L7/L10 cross-level)", completion = 100 },  # 2026-05-26 (A13, PR #72) — A12 leave-behind via RegionsOverlap + disjointImpliesNoOverlap
   { name = "Verifier ↔ Idris2 spec equivalence — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: VerifierSpecAgreement obligation typed; full bodies multi-week
   { name = "Source-checker ↔ verifier coverage agreement — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: SourceVerifierAgreement obligation typed; full bodies multi-week
+  { name = "L13 module isolation enforcement on emitted wasm", completion = 100 },  # PR #37, 2026-05-19
+  { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 30 },  # PR #76 filed 2026-05-27; [draft], blocked on affinescript+ephapax review
+  { name = "L2 region-binding codec pre-stage (unstable-l2 feature)", completion = 100 },  # PR #77, 2026-05-27 — codec only, no verifier pass yet
+  { name = "L15 capability carrier ABI", completion = 30 },  # bundled into proposal 0001 (typedwasm.capabilities section)
+  { name = "Access-site carrier (proposal 0002)", completion = 15 },  # issue #78 resolved option A; size measurement done (Encoding B recommended); proposal not yet authored
+  { name = "C5.1 real-AffineScript fixture corpus", completion = 100 },  # PR #81, 2026-05-27 — 4 fixtures + regenerate workflow
 ]
 
 [blockers-and-issues]
@@ -80,6 +86,9 @@ issues = [
 
 [critical-next-actions]
 actions = [
+  "Phase 2: cross-repo review of proposal 0001 carrier-section ABI — externally gated (affinescript#402 + ephapax#165 sit in maintainers' queues).",
+  "Phase 2: after proposal 0001 [accepted], author proposal 0002 (access-site carrier — option A); use Encoding B per the size measurement on issue #78.",
+  "Phase 2: after proposal 0002 [accepted], unstable-l2 codec gets the verify_region_binding pass (deliberately omitted from PR #77).",
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
   "Track A: ReScript cut single PR (auto-closes anti-pattern policy red).",
@@ -91,18 +100,19 @@ actions = [
 ]
 
 [maintenance-status]
-last-run-utc = "2026-05-26T20:00:00Z"
-last-report = "PROOF-NEEDS.md (RECONCILIATION 2026-05-26 A13 banner)"   # A10+A11+A12+A13 are the active record; A13 banner is at the top; A13 closes the original post-A10 8-item audit at statement level
+last-run-utc = "2026-05-27T10:30:00Z"
+last-report = "docs/PRODUCTION-PATH.adoc"   # canonical strategic doc; PROOF-NEEDS.md A13 banner records 2026-05-26 proof-debt closure
 last-result = "pass"  # unknown | pass | warn | fail
 open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + anti-pattern policy (fixed by Track A's ReScript cut)
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
 
 [test-surface]
-# Test surface as of 2026-05-24; ~545 assertions across 11 surfaces.
-total-assertions = 563  # 545→563: proof-regression bumped 50→68 by A13 (PR #72)
+# Test surface as of 2026-05-27; combines proof-regression bump (PR #72) and PR #81 C5.1 real fixtures.
+total-assertions = 577  # 545 baseline + 18 proof-regression (50→68 via A13/#72) + 14 from carrier-ABI/c5_real (#81)
 surfaces = [
   { name = "ParserTests.res",                 assertions = 88,  file = "tests/parser/ParserTests.res" },
-  { name = "typed-wasm-verify (Rust)",        assertions = 53,  file = "crates/typed-wasm-verify/" },        # 43 unit + 10 cross-compat
+  { name = "typed-wasm-verify (Rust, default)", assertions = 47, file = "crates/typed-wasm-verify/" },     # 42 unit/cross-compat + 5 C5.1 real-fixture (PR #81, 2026-05-27)
+  { name = "typed-wasm-verify (--features unstable-l2)", assertions = 9, file = "crates/typed-wasm-verify/src/section.rs (regions_tests)" },  # PR #77, 2026-05-27 — opt-in, not run by default CI
   { name = "Per-level tests",                 assertions = 56,  file = "tests/levels/L1.mjs..L10.mjs" },
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
@@ -129,3 +139,34 @@ phase-3 = 51
 phase-4 = 52
 phase-5 = 53
 phase-6 = 54
+
+[carrier-abi]
+# Multi-producer carrier sections for L2-L6 and L15.
+# Status as of 2026-05-27.
+proposal-0001-pr = 76
+proposal-0001-status = "draft"
+proposal-0001-acceptance-gates = [
+  "hyperpolymath/affinescript review (issue #402)",
+  "hyperpolymath/ephapax review (issue #165)",
+]
+codec-pre-stage-pr = 77
+codec-feature-flag = "unstable-l2"
+codec-section-name = "typedwasm.regions"
+capabilities-section-name = "typedwasm.capabilities"
+access-site-issue = 78
+access-site-decision = "option A — per-instruction (func_idx, instruction_byte_offset) -> (region_id, field_id)"
+access-site-recommended-encoding = "B (LEB128 per field, ~5 B/access, ~1.1% module overhead)"
+proposal-0002-status = "not yet authored — wait until proposal 0001 [accepted]"
+
+[c5-real-fixtures]
+# Real-AffineScript-emitted .wasm corpus, PR #81 landed 2026-05-27.
+pr = 81
+closes-issue = 35  # part 2
+fixture-dir = "crates/typed-wasm-verify/tests/fixtures/c5_real/"
+fixture-count = 4
+affinescript-sha-pinned = "21edc159caee06a930cb7339b3e729ed5627b823"
+regenerate-workflow = ".github/workflows/c5-regenerate.yml"
+deferred-fixture-gaps = [
+  "Duplicate-Linear violation (source-level borrow checker rejects double-move; needs hand-built fixture outside C5.1)",
+  "Multi-module clean / Linear-twice / isolated-vs-shared-memory (needs multi-module affinescript build harness)",
+]

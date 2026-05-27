@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+// ADR-002 / ADR-007 valid case (Option C primary form).
+//
+// `r` is @linear (must be used exactly once). It is bound under a
+// @linear let, so the value context scales by 1 (identity). The let-
+// bound alias `s` is then used exactly once in the body. This must
+// pass the quantity checker.
+
+fn forward(@linear r: Int) -> Int {
+  @linear let s = r;
+  s
+}

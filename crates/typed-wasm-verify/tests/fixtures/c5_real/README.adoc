@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: MPL-2.0
+= C5.1 — Real-AffineScript-emitted .wasm fixtures
+:toc: preamble
+
+Tracks https://github.com/hyperpolymath/typed-wasm/issues/35[typed-wasm#35] part 2.
+
+The synthetic fixtures in `tests/cross_compat.rs` are hand-built with
+`wasm_encoder`, and the expected verdicts are hand-traced. This
+directory pairs four `.affine` sources with the **real** `.wasm`
+output produced by `affinescript compile` so the post-codegen
+verifier (`typed-wasm-verify`) is exercised against bytes a real
+producer emits. The synthetic table remains the parity oracle; this
+corpus is the cross-check.
+
+== Fixture corpus
+
+[cols="1,2,2,3"]
+|===
+| # | Source | Expected verdict | What it exercises
+
+| 01 | `01_clean_linear.affine`
+  | `Ok(())`
+  | `@linear` consumed exactly once via let-rebind → `local.get 0` once
+| 02 | `02_shared_borrow_twice.affine`
+  | `Ok(())`
+  | `ref Int` read twice in a single expression — allowed by SharedBorrow
+| 03 | `03_partial_drop.affine`
+  | `OwnershipError::LinearNotUsed` (sink), `LinearDroppedOnSomePath` (partial_drop)
+  | `own Int` consumed in then-branch only; sink fn drops its param
+| 04 | `04_excl_alias.affine`
+  | `OwnershipError::ExclBorrowAliased`
+  | `mut Int` read into two operands of one expression
+|===
+
+== Provenance
+
+These bytes are reproducible from the paired `.affine` sources via:
+
+[source,shell]
+----
+affinescript compile <source>.affine -o <source>.wasm
+----
+
+Captured 2026-05-27 against:
+
+* `affinescript` HEAD `21edc159caee06a930cb7339b3e729ed5627b823`
+* OCaml 4.14.2 (opam switch `affinescript`)
+* `affinescript compile` default options (no `--wasm-gc`,
+  no `--deno-esm`).
+
+The `regenerate-fixtures.yml` CI workflow re-runs this compilation
+on every PR that touches this directory, then compares the byte-for-byte
+output. A drift in `affinescript`'s codegen surfaces immediately.
+
+== Gaps deferred to follow-ups
+
+. **Duplicate-Linear violation fixture.** The affinescript source-level
+  borrow checker correctly rejects double-move; producing a real `.wasm`
+  with a Linear param loaded twice from the same source needs either a
+  source-level escape hatch (none exists today) or a hand-built fixture
+  outside C5.1.
+. **Multi-module fixtures** (clean cross-module Linear call, Linear-called-
+  twice import, isolated vs shared memory pair). Need a multi-module
+  build harness for `affinescript`; out of scope for the first C5.1
+  drop. Tracked separately.
+
+== Why these bytes, vendored?
+
+The verifier crate's CI today does not build `affinescript`. Building
+it would require provisioning OCaml + opam + the affinescript opam deps
+on every PR — a heavy gate for what is fundamentally a parity check
+against artefacts. Vendoring the `.wasm` bytes is the standard pattern
+(see also `wasm-tools`, `wabt` test corpora) — fast, auditable, and the
+regenerate workflow catches drift if affinescript's codegen ever
+changes the wire shape.
