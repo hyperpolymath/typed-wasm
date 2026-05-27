@@ -25,6 +25,12 @@ pub use section::{
 };
 pub use verify::{count_uses_range, verify_function};
 
+#[cfg(feature = "unstable-l2")]
+pub use section::{
+    build_regions_section_payload, parse_regions_section_payload, FieldEntry, FieldKind,
+    Nullability, RegionEntry, WasmTy, REGIONS_SECTION_VERSION,
+};
+
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
 /// Wire encoding in the `typedwasm.ownership` custom section: a single
 /// u8 per kind, values 0/1/2/3 as below.
@@ -125,6 +131,12 @@ pub enum VerifyError {
 /// of the 2026-05-26 rename; both AffineScript (`Codegen.build_ownership_section`)
 /// and Ephapax (`ephapax-wasm`) emit and read this name.
 pub const OWNERSHIP_SECTION_NAME: &str = "typedwasm.ownership";
+
+/// Custom-section name carrying L2–L6 region/field schema. Pre-staged
+/// against typed-wasm proposal 0001 (typed-wasm#76, refs #34).
+/// UNSTABLE: wire format may change before the proposal is [accepted].
+#[cfg(feature = "unstable-l2")]
+pub const REGIONS_SECTION_NAME: &str = "typedwasm.regions";
 
 // ----------------------------------------------------------------------
 // Public entry points (stubbed in C1; implementations land in C2-C4).
