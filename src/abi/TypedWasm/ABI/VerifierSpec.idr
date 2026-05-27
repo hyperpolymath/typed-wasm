@@ -29,6 +29,7 @@ module TypedWasm.ABI.VerifierSpec
 
 import Data.List
 import Data.List.Elem
+import Decidable.Equality
 
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.Pointer
@@ -1037,3 +1038,146 @@ fixtureRealisticCleanSourceAccepts = trustedToSource fixtureRealisticCleanTruste
 -- These rows are the natural motivation for extending the spec —
 -- adding a body-level predicate would make the differential evidence
 -- structural for them too.  Tracked as long-tail.
+
+-- ============================================================================
+-- DecEq machinery for ModuleSummary + dispatching fixtureLookup
+-- ============================================================================
+--
+-- The A14 / A15 work above left one note as future work:
+--
+--   "A fully discriminating `fixtureLookup` ... requires decidable
+--   equality on ModuleSummary."
+--
+-- This section closes that note.  Three DecEq instances —
+-- `OwnershipIntent`, `FunctionSummary`, `ModuleSummary` — plus a
+-- dispatching `firstExtendedAgreement` that returns the right
+-- TrustedFixture for the three registered fixture rows and Nothing
+-- otherwise.  Total functions throughout; no `believe_me` introduced
+-- (the stdlib's `decEq` on String uses one internally, but that's
+-- pre-existing stdlib content not new code in this module).
+
+||| `DecEq OwnershipIntent` — 16 cases (4 same-constructor compare-
+||| payload + 12 different-constructor immediate-No).  Mechanical.
+public export
+DecEq OwnershipIntent where
+  decEq (Consumes a) (Consumes b)         = case decEq a b of
+    Yes Refl => Yes Refl
+    No neq   => No (\Refl => neq Refl)
+  decEq (Produces a) (Produces b)         = case decEq a b of
+    Yes Refl => Yes Refl
+    No neq   => No (\Refl => neq Refl)
+  decEq (Borrows a) (Borrows b)           = case decEq a b of
+    Yes Refl => Yes Refl
+    No neq   => No (\Refl => neq Refl)
+  decEq (BorrowsExclusive a) (BorrowsExclusive b) = case decEq a b of
+    Yes Refl => Yes Refl
+    No neq   => No (\Refl => neq Refl)
+  decEq (Consumes _)        (Produces _)        = No (\case Refl impossible)
+  decEq (Consumes _)        (Borrows _)         = No (\case Refl impossible)
+  decEq (Consumes _)        (BorrowsExclusive _) = No (\case Refl impossible)
+  decEq (Produces _)        (Consumes _)        = No (\case Refl impossible)
+  decEq (Produces _)        (Borrows _)         = No (\case Refl impossible)
+  decEq (Produces _)        (BorrowsExclusive _) = No (\case Refl impossible)
+  decEq (Borrows _)         (Consumes _)        = No (\case Refl impossible)
+  decEq (Borrows _)         (Produces _)        = No (\case Refl impossible)
+  decEq (Borrows _)         (BorrowsExclusive _) = No (\case Refl impossible)
+  decEq (BorrowsExclusive _) (Consumes _)        = No (\case Refl impossible)
+  decEq (BorrowsExclusive _) (Produces _)        = No (\case Refl impossible)
+  decEq (BorrowsExclusive _) (Borrows _)         = No (\case Refl impossible)
+
+||| Helper: injectivity of `MkFunctionSummary` on both fields.
+funcSummaryInj :
+     MkFunctionSummary n1 i1 = MkFunctionSummary n2 i2
+  -> (n1 = n2, i1 = i2)
+funcSummaryInj Refl = (Refl, Refl)
+
+||| `DecEq FunctionSummary` — record-of-two compare; uses stdlib
+||| `decEq` on `String` and on `List OwnershipIntent`.
+public export
+DecEq FunctionSummary where
+  decEq (MkFunctionSummary n1 i1) (MkFunctionSummary n2 i2) =
+    case decEq n1 n2 of
+      No neq    => No (\eq => neq (fst (funcSummaryInj eq)))
+      Yes Refl  => case decEq i1 i2 of
+        No neq   => No (\eq => neq (snd (funcSummaryInj eq)))
+        Yes Refl => Yes Refl
+
+||| Helper: injectivity of `MkModuleSummary`.
+modSummaryInj :
+     MkModuleSummary n1 fs1 = MkModuleSummary n2 fs2
+  -> (n1 = n2, fs1 = fs2)
+modSummaryInj Refl = (Refl, Refl)
+
+||| `DecEq ModuleSummary` — same shape as `FunctionSummary`.
+public export
+DecEq ModuleSummary where
+  decEq (MkModuleSummary n1 fs1) (MkModuleSummary n2 fs2) =
+    case decEq n1 n2 of
+      No neq    => No (\eq => neq (fst (modSummaryInj eq)))
+      Yes Refl  => case decEq fs1 fs2 of
+        No neq   => No (\eq => neq (snd (modSummaryInj eq)))
+        Yes Refl => Yes Refl
+
+-- ----------------------------------------------------------------------------
+-- liftTrustedFixture — coerce a TrustedFixture across decEq evidence
+-- ----------------------------------------------------------------------------
+--
+-- Once decEq gives us `prf : m = m'`, we want to convert a
+-- `TrustedFixture m'` (the registered fixture) into a
+-- `TrustedFixture m` (what the caller's lookup signature demands).
+-- Direct pattern-match on `Refl` does the job — totally, no
+-- `believe_me`.
+
+||| Transport a `TrustedFixture` along propositional equality of its
+||| underlying `ModuleSummary` index.
+public export
+liftTrustedFixture :
+     {0 a, b : ModuleSummary}
+  -> a = b
+  -> TrustedFixture a
+  -> TrustedFixture b
+liftTrustedFixture Refl x = x
+
+-- ----------------------------------------------------------------------------
+-- firstExtendedAgreement — dispatches on the three registered fixtures
+-- ----------------------------------------------------------------------------
+
+||| Dispatching fixture-lookup helper.  Returns the registered
+||| `TrustedFixture m` when `m` matches one of the three fixture
+||| modules registered above; Nothing otherwise.  Total, no
+||| `believe_me`.
+public export
+fixtureLookupDispatching :
+     (m : ModuleSummary)
+  -> (fixtureName : String)
+  -> (fixtureId   : Nat)
+  -> Maybe (TrustedFixture m)
+fixtureLookupDispatching m _ _ = case decEq m fixtureCleanLinearConsumerModule of
+  Yes prf => Just (liftTrustedFixture (sym prf) fixtureCleanLinearConsumerTrusted)
+  No _    => case decEq m fixtureExtractExportsModule of
+    Yes prf => Just (liftTrustedFixture (sym prf) fixtureExtractExportsTrusted)
+    No _    => case decEq m fixtureRealisticCleanModule of
+      Yes prf => Just (liftTrustedFixture (sym prf) fixtureRealisticCleanTrusted)
+      No _    => Nothing
+
+||| `firstExtendedAgreement` — `StructuralAgreement` plus the
+||| dispatching `fixtureLookupDispatching`.  First non-empty
+||| `ExtendedAgreement` in the codebase.  Closes the future-work note
+||| left by `emptyExtendedAgreement` at A14.
+public export
+firstExtendedAgreement : ExtendedAgreement
+firstExtendedAgreement = MkExtendedAgreement
+  structuralAgreement
+  fixtureLookupDispatching
+
+-- Round-trip propositional equalities (e.g.
+-- `fixtureLookupDispatching fixtureCleanLinearConsumerModule "..." 1
+--    = Just fixtureCleanLinearConsumerTrusted`)
+-- do not reduce to `Refl` definitionally because `decEq` on records
+-- bottoms out in `decEq` on `String` which doesn't unfold at type-
+-- check time.  Proving those equalities requires either propositional
+-- reasoning about the decEq-with-equal-input case, or pulling the
+-- dispatcher's selector outside the decEq.  Tracked as future work
+-- (mechanical but verbose).  The dispatcher itself is total and is
+-- the load-bearing deliverable here.
+

@@ -216,6 +216,11 @@ const EXPECTED = [
   ["VerifierSpec.idr", /^fixtureRealisticCleanModule\s*:/m, "Row 10 — realistic four-function module (A15)"],
   ["VerifierSpec.idr", /^fixtureRealisticCleanWitness\s*:/m, "Row 10 structural witness (A15)"],
   ["VerifierSpec.idr", /^fixtureRealisticCleanTrusted\s*:/m, "Row 10 TrustedFixture (A15)"],
+
+  // VerifierSpec.idr — A16 dispatching ExtendedAgreement
+  ["VerifierSpec.idr", /^liftTrustedFixture\s*:/m, "Transport TrustedFixture along propositional equality (A16)"],
+  ["VerifierSpec.idr", /^fixtureLookupDispatching\s*:/m, "Dispatching fixture lookup over registered fixtures (A16)"],
+  ["VerifierSpec.idr", /^firstExtendedAgreement\s*:/m, "First non-empty ExtendedAgreement (A16)"],
 ];
 
 // ----------------------------------------------------------------------
