@@ -779,3 +779,90 @@ sourceImpliesSpecExtended _   _ (SAStructural fa)        =
   Just (MkSpecAccepts fa)
 sourceImpliesSpecExtended ext m (SADifferential name fid) =
   map trustedToSpec (ext.fixtureLookup m name fid)
+
+-- ============================================================================
+-- First concrete TrustedFixture — derived from cross_compat.rs row 1
+-- ============================================================================
+--
+-- `emptyExtendedAgreement` above shows `ExtendedAgreement` is
+-- constructible; this section shows it can carry real evidence.  The
+-- fixture below mirrors row 1 of
+-- `crates/typed-wasm-verify/tests/cross_compat.rs`
+-- (`fixture_clean_linear_consumer`) — the minimal Rust-verifier
+-- regression case proving the verifier accepts a single-function
+-- module that consumes one linear handle.
+--
+-- The conceptual AffineScript source for that fixture is:
+--
+--     fn consume(s: own Handle): unit = drop s
+--
+-- which lowers to a wasm function with one `Linear` parameter,
+-- consumed exactly once via `local.get; drop`.  In `ModuleSummary`
+-- terms: one function with `[Consumes 0]`.
+--
+-- This is the first **non-trivial** `TrustedFixture` in the codebase:
+-- a concrete pairing of a real differential-harness row with its
+-- structural witness.  Future fixture rows append in the same shape.
+
+||| `ModuleSummary` mirror of `cross_compat::fixture_clean_linear_consumer`.
+||| Single function with a single `Consumes 0` intent.
+public export
+fixtureCleanLinearConsumerModule : ModuleSummary
+fixtureCleanLinearConsumerModule = MkModuleSummary "fixture_clean_linear_consumer"
+  [ MkFunctionSummary "consume" [Consumes 0]
+  ]
+
+||| Structural witness for the fixture's intents.  Uses `ILAConsumes`
+||| with the vacuous `TFNil` freshness obligation (no other intents
+||| in the tail).
+public export
+fixtureCleanLinearConsumerWitness :
+     FunctionsAccepted VerifierSpec.fixtureCleanLinearConsumerModule.functions
+fixtureCleanLinearConsumerWitness =
+  FACons (ILAConsumes TFNil ILANil) FANil
+
+||| First concrete `TrustedFixture` value.  Fixture id `1` matches the
+||| row number in `cross_compat.rs` (fixture_clean_linear_consumer is
+||| the first `#[test]` in the file).  Constructing this is the
+||| single trust-injection point for this fixture row — every
+||| downstream use re-projects from this single value.
+public export
+fixtureCleanLinearConsumerTrusted :
+     TrustedFixture VerifierSpec.fixtureCleanLinearConsumerModule
+fixtureCleanLinearConsumerTrusted = MkTrustedFixture
+  "fixture_clean_linear_consumer"
+  1
+  fixtureCleanLinearConsumerWitness
+
+||| Derived `SpecAccepts` for the fixture, via `trustedToSpec`.
+||| Demonstrates the path from a fixture-pinned trust-injection to a
+||| structural-grade spec acceptance.
+public export
+fixtureCleanLinearConsumerSpecAccepts :
+     SpecAccepts VerifierSpec.fixtureCleanLinearConsumerModule
+fixtureCleanLinearConsumerSpecAccepts =
+  trustedToSpec fixtureCleanLinearConsumerTrusted
+
+||| Derived `VerifierAccepts` via `trustedToVerifier` — the
+||| differential case now has a concrete structural witness
+||| underneath, no longer just a name + id.
+public export
+fixtureCleanLinearConsumerVerifierAccepts :
+     VerifierAccepts VerifierSpec.fixtureCleanLinearConsumerModule
+fixtureCleanLinearConsumerVerifierAccepts =
+  trustedToVerifier fixtureCleanLinearConsumerTrusted
+
+||| Symmetric source-side witness.
+public export
+fixtureCleanLinearConsumerSourceAccepts :
+     SourceAccepts VerifierSpec.fixtureCleanLinearConsumerModule
+fixtureCleanLinearConsumerSourceAccepts =
+  trustedToSource fixtureCleanLinearConsumerTrusted
+
+-- Note on full dispatch.  A fully discriminating `fixtureLookup` —
+-- `(m : ModuleSummary) -> String -> Nat -> Maybe (TrustedFixture m)`
+-- that returns the fixture only when `m` matches structurally —
+-- requires decidable equality on `ModuleSummary` (string + list-of-
+-- records decEq).  That's a mechanical follow-up.  Until it lands,
+-- the four projections above are usable directly at call sites where
+-- the module is known to be `fixtureCleanLinearConsumerModule`.

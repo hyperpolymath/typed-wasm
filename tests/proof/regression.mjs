@@ -200,6 +200,14 @@ const EXPECTED = [
   ["VerifierSpec.idr", /^emptyExtendedAgreement\s*:/m, "Concrete empty-registry ExtendedAgreement (A14)"],
   ["VerifierSpec.idr", /^verifierImpliesSpecExtended\s*:/m, "Constructive bridge from VADifferential to spec (A14)"],
   ["VerifierSpec.idr", /^sourceImpliesSpecExtended\s*:/m, "Constructive bridge from SADifferential to spec (A14)"],
+
+  // VerifierSpec.idr — A15: first concrete TrustedFixture from cross_compat.rs
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerModule\s*:/m, "First concrete fixture mirror, cross_compat row 1 (A15)"],
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerWitness\s*:/m, "Structural witness for the fixture's intents (A15)"],
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerTrusted\s*:/m, "First concrete TrustedFixture value (A15)"],
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerSpecAccepts\s*:/m, "TrustedFixture → SpecAccepts projection (A15)"],
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerVerifierAccepts\s*:/m, "TrustedFixture → VerifierAccepts projection (A15)"],
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerSourceAccepts\s*:/m, "TrustedFixture → SourceAccepts projection (A15)"],
 ];
 
 // ----------------------------------------------------------------------
