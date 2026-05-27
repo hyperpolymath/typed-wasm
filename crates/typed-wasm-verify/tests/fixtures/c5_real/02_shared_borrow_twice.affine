@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0
+// Use a shared-borrow that the source-level checker allows; at the wasm
+// level the param's local will be loaded twice (one for each use), which
+// the post-codegen verifier checks against the ownership-kind annotation.
+fn observe(p: ref Int) -> Int = 42;
+fn shared_borrow_twice(x: ref Int) -> Int {
+  observe(x) + observe(x)
+}
