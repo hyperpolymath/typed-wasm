@@ -102,6 +102,73 @@ root.  Every file is compiled with `%default total`; no `believe_me`,
 |Status |✓ Type-checked; compatibility is a compile-time obligation
 |===
 
+[[thm-verifier-spec-agreement]]
+=== Theorem: Verifier ↔ Spec Agreement (§Post-Codegen Verifier) — added 2026-05-27
+
+[cols="1,3"]
+|===
+|Claim |The Rust post-codegen verifier (`crates/typed-wasm-verify/`)
+        accepts a module if and only if the Idris2 spec (`SpecAccepts`)
+        does — `verifierIsSound` (verifier accept ⇒ spec accept) and
+        `verifierIsComplete` (spec accept ⇒ verifier accept), bundled
+        in a `VerifierSpecAgreement` record.  Symmetric
+        `SourceVerifierAgreement` for source-checker ↔ verifier.
+|File |`VerifierSpec.idr` (added in PR #79)
+|Type |`record VerifierSpecAgreement` + `record SourceVerifierAgreement`,
+       each bundling soundness and completeness as named fields.
+|Construction |`verifierSpecAgreement : VerifierSpecAgreement` and
+               `sourceVerifierAgreement : SourceVerifierAgreement` —
+               concrete inhabitants, the first total no-`believe_me`
+               agreement values in the codebase.  Built from the four
+               total lemmas `verifierIsSound`, `verifierIsComplete`,
+               `sourceImpliesVerifier`, `verifierImpliesSource`.
+|Design |The differential constructor `VADifferential` carries an
+         inline `TrustedFixture m` (fixture name + id + structural
+         witness).  Trust-injection moves to `MkTrustedFixture`
+         construction (single grep point for audit), and all four
+         agreement directions become total by case analysis.
+|Coverage |Spec surface = L7 (aliasing) + L10 (linearity) — same as the
+           Rust verifier's current coverage.  Extending to L1-L6 +
+           L13-L16 is tracked under issues #34 / #35 and PRs #76 / #77.
+|Status |✓ Fully proven at the spec-of-record level for the current
+         verifier coverage envelope
+|===
+
+[[thm-attestation-entails-semantic-property]]
+=== Theorem: Attestation Entails the Level's Semantic Property — added 2026-05-27
+
+[cols="1,3"]
+|===
+|Claim |Holding a level-N attestation entails recovery of the level-N
+        semantic-property witness (closes the standards#130 long-tail
+        item the 2026-05-18 PROOF-NEEDS reconciliation flagged).
+|File |`Proofs.idr` (extended in PR #80)
+|Type |`data LevelAttestationW : (n : Nat) -> Type` — witness-indexed
+       attestation GADT, one constructor per level (L1-L15).  Each
+       packages the level-specific witness (`Schema`, `FieldIn`,
+       `WasmTypeCompat`, …, `FunctionCaps`).
+|Extractors |15 per-level `attestLNW_Entails<Property>` lemmas (total
+             pattern-match functions returning the witness, paired
+             with its existential type-level indices where applicable).
+             E.g. `attestL7W_EntailsAliasFree : LevelAttestationW 7 ->
+             (s : Schema ** ExclusiveWitness s)`.
+|Legacy bridge |`toLegacy : {n : Nat} -> LevelAttestationW n ->
+                LevelAttestation` projects to the unindexed shape so
+                existing callers of `List LevelAttestation` (e.g.
+                `ProofCertificate`) keep working unchanged.  15 round-
+                trip `Refl` equalities pin the witness-carrying and
+                legacy representations together.
+|Certificate lift |`record WitnessCertificate` (mirror of
+                   `ProofCertificate`) carries `List SomeAttestationW`
+                   (existential wrapper hiding the level index).
+                   `witnessToLegacy` projects down; `composeWitness`
+                   mirrors `composeCertificates`;
+                   `composeWitnessLegacyAgree` is the composition
+                   compatibility lemma.
+|Status |✓ Fully proven; purely additive (no existing definition
+         modified, no prior proof regresses)
+|===
+
 == Level-to-File Mapping
 
 [cols="1,2,2,1"]

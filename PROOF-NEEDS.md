@@ -20,6 +20,74 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
+## RECONCILIATION 2026-05-27 (post-A10 items 7 + 8 bodies closed — read this FIRST)
+
+> **The two agreement records introduced by PR #72 / A13 are now
+> inhabited.**  `VerifierSpecAgreement` and `SourceVerifierAgreement`
+> have concrete inhabitants `verifierSpecAgreement` /
+> `sourceVerifierAgreement` with totally-proven bodies in every
+> direction.  This was the "multi-week residual" PR #74 explicitly
+> flagged.  Closed in PR #79.
+>
+> **Design choice that unblocked the bodies.**  The differential
+> constructor carries the structural witness it certifies, packaged
+> inline via an embedded `TrustedFixture m`:
+>
+>     data VerifierAccepts : ModuleSummary -> Type where
+>       VAStructural   : FunctionsAccepted m.functions
+>                     -> VerifierAccepts m
+>       VADifferential : (fixture : TrustedFixture m)
+>                     -> VerifierAccepts m
+>
+>     record TrustedFixture (m : ModuleSummary) where
+>       constructor MkTrustedFixture
+>       trustedFixtureName : String
+>       trustedFixtureId   : Nat
+>       trustedWitness     : FunctionsAccepted m.functions
+>
+> Trust-injection moves to `MkTrustedFixture` construction (single
+> grep point for audit).  All four agreement lemmas become total by
+> case analysis: both `VAStructural` and `VADifferential` surface a
+> `FunctionsAccepted m.functions` payload that wraps directly into
+> `SpecAccepts`; the spec-to-verifier direction lifts via
+> `VAStructural`; source ↔ verifier mirror the same pattern.
+>
+> **Module: `src/abi/TypedWasm/ABI/VerifierSpec.idr` (~620 LOC).**
+> Zero `believe_me` / `assert_total` / `postulate` / `sorry` /
+> `assert_smaller`; `%default total`.  Build green 22/22 modules
+> under Idris2 0.8.0.  +33 Layer 1 regression assertions.
+>
+> **End-to-end demo.**  `fixtureCleanLinearConsumerModule` mirrors
+> cross_compat row 1.  `fixtureCleanLinearConsumerDifferentialAccepts`
+> exercises the smart constructor;
+> `fixtureCleanLinearConsumerSpecAccepts` runs the witness through
+> `verifierSpecAgreement.verifierIsSound` for the end-to-end
+> closure.
+>
+> **Discrimination.**  `notSpecAcceptsBadDoubleConsume`,
+> `notVerifierAcceptsBadDoubleConsume` (both ctors),
+> `notSourceAcceptsBadDoubleConsume` (both ctors),
+> `notSpecAcceptsBadDoubleProduce` — show L10 has teeth and the
+> differential escape hatch cannot smuggle a bad module past the
+> verifier (since `MkTrustedFixture` requires a structural witness,
+> which is impossible for the bad module).
+>
+> **Comparison with PR #74 (closed as superseded).**  #74 kept
+> `VADifferential` opaque (string + nat only) and offered
+> `Maybe`-returning bridges plus a closed-world `RegisteredFixture`
+> GADT.  Soundness/completeness for the unparameterised agreement
+> records remained unprovable in that design — that's the
+> "multi-week residual" #74's description named.  #79 refactors
+> the data type instead.  The audit story is preserved; the agreement
+> records cease to be obligations.
+>
+> **Open after this closure.**  Items remaining in the long-tail (in
+> rough decreasing priority): verifier L1-L6 + L13-L16 coverage on
+> emitted wasm (#34, #35; in progress on PRs #76 / #77 in a parallel
+> session), WasmCert-Isabelle tie-back, emitted-wasm byte-equality
+> (P3.1(a), blocked on emitter), parser round-trip in Idris2
+> (blocked on parser port).
+
 ## RECONCILIATION 2026-05-27 (standards#130 long-tail closed — read this FIRST)
 
 > **The "LevelAttestation reindexed by witness" residual is closed.**

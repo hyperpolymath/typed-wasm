@@ -6,9 +6,9 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-05-25"
+last-updated = "2026-05-27"
 status = "active"  # active | paused | archived
-session = "2026-05-24/25 — Phase 0 closure pass. 11 PRs landed (#46 CI triage, #47 PRODUCTION-PATH doc, #55 cargo-audit CI, #57 Track C complete +64 assertions and 2 real bugs fixed, #58 tree-sitter scaffold, #59 CI hardening non-blocking, #60 ROADMAP truthfulness audit + drift-detection aspect §8, #61 wiki source-of-truth + STATE.a2ml comprehensive, #62 tree-sitter v1 parses example 01 end-to-end with 0 ERROR, #63 repo tidy RSR-aligned + smoke fix + duplication scrub). Phase 0 gates 1 + 3 met; gate 2 (codegen v0) is the terminal Phase-1-handoff item."
+session = "2026-05-27 — Proof-debt closure pass.  3 PRs auto-merge SQUASH armed: #79 (TypedWasm.ABI.VerifierSpec, total bodies for VerifierSpecAgreement / SourceVerifierAgreement closing post-A10 items 7 + 8 — design: VADifferential / SADifferential carry inline TrustedFixture so the structural witness travels with fixture metadata, making all four agreement directions total by case analysis; first total no-believe_me agreement values in the codebase); #80 (Proofs.idr LevelAttestationW + WitnessCertificate closing standards#130 long-tail flagged in PROOF-NEEDS 2026-05-18 reconciliation banner — design: 15-ctor witness-indexed GADT with per-level extractors discharging the 'attestation entails the level's semantic property' claim, plus existential SomeAttestationW wrapper enabling WitnessCertificate as the heterogeneous-list lift of ProofCertificate); PR #83 (the second slice) instant-merged into #80's branch because the stacked base wasn't protected, so #80's squashed commit carries both slices.  #74 closed as superseded by #79 (competing Maybe-bridge design replaced by witness-carrying ctor design).  PRs #76 / #77 (verifier L1-L6 carrier section proposal + L2 codec pre-staging) IN PROGRESS by a parallel session — left untouched per parallel-session policy.  Test surface 545 → 627+ assertions (proof regression 25 → 107).  Previous session 2026-05-24/25 = Phase 0 closure pass (11 PRs landed, gates 1 + 3 met; gate 2 codegen v0 is the Phase-1-handoff item)."
 
 [project-context]
 name = "typed-wasm"
@@ -51,6 +51,9 @@ milestones = [
   { name = "Wiki source-of-truth at docs/wiki/", completion = 100 },  # 2026-05-25 (PR #61)
   { name = "RSR-template taxonomy alignment (AUDIT.adoc + onboarding/status/proposals stubs)", completion = 100 },  # 2026-05-25 (PR #63)
   { name = "Parser migration ReScript -> AffineScript -> Idris2", completion = 50 },  # ReScript->AffineScript landed; AffineScript->Idris2 still ahead
+  { name = "VerifierSpecAgreement / SourceVerifierAgreement bodies (post-A10 items 7 + 8)", completion = 100 },  # 2026-05-27 (PR #79, auto-merge armed)
+  { name = "LevelAttestation reindexed-by-witness (standards#130 long-tail)", completion = 100 },  # 2026-05-27 (PR #80, auto-merge armed)
+  { name = "WitnessCertificate lift (heterogeneous-list certificate)", completion = 100 },  # 2026-05-27 (#83 folded into #80)
 ]
 
 [blockers-and-issues]
@@ -79,16 +82,40 @@ actions = [
   "ADRs for the 6 load-bearing decisions D1-D6 from docs/PRODUCTION-PATH.adoc §'Load-bearing decisions' (especially D2: producer-side-only vs runtime-aware, which gates whether Phase 3 happens).",
 ]
 
+[proof-debt-closure-pass-2026-05-27]
+# Snapshot of the 2026-05-27 proof-debt closure pass.  Three PRs auto-merge
+# SQUASH armed at the time of writing.  When all three land, this section
+# can move to history (or be summarised in the session note).
+prs = [
+  { number = 79, title = "VerifierSpec.idr — total bodies for VerifierSpecAgreement + SourceVerifierAgreement (items 7 + 8)", state = "open-auto-merge-armed", branch = "proof/verifier-spec-agreement-bodies", closes-audit-items = ["7", "8"], lines-added = 670, new-regression-assertions = 33 },
+  { number = 80, title = "LevelAttestationW + WitnessCertificate (standards#130 long-tail)",                               state = "open-auto-merge-armed", branch = "proof/level-attestation-witness-indexed", closes-audit-items = ["standards#130 stronger reindexed claim"], lines-added = 828, new-regression-assertions = 49 },
+  { number = 74, title = "items 7+8 design pass + Maybe-returning bridges (superseded by #79)",                            state = "closed", reason = "superseded — competing design with weaker provability of the agreement records" },
+]
+test-surface-delta = "proof regression 25 → 107 (+82); total 545 → 627+"
+banned-pattern-delta = "zero new (believe_me/assert_total/postulate/sorry/assert_smaller); %default total preserved"
+build-oracle = "IDRIS2_PREFIX=…/idris2/0.8.0 idris2 --build src/abi/typed-wasm.ipkg → 22/22 modules under #79, 21/21 under #80, rc=0"
+
+[long-tail-open-after-2026-05-27]
+items = [
+  "WasmCert-Isabelle tie-back (requires external Isabelle/HOL install + bridge — multi-week)",
+  "Emitted-wasm byte-equality P3.1(a) — blocked on .twasm→.wasm emitter not yet existing",
+  "Parser round-trip in Idris2 — blocked on AffineScript parser port to Idris2",
+  "Verifier L1-L6 + L13-L16 coverage on emitted wasm (#34, #35) — IN PROGRESS on PRs #76 / #77 by a parallel session, do not interfere",
+]
+
 [maintenance-status]
-last-run-utc = "2026-05-25T20:00:00Z"
+last-run-utc = "2026-05-27T10:30:00Z"
 last-report = "docs/PRODUCTION-PATH.adoc"   # the canonical strategic doc supersedes one-off audit reports
 last-result = "pass"  # unknown | pass | warn | fail
 open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + anti-pattern policy (fixed by Track A's ReScript cut)
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
 
 [test-surface]
-# Test surface as of 2026-05-24; ~545 assertions across 11 surfaces.
-total-assertions = 545
+# Test surface as of 2026-05-27; ~627 assertions across 11 surfaces.
+# Proof regression jumped 25 → 107 in the 2026-05-27 proof-debt closure
+# pass: +33 from PR #79 (VerifierSpec) and +49 from PR #80
+# (LevelAttestationW + WitnessCertificate).
+total-assertions = 627
 surfaces = [
   { name = "ParserTests.res",                 assertions = 88,  file = "tests/parser/ParserTests.res" },
   { name = "typed-wasm-verify (Rust)",        assertions = 53,  file = "crates/typed-wasm-verify/" },        # 43 unit + 10 cross-compat
@@ -96,7 +123,7 @@ surfaces = [
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
   { name = "property tests",                  assertions = 29,  file = "tests/property/property_test.mjs" }, # added 2026-05-24 (PR #57)
-  { name = "proof regression",                assertions = 25,  file = "tests/proof/regression.mjs" },        # added 2026-05-24 (PR #57)
+  { name = "proof regression",                assertions = 107, file = "tests/proof/regression.mjs" },        # 25 from PR #57, +33 from PR #79 (VerifierSpec), +49 from PR #80 (LevelAttestationW + WitnessCertificate) — all 2026-05-27
   { name = "smoke E2E",                       assertions = 40,  file = "tests/smoke/e2e-smoke.mjs" },
   { name = "structural E2E",                  assertions = 53,  file = "tests/e2e.sh" },
   { name = "integration (airborne-step)",     assertions = 14,  file = "tests/contracts/airborne-step-state-contract.mjs" },

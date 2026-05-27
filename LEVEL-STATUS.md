@@ -101,10 +101,11 @@ toolchain remains future work.
 | SessionProtocol.idr | 0 | 0 | 0 | In package (v1.3 / L14) |
 | ResourceCapabilities.idr | 0 | 0 | 0 | In package (v1.4 / L15) |
 | Choreography.idr | 0 | 0 | 0 | In package (v1.5 / L16) |
-| Proofs.idr | 0 | 0 | 0 | In package.  Attestation API hardened A7 (2026-04-18): every L1-L10 attestation now requires a witness from its level module (Schema / FieldIn / WasmTypeCompat / Ptr-NonNull / InBounds / AccessResult / ExclusiveWitness / EffectSubsumes / Lifetime.Outlives / CompletedProtocol).  `simpleReadCert` / `fullCert12` / `fullCert15` thread witnesses per level; the certificate cannot be constructed without real proof artefacts.  Level-achievement layer added A8 (2026-04-18): `LevelAchievedIn` predicate, `achievedAppendL` / `achievedAppendR` list-append preservation, `LevelAchieved n cert` lifted to certificates, `composeAchievedL` / `composeAchievedR` proving any level achieved in either component of `composeCertificates` is still achieved in the composition. |
+| Proofs.idr | 0 | 0 | 0 | In package.  Attestation API hardened A7 (2026-04-18): every L1-L10 attestation now requires a witness from its level module (Schema / FieldIn / WasmTypeCompat / Ptr-NonNull / InBounds / AccessResult / ExclusiveWitness / EffectSubsumes / Lifetime.Outlives / CompletedProtocol).  `simpleReadCert` / `fullCert12` / `fullCert15` thread witnesses per level; the certificate cannot be constructed without real proof artefacts.  Level-achievement layer added A8 (2026-04-18): `LevelAchievedIn` predicate, `achievedAppendL` / `achievedAppendR` list-append preservation, `LevelAchieved n cert` lifted to certificates, `composeAchievedL` / `composeAchievedR` proving any level achieved in either component of `composeCertificates` is still achieved in the composition.  Attestation soundness A9 (2026-05-18): per-level `attestLN_Sound` family proving `LevelAchievedIn N [attestLN_X w]` — the weak "certificate claims level N" face.  **Witness-indexed redesign 2026-05-27 (PR #80, closes standards#130 long-tail)**: `LevelAttestationW : (n : Nat) -> Type` GADT with one ctor per level packaging the actual witness; 15 `attestLNW_*` smart ctors; 15 `attestLNW_Entails<Property>` extractors (the "attestation entails the level's semantic property" lemmas — a consumer holding `LevelAttestationW 7` can now discharge L7 alias-freeness via `ExclusiveWitness s`, not just the weak claim-predicate); `toLegacy` bridge; 15 round-trip `Refl`s; uniform `attestLW_AchievedIn` subsuming the A9 family.  **`WitnessCertificate` lift 2026-05-27 (PR #80, folded from #83)**: existential `SomeAttestationW` wrapper, `record WitnessCertificate` mirror of `ProofCertificate` with witness-carrying levels, `witnessToLegacy` bridge, `composeWitness` mirror, `composeWitnessLegacyAgree` compat lemma, `WitnessAchieved` predicate. |
 | Tropical.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Epistemic.idr | 0 | 0 | 0 | In package (A1, 2026-04-18) |
 | Echo.idr | 0 | 0 | 0 | In package (A0, 2026-04-18) |
+| VerifierSpec.idr | 0 | 0 | 0 | In package (2026-05-27, PR #79).  Spec-of-record for the Rust post-codegen verifier and the source-side checker.  Defines `ModuleSummary` / `FunctionSummary` / `OwnershipIntent` (mirrors the `typedwasm.ownership` custom section), structural acceptance predicates `TokenFresh` / `IntentsLinearAcceptable` / `FunctionsAccepted`, three acceptance predicates `SpecAccepts` / `VerifierAccepts` / `SourceAccepts` (the latter two carry a `TrustedFixture` inline so the differential ctor still terminates in a structural witness), the two **agreement records `VerifierSpecAgreement` (item 7) and `SourceVerifierAgreement` (item 8)** with totally-proven bodies, the concrete inhabitants `verifierSpecAgreement` / `sourceVerifierAgreement` (the first total no-`believe_me` agreement values in the codebase), end-to-end composition lemmas `sourceImpliesSpec` / `specImpliesSource` and `*Concrete` specialisations, demo modules (empty / `allocFreeModule` / `allocFreeWithBorrowModule` / `fixtureCleanLinearConsumerModule` mirrored from cross_compat row 1), and four discrimination proofs (`notSpecAcceptsBadDoubleConsume`, `notVerifierAcceptsBadDoubleConsume` ruling out BOTH ctors, `notSourceAcceptsBadDoubleConsume` ruling out BOTH ctors, `notSpecAcceptsBadDoubleProduce`) showing L10 has teeth and the differential escape hatch cannot smuggle a bad module past the verifier. |
 
 ## Post-codegen verifier (Rust)
 
@@ -133,7 +134,23 @@ files remain the spec of record until the cross-compat suite at
 real affinescript-emitted fixtures (deferred work, "C5.1").
 
 **Coverage:** L7 (ExclBorrow) + L10 (Linear) only.
-L1-L6, L13-L16 enforcement on emitted wasm is future work.
+L1-L6, L13-L16 enforcement on emitted wasm is future work
+(in progress on PRs #76 / #77 — wire-format proposal + L2 codec
+pre-staging behind `cfg(feature = "unstable-l2")`).
+
+**Spec-of-record alignment (2026-05-27, PR #79).**  The
+`TypedWasm.ABI.VerifierSpec` Idris2 module now states the
+**verifier ↔ spec ↔ source** agreement as totally-proven
+inhabitants of two records (`VerifierSpecAgreement`,
+`SourceVerifierAgreement`).  Closes the multi-week residual flagged
+by PR #74 ("Items 7 + 8 stated as obligations" from PR #72).  The
+Rust verifier's accept-verdicts on differential-harness fixtures are
+modelled via `TrustedFixture m` values that package the structural
+witness inline — the trust-injection moment is `MkTrustedFixture`
+construction (single grep point for audit).  A drift between this
+module and the Rust verifier's behaviour now shows up as either a
+failing differential-harness fixture or as an absent
+`TrustedFixture` registration.
 
 **Consumers** (live as of 2026-05-15):
 
