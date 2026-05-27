@@ -866,3 +866,174 @@ fixtureCleanLinearConsumerSourceAccepts =
 -- records decEq).  That's a mechanical follow-up.  Until it lands,
 -- the four projections above are usable directly at call sites where
 -- the module is known to be `fixtureCleanLinearConsumerModule`.
+
+-- ============================================================================
+-- Additional TrustedFixtures — cross_compat.rs rows 9 + 10
+-- ============================================================================
+--
+-- Rows 9 and 10 are the other single-module "verifier accepts"
+-- fixtures in cross_compat.rs.  Rows 2 / 3 / 4 / 5 / 7 / 8 reject
+-- for body-level reasons (LinearUsedMultiple, LinearDroppedOnSomePath,
+-- ExclBorrowAliased, LinearImportCalledMultiple) which our
+-- summary-level `SpecAccepts` predicate does not model — those rows
+-- structurally pass the L10 intent-list rule but fail the wasm-body
+-- traversal that the Rust verifier performs in addition.  TrustedFixture
+-- claims structural witness existence, so it does not apply to those
+-- rows; see `notSpecAcceptsBadDoubleConsume` family for the
+-- predicate-rejection pattern (different shape).  Rows 6 / 7 / 8 are
+-- cross-module — a separate modelling track from single-module
+-- ModuleSummary, also out of scope for this slice.
+
+-- ----------------------------------------------------------------------------
+-- Row 9 — fixture_extract_exports_three_shapes
+-- ----------------------------------------------------------------------------
+--
+-- Three exported functions exercising three different OwnershipKind
+-- mappings:
+--
+--   consume_string     : Linear         → Consumes 0
+--   borrow_buffer_mut  : ExclBorrow     → BorrowsExclusive 0
+--   read_count         : Unrestricted   → [] (no tracked intent)
+--
+-- This fixture exercises the export-extraction API rather than
+-- `verify_from_module`, but the module's intent lists are structurally
+-- clean so a TrustedFixture is still constructible.
+
+||| `ModuleSummary` mirror of `cross_compat::fixture_extract_exports_three_shapes`.
+public export
+fixtureExtractExportsModule : ModuleSummary
+fixtureExtractExportsModule = MkModuleSummary "fixture_extract_exports_three_shapes"
+  [ MkFunctionSummary "consume_string"    [Consumes 0]
+  , MkFunctionSummary "borrow_buffer_mut" [BorrowsExclusive 0]
+  , MkFunctionSummary "read_count"        []
+  ]
+
+||| Structural witness for the three-function fixture.
+public export
+fixtureExtractExportsWitness :
+     FunctionsAccepted VerifierSpec.fixtureExtractExportsModule.functions
+fixtureExtractExportsWitness =
+  FACons (ILAConsumes TFNil ILANil)
+    (FACons (ILABorrowsExclusive ILANil)
+      (FACons ILANil
+        FANil))
+
+||| TrustedFixture for cross_compat row 9.
+public export
+fixtureExtractExportsTrusted :
+     TrustedFixture VerifierSpec.fixtureExtractExportsModule
+fixtureExtractExportsTrusted = MkTrustedFixture
+  "fixture_extract_exports_three_shapes"
+  9
+  fixtureExtractExportsWitness
+
+||| Projections via the `trustedTo*` family.
+public export
+fixtureExtractExportsSpecAccepts :
+     SpecAccepts VerifierSpec.fixtureExtractExportsModule
+fixtureExtractExportsSpecAccepts = trustedToSpec fixtureExtractExportsTrusted
+
+public export
+fixtureExtractExportsVerifierAccepts :
+     VerifierAccepts VerifierSpec.fixtureExtractExportsModule
+fixtureExtractExportsVerifierAccepts = trustedToVerifier fixtureExtractExportsTrusted
+
+public export
+fixtureExtractExportsSourceAccepts :
+     SourceAccepts VerifierSpec.fixtureExtractExportsModule
+fixtureExtractExportsSourceAccepts = trustedToSource fixtureExtractExportsTrusted
+
+-- ----------------------------------------------------------------------------
+-- Row 10 — fixture_realistic_clean_module
+-- ----------------------------------------------------------------------------
+--
+-- Four functions exercising the realistic mixed-ownership shape:
+--
+--   fn 0 — Linear        → Consumes 0
+--   fn 1 — ExclBorrow    → BorrowsExclusive 0
+--   fn 2 — Unrestricted  → [] (no tracked intent)
+--   fn 3 — (no annotation) → [] (also empty)
+--
+-- The fourth function not appearing in the ownership section is
+-- treated as unconstrained by the verifier; in `FunctionSummary`
+-- terms it's the same shape as Unrestricted, just from a different
+-- input path.  Verifier verdict: clean on all four.
+
+||| `ModuleSummary` mirror of `cross_compat::fixture_realistic_clean_module`.
+public export
+fixtureRealisticCleanModule : ModuleSummary
+fixtureRealisticCleanModule = MkModuleSummary "fixture_realistic_clean_module"
+  [ MkFunctionSummary "fn0_linear"        [Consumes 0]
+  , MkFunctionSummary "fn1_excl_borrow"   [BorrowsExclusive 0]
+  , MkFunctionSummary "fn2_unrestricted"  []
+  , MkFunctionSummary "fn3_unannotated"   []
+  ]
+
+||| Structural witness for the four-function realistic fixture.
+public export
+fixtureRealisticCleanWitness :
+     FunctionsAccepted VerifierSpec.fixtureRealisticCleanModule.functions
+fixtureRealisticCleanWitness =
+  FACons (ILAConsumes TFNil ILANil)
+    (FACons (ILABorrowsExclusive ILANil)
+      (FACons ILANil
+        (FACons ILANil
+          FANil)))
+
+||| TrustedFixture for cross_compat row 10.
+public export
+fixtureRealisticCleanTrusted :
+     TrustedFixture VerifierSpec.fixtureRealisticCleanModule
+fixtureRealisticCleanTrusted = MkTrustedFixture
+  "fixture_realistic_clean_module"
+  10
+  fixtureRealisticCleanWitness
+
+||| Projections.
+public export
+fixtureRealisticCleanSpecAccepts :
+     SpecAccepts VerifierSpec.fixtureRealisticCleanModule
+fixtureRealisticCleanSpecAccepts = trustedToSpec fixtureRealisticCleanTrusted
+
+public export
+fixtureRealisticCleanVerifierAccepts :
+     VerifierAccepts VerifierSpec.fixtureRealisticCleanModule
+fixtureRealisticCleanVerifierAccepts = trustedToVerifier fixtureRealisticCleanTrusted
+
+public export
+fixtureRealisticCleanSourceAccepts :
+     SourceAccepts VerifierSpec.fixtureRealisticCleanModule
+fixtureRealisticCleanSourceAccepts = trustedToSource fixtureRealisticCleanTrusted
+
+-- ----------------------------------------------------------------------------
+-- Coverage note — rows 2-8 are out of scope at the summary level
+-- ----------------------------------------------------------------------------
+--
+-- The remaining cross_compat fixtures land outside the modelling
+-- envelope of `SpecAccepts`:
+--
+--   Row 2 (fixture_duplicated_linear)
+--     Intent list `[Consumes 0]` is L10-clean at the summary level.
+--     The wasm body loads `local 0` twice; the Rust verifier catches
+--     `LinearUsedMultiple` via body traversal which is not in
+--     `SpecAccepts`.
+--   Row 3 (fixture_dropped_linear_in_else)
+--     Conditional branch leaves a linear param consumed on one path
+--     but dropped on the other.  Body-level path analysis; out of
+--     scope.
+--   Row 4 (fixture_aliased_excl_borrow)
+--     ExclBorrow aliased in the body; body-level aliasing analysis;
+--     out of scope.
+--   Row 5 (fixture_multi_function_one_buggy)
+--     Two-function module where fn 0 is clean and fn 1's body
+--     violates LinearUsedMultiple.  At the summary level both have
+--     clean intent lists.
+--   Rows 6 / 7 / 8 (xmod_*)
+--     Cross-module fixtures; `verify_cross_module` rather than
+--     `verify_from_module`.  Modelling cross-module witnesses
+--     requires extending `ModuleSummary` to carry import / export
+--     edges, separate from this slice.
+--
+-- These rows are the natural motivation for extending the spec —
+-- adding a body-level predicate would make the differential evidence
+-- structural for them too.  Tracked as long-tail.

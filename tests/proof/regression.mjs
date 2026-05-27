@@ -208,6 +208,14 @@ const EXPECTED = [
   ["VerifierSpec.idr", /^fixtureCleanLinearConsumerSpecAccepts\s*:/m, "TrustedFixture → SpecAccepts projection (A15)"],
   ["VerifierSpec.idr", /^fixtureCleanLinearConsumerVerifierAccepts\s*:/m, "TrustedFixture → VerifierAccepts projection (A15)"],
   ["VerifierSpec.idr", /^fixtureCleanLinearConsumerSourceAccepts\s*:/m, "TrustedFixture → SourceAccepts projection (A15)"],
+
+  // VerifierSpec.idr — A15 continuation: cross_compat rows 9 + 10
+  ["VerifierSpec.idr", /^fixtureExtractExportsModule\s*:/m, "Row 9 — three-shape exports module (A15)"],
+  ["VerifierSpec.idr", /^fixtureExtractExportsWitness\s*:/m, "Row 9 structural witness (A15)"],
+  ["VerifierSpec.idr", /^fixtureExtractExportsTrusted\s*:/m, "Row 9 TrustedFixture (A15)"],
+  ["VerifierSpec.idr", /^fixtureRealisticCleanModule\s*:/m, "Row 10 — realistic four-function module (A15)"],
+  ["VerifierSpec.idr", /^fixtureRealisticCleanWitness\s*:/m, "Row 10 structural witness (A15)"],
+  ["VerifierSpec.idr", /^fixtureRealisticCleanTrusted\s*:/m, "Row 10 TrustedFixture (A15)"],
 ];
 
 // ----------------------------------------------------------------------
