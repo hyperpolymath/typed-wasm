@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Partial drop: x used in then-branch, dropped in else.
+fn sink(z: own Int) -> () = ();
+fn partial_drop(c: Bool, x: own Int) -> () {
+  if c { sink(x) } else { () }
+}

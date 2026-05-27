@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// ExclBorrow alias: mut param read into two operands.
+fn observe(p: mut Int) -> () = ();
+fn excl_alias(x: mut Int) -> () {
+  observe(x);
+  observe(x)
+}
