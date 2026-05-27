@@ -10,6 +10,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-05-27 — Phase 2 carrier-ABI design + C5.1 corpus
+
+Multi-PR session opening the L2–L6 / L15 enforcement path on emitted
+wasm. The verifier today covers L7+L10 (PR #21) + L13 (PR #37);
+proposal 0001 below addresses why L2–L6 / L15 cannot follow without
+a carrier-format ABI, and lands the codec pre-stage + the long-deferred
+real-AffineScript fixture corpus.
+
+**3 PRs filed, auto-merge SQUASH armed:**
+
+- **#76** — `docs/proposals/0001-multi-producer-carrier-section.adoc`.
+  Proposes two new producer-neutral custom sections
+  (`typedwasm.regions` for L2–L6, `typedwasm.capabilities` for L15)
+  alongside the existing `typedwasm.ownership`. Versioned,
+  lenient-readable, field-by-field mapping to `Region.idr` /
+  `Pointer.idr` / `ResourceCapabilities.idr`. Status `[draft]` —
+  blocked on cross-repo review by affinescript and ephapax (both
+  producers of `typedwasm.ownership`). Includes an amendment commit
+  (`7520f00`) recording the resolved Open Question #6 (access-site
+  carrier — option A).
+- **#77** — `cargo feature = "unstable-l2"` codec pre-stage:
+  `typedwasm.regions` parse + build (`section.rs`), 9 round-trip
+  tests, no `verify_region_binding` pass (deliberately omitted —
+  see issue #78). Default surface unchanged; opt-in build for the
+  unstable feature.
+- **#81** — C5.1 real-AffineScript fixture corpus: 4 `.affine`
+  sources + paired `.wasm` bytes + `tests/cross_compat_real.rs`
+  (5 verdict tests) + `.github/workflows/c5-regenerate.yml` drift-
+  detection workflow pinning `affinescript` HEAD
+  `21edc159caee06a930cb7339b3e729ed5627b823`. Closes typed-wasm#35
+  part 2.
+
+**1 issue resolved on the spot:**
+
+- **#78** — access-site carrier gap (discovered while writing the
+  L2 codec; proposal 0001 names regions but does not say how the
+  verifier maps a wasm-level `i32.load offset=N` back to
+  `(region_id, field_id)`). Owner-resolved as option A
+  (per-instruction `typedwasm.access-sites` carrier).
+  Size-measurement comment posted to the issue: across the 6
+  spec examples, Encoding B (LEB128 per field) is the v1
+  recommendation — ~5 B per access, ~1.1% module overhead.
+
+**2 cross-repo review issues filed** (gating proposal 0001
+promotion to `[review]`):
+
+- affinescript#402 — review request, AffineScript-specific
+  producer touchpoints called out (`lib/tw_verify.ml`,
+  `lib/tw_interface.ml`, codegen path).
+- ephapax#165 — review request with the disambiguation note,
+  ephapax-wasm-specific touchpoints (`src/ephapax-wasm/`,
+  `src/ephapax-cli/`).
+
+**Test surface deltas:**
+
+- `typed-wasm-verify` Rust crate: 42 → 47 default tests
+  (+5 C5.1 real-fixture verdict tests).
+- With `--features unstable-l2`: 47 → 52 (+5 with the regions
+  codec round-trip tests; 9 codec tests minus 4 overlap with the
+  base set).
+
 ### Phase 0 closure pass (2026-05-24 / 2026-05-25)
 
 Two sessions of focused engineering-surface stabilisation, closing the
