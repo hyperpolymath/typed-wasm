@@ -6,9 +6,9 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-05-26"
+last-updated = "2026-05-27"
 status = "active"  # active | paused | archived
-session = "2026-05-26 — Proof-debt pass A10+A11+A12+A13 (PR #72). A10 closes the last 2 NAMED deferred items from PROOF-NEEDS (L12 freshness propagation under concurrent writes via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness` projector; `compatCommute` mutual-subschema case + `noSpoofingBidir` corollary + 2nd worked example). Also fixed `tests/proof/regression.mjs` Layer 2 from silent no-op `--check` to real `--build`. A11 closes 3 of 8 untracked debts: (1) `Sync.WriteSync` now requires a `FieldVersion` witness; (2) `Knowledge.Observed` grounded in a `Sync` event; (4-partial) first algebraic laws for `composeCertificates`. A12 closes 3 MORE untracked items: item 4 FULL (`Data.Nat.minimum` → `composeAssoc` + `composeHighProvenComm`); item 6 (`RegionDisjoint` + `regionDisjointSym`); item 3 (`jointBudgetCompose` — L8↔L15). A13 (post coordinator pre-clearance for items 5+7+8) closes the rest: item 5a `LinearAcrossBoundary` + `linearTransferRequiresBoundary` (L13×L10 cross-level in ModuleIsolation.idr); item 5b `SessionAcrossBoundary` + `sessionAcrossPreservesState` + `sessionTransferRequiresBoundary` (L14×L13 in SessionProtocol.idr); A12 leave-behind `RegionsOverlap` + `disjointImpliesNoOverlap` (RegionDisjoint→byte-separation in Region.idr); items 7+8 stated as typed obligations in new `TypedWasm.ABI.VerifierSpec` module (`SpecAccepts` / `VerifierAccepts` / `SourceAccepts` predicates, `VerifierSpecAgreement` / `SourceVerifierAgreement` records, `sourceImpliesSpec` / `specImpliesSource` composition lemmas). 34 new theorems total across A10+A11+A12+A13 (8+5+6+15), regression 25→68, package 17→22 modules. Original 8-item post-A10 audit fully closed (items 7+8 at statement level; full proof bodies are multi-week and tracked as long-tail). Previous session (2026-05-24/25): Phase 0 closure pass landed 11 PRs (#46..#63)."
+session = "2026-05-26/27 — Proof-debt pass A10+A11+A12+A13 (PR #72) + A14+A15+A16+A17 (PR #74). A10 closes the last 2 NAMED deferred items from PROOF-NEEDS (L12 freshness propagation under concurrent writes via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness` projector; `compatCommute` mutual-subschema case + `noSpoofingBidir` corollary + 2nd worked example). Also fixed `tests/proof/regression.mjs` Layer 2 from silent no-op `--check` to real `--build`. A11 closes 3 of 8 untracked debts: (1) `Sync.WriteSync` now requires a `FieldVersion` witness; (2) `Knowledge.Observed` grounded in a `Sync` event; (4-partial) first algebraic laws for `composeCertificates`. A12 closes 3 MORE untracked items: item 4 FULL; item 6; item 3 (L8↔L15). A13 closes the rest: items 5a/5b cross-level, leave-behind, items 7+8 stated as typed obligations in new `TypedWasm.ABI.VerifierSpec`. A14 (PR #74) reshapes the items 7+8 predicates non-opaque (VAStructural/VADifferential split), adds `structuralAgreement` + `emptyExtendedAgreement` + `TrustedFixture` + `ExtendedAgreement` + 6 structural agreement directions + 4 discrimination proofs + `verifierImpliesSpecExtended` / `sourceImpliesSpecExtended` Maybe-returning bridges. A15 extends fixture coverage with `fixtureExtractExportsTrusted` (cross_compat row 9) + `fixtureRealisticCleanTrusted` (row 10). A16 builds the first non-empty `ExtendedAgreement` via manual `DecEq OwnershipIntent`/`FunctionSummary`/`ModuleSummary` + `liftTrustedFixture` + `fixtureLookupDispatching` + `firstExtendedAgreement`. A17 adds closed-world evidence track: `data RegisteredFixture : ModuleSummary -> Type` GADT + `fixtureFromEvidence` + 6 projector Refl round-trips + Maybe-FREE `verifierImpliesSpecEvidence` / `sourceImpliesSpecEvidence` bridges. Build green 22/22 modules under Idris2 0.8.0, regression 68→118. CI infrastructure fix: orphan-SHA repin (97df762 → 915139d7) for hypatia-scan reusable, swept across ~99 estate repos (PR #75 + estate sweep + standards#220 audit doc). Previous session (2026-05-24/25): Phase 0 closure pass landed 11 PRs (#46..#63)."
 
 [project-context]
 name = "typed-wasm"
@@ -62,6 +62,12 @@ milestones = [
   { name = "RegionDisjoint → byte non-overlap theorem (L7/L10 cross-level)", completion = 100 },  # 2026-05-26 (A13, PR #72) — A12 leave-behind via RegionsOverlap + disjointImpliesNoOverlap
   { name = "Verifier ↔ Idris2 spec equivalence — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: VerifierSpecAgreement obligation typed; full bodies multi-week
   { name = "Source-checker ↔ verifier coverage agreement — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: SourceVerifierAgreement obligation typed; full bodies multi-week
+  { name = "Items 7+8 STRUCTURAL agreement — first concrete value", completion = 100 },  # 2026-05-26 (A14, PR #74) — StructuralAgreement total + structuralAgreement concrete value + 6 agreement directions + 4 discrimination proofs + 4 empty-module inhabitants + allocFreeModule + allocFreeWithBorrowModule
+  { name = "TrustedFixture / ExtendedAgreement constructive bridge (differential case)", completion = 100 },  # 2026-05-26 (A14, PR #74) — record TrustedFixture + 3 projections + record ExtendedAgreement + emptyExtendedAgreement + verifierImpliesSpecExtended + sourceImpliesSpecExtended
+  { name = "Fixture coverage — cross_compat rows 1/9/10 as TrustedFixtures", completion = 100 },  # 2026-05-26 (A14+A15, PR #74) — fixtureCleanLinearConsumerTrusted (row 1, A14) + fixtureExtractExportsTrusted (row 9, A15) + fixtureRealisticCleanTrusted (row 10, A15); rows 2-8 out-of-scope for summary-level spec
+  { name = "First non-empty ExtendedAgreement (decEq dispatch)", completion = 100 },  # 2026-05-26 (A16, PR #74) — manual DecEq OwnershipIntent/FunctionSummary/ModuleSummary + liftTrustedFixture + fixtureLookupDispatching + firstExtendedAgreement; round-trip-to-named-fixture lemmas blocked by decEq String asymmetric reduction
+  { name = "RegisteredFixture GADT + Maybe-free evidence bridges", completion = 100 },  # 2026-05-27 (A17, PR #74) — data RegisteredFixture : ModuleSummary -> Type + fixtureFromEvidence + 6 projector Refl round-trips (name/id for rows 1/9/10) + verifierImpliesSpecEvidence + sourceImpliesSpecEvidence
+  { name = "CI infrastructure — hypatia-scan orphan-SHA fix", completion = 100 },  # 2026-05-26 (PR #75, sweep) — repin reusable from 97df762 (orphaned PR-branch SHA) to 915139d7 (merge-commit); estate sweep ~99 repos; standards#220 closure audit
 ]
 
 [blockers-and-issues]
@@ -91,15 +97,15 @@ actions = [
 ]
 
 [maintenance-status]
-last-run-utc = "2026-05-26T20:00:00Z"
-last-report = "PROOF-NEEDS.md (RECONCILIATION 2026-05-26 A13 banner)"   # A10+A11+A12+A13 are the active record; A13 banner is at the top; A13 closes the original post-A10 8-item audit at statement level
+last-run-utc = "2026-05-27T00:00:00Z"
+last-report = "PROOF-NEEDS.md (RECONCILIATION 2026-05-26 A15/A16/A17 banner)"   # A14+A15+A16+A17 are the active record; A17 GADT-evidence is the youngest layer
 last-result = "pass"  # unknown | pass | warn | fail
 open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + anti-pattern policy (fixed by Track A's ReScript cut)
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
 
 [test-surface]
 # Test surface as of 2026-05-24; ~545 assertions across 11 surfaces.
-total-assertions = 563  # 545→563: proof-regression bumped 50→68 by A13 (PR #72)
+total-assertions = 613  # 545→613: proof-regression bumped 50→68 by A13 (PR #72), 68→118 by A14+A15+A16+A17 (PR #74)
 surfaces = [
   { name = "ParserTests.res",                 assertions = 88,  file = "tests/parser/ParserTests.res" },
   { name = "typed-wasm-verify (Rust)",        assertions = 53,  file = "crates/typed-wasm-verify/" },        # 43 unit + 10 cross-compat
@@ -107,7 +113,7 @@ surfaces = [
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
   { name = "property tests",                  assertions = 29,  file = "tests/property/property_test.mjs" }, # added 2026-05-24 (PR #57)
-  { name = "proof regression",                assertions = 68,  file = "tests/proof/regression.mjs" },        # 25→44 (A10+A11) → 50 (A12) → 68 (A13, PR #72): +LinearAcrossBoundary+linearTransferRequiresBoundary+linearTransferLocal (5a) +SessionAcrossBoundary+sessionAcrossPreservesState+sessionTransferRequiresBoundary+sessionTransferLocal (5b) +RegionsOverlap+disjointImpliesNoOverlap+regionsOverlapSym (leave-behind) +SpecAccepts+VerifierAccepts+SourceAccepts+IntentsLinearAcceptable+VerifierSpecAgreement+SourceVerifierAgreement+sourceImpliesSpec+specImpliesSource (items 7+8); Layer 2 fixed from --check no-op to --build at A10
+  { name = "proof regression",                assertions = 118, file = "tests/proof/regression.mjs" },        # 25→44 (A10+A11) → 50 (A12) → 68 (A13, PR #72) → ~92 (A14, PR #74) → 105 (A16, PR #74) → 118 (A17, PR #74): A14 added 2-ctor VerifierAccepts/SourceAccepts (VAStructural/VADifferential, SAStructural/SADifferential) + StructuralAgreement + emptyExtendedAgreement + TrustedFixture + first concrete fixture (row 1); A15 added rows 9+10 fixtures; A16 added DecEq machinery + fixtureLookupDispatching + firstExtendedAgreement; A17 added RegisteredFixture GADT + fixtureFromEvidence + 6 projector Refl round-trips + 2 Maybe-free constructive bridges
   { name = "smoke E2E",                       assertions = 40,  file = "tests/smoke/e2e-smoke.mjs" },
   { name = "structural E2E",                  assertions = 53,  file = "tests/e2e.sh" },
   { name = "integration (airborne-step)",     assertions = 14,  file = "tests/contracts/airborne-step-state-contract.mjs" },

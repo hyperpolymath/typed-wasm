@@ -99,6 +99,76 @@ Other long-tail items (`LevelAttestation` reindexed-by-witness
 redesign; WasmCert-Isabelle tie-back; emitted-wasm byte-equality)
 unchanged.
 
+### Proof-debt pass A15 (2026-05-26, same-day continuation; PR #74)
+
+A14 landed `fixtureCleanLinearConsumerTrusted` — the first concrete
+`TrustedFixture` (cross_compat.rs row 1).  A15 extends fixture
+coverage to **two more** cross_compat rows:
+
+* **Row 9** (`fixtureExtractExportsModule`) — three-function shape
+  exercising the multi-function structural path.
+* **Row 10** (`fixtureRealisticCleanModule`) — four-function shape
+  exercising borrow + nullary intent variety.
+
+Each row lands as a six-tuple: module + structural witness +
+`TrustedFixture` + spec/verifier/source acceptance projections.
+Coverage of cross_compat rows 2–8 is documented as out-of-scope for
+the summary-level spec (body-level rejections + cross-module
+modelling).
+
+### Proof-debt pass A16 (2026-05-26, same-day continuation; PR #74)
+
+A15 left three independent registered fixtures behind
+`emptyExtendedAgreement`'s `\_,_,_ => Nothing` lookup.  A16 builds
+the **first non-empty** `ExtendedAgreement` (`firstExtendedAgreement`)
+with a dispatching lookup that returns the matching `TrustedFixture`
+when called on a registered module:
+
+* Manual `DecEq` instances for `OwnershipIntent` (16 cases),
+  `FunctionSummary`, and `ModuleSummary` (no elaborator reflection
+  in Idris2 0.8.0 — derived manually).
+* `liftTrustedFixture : a = b -> TrustedFixture a -> TrustedFixture b`
+  transport across propositional equality.
+* `fixtureLookupDispatching` — total, three-way decEq chain over the
+  three registered fixtures.
+
+### Proof-debt pass A17 (2026-05-26, same-day continuation; PR #74)
+
+A16's dispatching ExtendedAgreement is the open-world record-shaped
+path.  A17 adds a complementary **closed-world evidence track** that
+provides `Maybe`-free constructive bridges:
+
+* `data RegisteredFixture : ModuleSummary -> Type` — closed-world
+  GADT with one type-indexed constructor per registered fixture.
+  Callers cannot manufacture evidence for unregistered modules.
+* `fixtureFromEvidence : RegisteredFixture m -> TrustedFixture m` —
+  pattern-match dispatcher (definitional reduction).
+* Six projector round-trip lemmas as `Refl`: `name{Row1,Row9,Row10}`
+  and `id{Row1,Row9,Row10}`.  Projectors force unfolding past the
+  toplevel `fixtureXTrusted` name so unification proceeds at
+  symmetric reduction depths.  (Round-trip-to-toplevel-name lemmas
+  do not type-check as `Refl` in Idris2 0.8.0 — asymmetric reducer
+  behavior; documented inline.)
+* `verifierImpliesSpecEvidence : RegisteredFixture m -> VerifierAccepts m
+  -> SpecAccepts m` — `Maybe`-free constructive bridge.
+  Registration *is* the acceptance witness; no fixture-lookup
+  failure mode.
+* `sourceImpliesSpecEvidence` — symmetric `SourceAccepts m ->
+  SpecAccepts m` bridge.
+
+**Open after A17** — full proof bodies for `VerifierSpecAgreement` /
+`SourceVerifierAgreement` (unchanged dependency: populate the
+registered-fixture set from the actual differential harness, then
+close the unconditional direction).  Cross_compat rows 2–8 require
+extending `FunctionSummary` with a body-level trace; cross-module
+rows require lifting `ModuleSummary` to a module graph.  Both are
+long-tail.
+
+Regression: 118 Layer-1 assertions pass (was 50 at A12, 68 at A13,
+~92 at A14, ~105 at A16).  Build green 22/22 modules.  Zero new
+`believe_me`, `assert_total`, `postulate`, `sorry`,
+`assert_smaller`.  `%default total` preserved.
+
 ### Proof-debt pass A13 (2026-05-26, same-day continuation)
 
 Per coordinator pre-clearance for items 5 + 7 + 8, this round closes

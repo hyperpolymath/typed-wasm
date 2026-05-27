@@ -20,7 +20,63 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
-## RECONCILIATION 2026-05-26 (A14 follow-up — read this FIRST)
+## RECONCILIATION 2026-05-26 (A15 / A16 / A17 follow-up — read this FIRST)
+
+> **A15 + A16 + A17 follow A14 in the same calendar day** (same
+> [PR #74](https://github.com/hyperpolymath/typed-wasm/pull/74)).
+> Where A14 stopped at a single concrete fixture (row 1 of
+> `cross_compat.rs`) and an `emptyExtendedAgreement`, this chain
+> closes the residual fixture-registry gap to the extent that the
+> summary-level spec permits.
+>
+> 1. **A15 — fixture coverage.**  Two more `TrustedFixture` values:
+>    `fixtureExtractExportsTrusted` (row 9, three functions) and
+>    `fixtureRealisticCleanTrusted` (row 10, four functions exercising
+>    borrow + nullary intents).  Coverage of cross_compat rows 2–8 is
+>    documented as out-of-scope for the summary-level
+>    `FunctionSummary` shape (body-level rejections) or out-of-scope
+>    for the single-module `ModuleSummary` shape (cross-module
+>    coupling).
+>
+> 2. **A16 — first non-empty `ExtendedAgreement`.**  Manual
+>    `DecEq` instances for `OwnershipIntent` (16 cases) +
+>    `FunctionSummary` + `ModuleSummary` (Idris2 0.8.0 has no
+>    elaborator-reflection auto-derive); `liftTrustedFixture` to
+>    transport across propositional equality;
+>    `fixtureLookupDispatching` decEq-chain over the three registered
+>    fixtures; `firstExtendedAgreement` wires it all up.  Round-trip
+>    lemmas `fixtureLookupDispatching <m> ... = Just <fixture>` are
+>    NOT `Refl` definitionally because `decEq` on records bottoms out
+>    in `decEq String` which doesn't unfold — limitation documented
+>    inline; the dispatcher itself is total and load-bearing.
+>
+> 3. **A17 — closed-world evidence track.**  Sidesteps A16's
+>    decEq-asymmetric-reduction limitation:
+>    * `data RegisteredFixture : ModuleSummary -> Type` — closed-world
+>      GADT with one type-indexed constructor per registered fixture.
+>      Pattern matching reduces definitionally (no decEq).
+>    * `fixtureFromEvidence : RegisteredFixture m -> TrustedFixture m`.
+>    * Six projector round-trips as `Refl`: `name{Row1,Row9,Row10}` +
+>      `id{Row1,Row9,Row10}`.
+>    * `verifierImpliesSpecEvidence` / `sourceImpliesSpecEvidence` —
+>      **`Maybe`-free** constructive bridges.  Registration is the
+>      acceptance witness.
+>
+> **Build green 22/22.  118 regression assertions pass** (was 105 at
+> A16, ~92 at A14, 68 at A13).  Zero new `believe_me`,
+> `assert_total`, `postulate`, `sorry`, `assert_smaller`.
+> `%default total` preserved.
+>
+> **Open after A17.**  Same as Open-after-A14, *minus* the
+> fixture-registry gap which now has a concrete inhabitant (the
+> three-fixture registry behind `firstExtendedAgreement` /
+> `fixtureFromEvidence`).  Long-tail items unchanged:
+> `LevelAttestation` reindexed-by-witness redesign, WasmCert-Isabelle
+> tie-back, emitted-wasm byte-equality, parser round-trip in Idris2.
+> Cross_compat rows 2–8 require either body-level `FunctionSummary`
+> extension or cross-module `ModuleSummary` lifting — both multi-week.
+
+## RECONCILIATION 2026-05-26 (A14 follow-up)
 
 > **A14 follows A13 in the same calendar day** ([#74](https://github.com/hyperpolymath/typed-wasm/pull/74)).
 > A13 stated items 7 + 8 as typed obligations but kept the
