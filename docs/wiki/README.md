@@ -30,7 +30,8 @@ git push
 |---|---|
 | `Home.md` | Wiki landing page; current state + links to other pages |
 | `Production-Path.md` | The 6-phase production plan (companion to `docs/PRODUCTION-PATH.adoc`) |
-| `Phase-0-Status.md` | Live closure state with PR cross-links + test surface summary |
+| `Phase-0-Status.md` | Live closure state with PR cross-links + test surface summary; plus a 2026-05-27 post-Phase-0 proof-debt closure section |
+| `Proof-Debt-Status.md` | What's mechanically proven, what's outstanding, what's blocked on prerequisites; the page to point at when asked "where is the theorem?" (added 2026-05-27) |
 | `Comparison.md` | Landscape of typed-wasm vs neighbouring approaches at each maturity level |
 
 ## Authoring rules

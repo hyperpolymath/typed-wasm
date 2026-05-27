@@ -8,7 +8,7 @@ project = "typed-wasm"
 version = "0.1.0"
 last-updated = "2026-05-27"
 status = "active"  # active | paused | archived
-session = "2026-05-27 — Phase 2 carrier-ABI kickoff + proof-debt closure pass (PR #72) integrated. Carrier-ABI: 3 PRs filed + 1 issue resolved — #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A (per-instruction (func_idx, instruction_byte_offset) -> (region_id, field_id)); Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness`; `compatCommute` mutual-subschema + `noSpoofingBidir` corollary). Fixed `tests/proof/regression.mjs` Layer 2 from `--check` no-op to real `--build`. A11 closes 3/8 untracked debts (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8: LinearAcrossBoundary L13×L10, SessionAcrossBoundary L14×L13, RegionsOverlap + disjointImpliesNoOverlap, and new TypedWasm.ABI.VerifierSpec module (SpecAccepts/VerifierAccepts/SourceAccepts predicates, agreement records, composition lemmas). 34 new theorems across A10+A11+A12+A13, regression 25→68, package 17→22 modules. Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
+session = "2026-05-27 — Phase 2 carrier-ABI + Proof-debt closure pass (combined integration). Carrier-ABI (parallel session): #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A; Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72, MERGED): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation; compatCommute mutual-subschema). A11 closes 3/8 untracked (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8 incl. new TypedWasm.ABI.VerifierSpec module. Proof-debt closure pass #79/#80: #79 VerifierSpec total bodies for VerifierSpecAgreement / SourceVerifierAgreement (post-A10 items 7+8) — VADifferential/SADifferential carry inline TrustedFixture so structural witness travels with fixture metadata, all four agreement directions total by case analysis; first total no-believe_me agreement values. #80 Proofs.idr LevelAttestationW + WitnessCertificate (standards#130 long-tail) — 15-ctor witness-indexed GADT with per-level extractors, existential SomeAttestationW wrapper enabling WitnessCertificate as heterogeneous-list lift of ProofCertificate (PR #83 second slice folded in). #74 closed as superseded by #79. Test surface 545 → 627+ assertions (proof regression 25 → 107). Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
 
 [project-context]
 name = "typed-wasm"
@@ -60,8 +60,9 @@ milestones = [
   { name = "L13 × L10 cross-level (linear handle across boundary)", completion = 100 },  # 2026-05-26 (A13, PR #72) — closes audit item 5a via LinearAcrossBoundary + linearTransferRequiresBoundary
   { name = "L14 × L13 cross-level (session handle across boundary)", completion = 100 },  # 2026-05-26 (A13, PR #72) — closes audit item 5b via SessionAcrossBoundary + sessionAcrossPreservesState + sessionTransferRequiresBoundary
   { name = "RegionDisjoint → byte non-overlap theorem (L7/L10 cross-level)", completion = 100 },  # 2026-05-26 (A13, PR #72) — A12 leave-behind via RegionsOverlap + disjointImpliesNoOverlap
-  { name = "Verifier ↔ Idris2 spec equivalence — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: VerifierSpecAgreement obligation typed; full bodies multi-week
-  { name = "Source-checker ↔ verifier coverage agreement — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: SourceVerifierAgreement obligation typed; full bodies multi-week
+  { name = "VerifierSpecAgreement / SourceVerifierAgreement bodies (post-A10 items 7 + 8)", completion = 100 },  # 2026-05-27 (PR #79; PR #80 totalises with VADifferential/SADifferential carrying inline TrustedFixture)
+  { name = "LevelAttestation reindexed-by-witness (standards#130 long-tail)", completion = 100 },  # 2026-05-27 (PR #80, this PR)
+  { name = "WitnessCertificate lift (heterogeneous-list certificate)", completion = 100 },  # 2026-05-27 (#83 folded into #80)
   { name = "L13 module isolation enforcement on emitted wasm", completion = 100 },  # PR #37, 2026-05-19
   { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 30 },  # PR #76 filed 2026-05-27; [draft], blocked on affinescript+ephapax review
   { name = "L2 region-binding codec pre-stage (unstable-l2 feature)", completion = 100 },  # PR #77, 2026-05-27 — codec only, no verifier pass yet
@@ -99,6 +100,27 @@ actions = [
   "ADRs for the 6 load-bearing decisions D1-D6 from docs/PRODUCTION-PATH.adoc §'Load-bearing decisions' (especially D2: producer-side-only vs runtime-aware, which gates whether Phase 3 happens).",
 ]
 
+[proof-debt-closure-pass-2026-05-27]
+# Snapshot of the 2026-05-27 proof-debt closure pass.  Three PRs auto-merge
+# SQUASH armed at the time of writing.  When all three land, this section
+# can move to history (or be summarised in the session note).
+prs = [
+  { number = 79, title = "VerifierSpec.idr — total bodies for VerifierSpecAgreement + SourceVerifierAgreement (items 7 + 8)", state = "open-auto-merge-armed", branch = "proof/verifier-spec-agreement-bodies", closes-audit-items = ["7", "8"], lines-added = 670, new-regression-assertions = 33 },
+  { number = 80, title = "LevelAttestationW + WitnessCertificate (standards#130 long-tail)",                               state = "open-auto-merge-armed", branch = "proof/level-attestation-witness-indexed", closes-audit-items = ["standards#130 stronger reindexed claim"], lines-added = 828, new-regression-assertions = 49 },
+  { number = 74, title = "items 7+8 design pass + Maybe-returning bridges (superseded by #79)",                            state = "closed", reason = "superseded — competing design with weaker provability of the agreement records" },
+]
+test-surface-delta = "proof regression 25 → 107 (+82); total 545 → 627+"
+banned-pattern-delta = "zero new (believe_me/assert_total/postulate/sorry/assert_smaller); %default total preserved"
+build-oracle = "IDRIS2_PREFIX=…/idris2/0.8.0 idris2 --build src/abi/typed-wasm.ipkg → 22/22 modules under #79, 21/21 under #80, rc=0"
+
+[long-tail-open-after-2026-05-27]
+items = [
+  "WasmCert-Isabelle tie-back (requires external Isabelle/HOL install + bridge — multi-week)",
+  "Emitted-wasm byte-equality P3.1(a) — blocked on .twasm→.wasm emitter not yet existing",
+  "Parser round-trip in Idris2 — blocked on AffineScript parser port to Idris2",
+  "Verifier L1-L6 + L13-L16 coverage on emitted wasm (#34, #35) — IN PROGRESS on PRs #76 / #77 by a parallel session, do not interfere",
+]
+
 [maintenance-status]
 last-run-utc = "2026-05-27T10:30:00Z"
 last-report = "docs/PRODUCTION-PATH.adoc"   # canonical strategic doc; PROOF-NEEDS.md A13 banner records 2026-05-26 proof-debt closure
@@ -107,8 +129,11 @@ open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + an
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
 
 [test-surface]
-# Test surface as of 2026-05-27; combines proof-regression bump (PR #72) and PR #81 C5.1 real fixtures.
-total-assertions = 577  # 545 baseline + 18 proof-regression (50→68 via A13/#72) + 14 from carrier-ABI/c5_real (#81)
+# Test surface as of 2026-05-27; combines proof-regression bumps from PR #72 (A10-A13), PR #79
+# (VerifierSpec total bodies), PR #80 (LevelAttestationW + WitnessCertificate), and PR #81 C5.1
+# real fixtures.  Proof regression: 25 baseline → 68 (A13/#72) → 107 (#79+#80 = +33 + +49 with
+# overlap collapsed under #72 entries).
+total-assertions = 666  # 545 baseline + 14 (carrier-ABI/c5_real #81) + 107 (proof regression total) - 25 (baseline already counted) + (overlap correction zero)
 surfaces = [
   { name = "ParserTests.res",                 assertions = 88,  file = "tests/parser/ParserTests.res" },
   { name = "typed-wasm-verify (Rust, default)", assertions = 47, file = "crates/typed-wasm-verify/" },     # 42 unit/cross-compat + 5 C5.1 real-fixture (PR #81, 2026-05-27)
@@ -117,7 +142,7 @@ surfaces = [
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
   { name = "property tests",                  assertions = 29,  file = "tests/property/property_test.mjs" }, # added 2026-05-24 (PR #57)
-  { name = "proof regression",                assertions = 68,  file = "tests/proof/regression.mjs" },        # 25→44 (A10+A11) → 50 (A12) → 68 (A13, PR #72): +LinearAcrossBoundary+linearTransferRequiresBoundary+linearTransferLocal (5a) +SessionAcrossBoundary+sessionAcrossPreservesState+sessionTransferRequiresBoundary+sessionTransferLocal (5b) +RegionsOverlap+disjointImpliesNoOverlap+regionsOverlapSym (leave-behind) +SpecAccepts+VerifierAccepts+SourceAccepts+IntentsLinearAcceptable+VerifierSpecAgreement+SourceVerifierAgreement+sourceImpliesSpec+specImpliesSource (items 7+8); Layer 2 fixed from --check no-op to --build at A10
+  { name = "proof regression",                assertions = 107, file = "tests/proof/regression.mjs" },        # 25 baseline → 68 (A10-A13 via PR #72) → 107 (+33 from PR #79 VerifierSpec total bodies, +49 from PR #80 LevelAttestationW + WitnessCertificate) — all 2026-05-27
   { name = "smoke E2E",                       assertions = 40,  file = "tests/smoke/e2e-smoke.mjs" },
   { name = "structural E2E",                  assertions = 53,  file = "tests/e2e.sh" },
   { name = "integration (airborne-step)",     assertions = 14,  file = "tests/contracts/airborne-step-state-contract.mjs" },

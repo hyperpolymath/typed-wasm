@@ -10,6 +10,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Proof-debt closure pass (2026-05-27)
+
+Post-Phase-0 sweep of the long-tail items the 2026-05-18 PROOF-NEEDS
+reconciliation banner deferred. Closes the named obligations against
+post-A10 audit items 7 + 8 (verifier ↔ spec, source ↔ verifier
+agreement records) and the standards#130 "LevelAttestation reindexed
+by witness" long-tail. All work additive (no existing definitions
+touched, no prior proofs can regress) and all changes preserve
+`%default total` with zero new `believe_me` / `assert_total` /
+`postulate` / `sorry` / `assert_smaller`.
+
+**3 PRs landed/in flight, all auto-merge SQUASH armed**:
+
+- **#79** — `TypedWasm.ABI.VerifierSpec`: total bodies for
+  `VerifierSpecAgreement` and `SourceVerifierAgreement` (post-A10
+  audit items 7 + 8). New module (~620 LOC) defining the shared
+  spec-of-record surface (`ModuleSummary` / `FunctionSummary` /
+  `OwnershipIntent`), structural acceptance predicates
+  (`TokenFresh` / `IntentsLinearAcceptable` / `FunctionsAccepted`),
+  three acceptance predicates (`SpecAccepts`, `VerifierAccepts`,
+  `SourceAccepts`), the two agreement records with totally-proven
+  bodies, and concrete inhabitants `verifierSpecAgreement` /
+  `sourceVerifierAgreement` (the first total no-`believe_me`
+  agreement values in the codebase). Design choice that unblocked
+  the bodies: `VADifferential` / `SADifferential` carry an inline
+  `TrustedFixture` so the structural witness travels with the
+  fixture metadata — trust-injection moment moves to
+  `MkTrustedFixture` (single audit grep). End-to-end demo through
+  `fixtureCleanLinearConsumerModule` (cross_compat row 1).
+  Discrimination proofs across both ctors show L10 has teeth and
+  the differential escape hatch can't smuggle a bad module past
+  the verifier. **+33 Layer 1 regression assertions.**
+  Side-fix: latent `idris2 --check typed-wasm.ipkg` bug in
+  `regression.mjs` Layer 2 corrected to `--build` (Idris2 0.8.0
+  `--check` rejects ipkg paths; CI was unaffected because Layer 2
+  skips when idris2 not on PATH, but local strict runs failed).
+- **#74** — closed as superseded by #79 (competing `Maybe`-returning
+  bridge design; the witness-carrying ctor design in #79 closes the
+  full bodies that #74's design explicitly framed as "multi-week
+  residual").
+- **#80** — `Proofs.idr` `LevelAttestationW` + `WitnessCertificate`:
+  closes the standards#130 long-tail flagged in PROOF-NEEDS
+  2026-05-18 reconciliation banner ("Stronger 'attestation entails
+  the level's semantic property' (needs `LevelAttestation` reindexed
+  by witness) remains tracked future work under standards#130").
+  Two stacked slices (PR #83 instant-merged into #80's branch
+  because the stacked base wasn't protected; the squashed commit
+  carries both):
+    - **`LevelAttestationW : (n : Nat) -> Type`** — witness-indexed
+      attestation GADT, one constructor per level (15 total). Each
+      packages the level-specific witness. 15 `attestLNW_*` smart
+      ctors. 15 `attestLNW_Entails<Property>` extractors (the
+      "entails-semantic-property" lemmas). `toLegacy` bridge. 15
+      round-trip `Refl`s. Uniform `attestLW_AchievedIn` subsuming
+      the A9 `attestLN_Sound` family.
+    - **`WitnessCertificate`** — `ProofCertificate` lifted to
+      witness-carrying form via existential `SomeAttestationW`.
+      Mirror record. `witnessToLegacy` bridge. `composeWitness`
+      mirror of `composeCertificates`. `composeWitnessLegacyAgree`
+      composition-compat lemma. `WitnessAchieved` predicate lifted.
+      Empty + singleton smart ctors.
+  **+49 Layer 1 regression assertions.**
+
+**Test surface after this pass**: 627+ assertions (up from 545+).
+Per-surface delta: proof regression 25 → 107 (33 from #79 + 49 from
+#80, plus the existing 25).
+
+**What this does NOT close**:
+
+- WasmCert-Isabelle tie-back (requires external Isabelle install)
+- Emitted-wasm byte-equality, P3.1(a) (blocked on `.twasm`→`.wasm`
+  emitter)
+- Parser round-trip in Idris2 (blocked on AffineScript parser port)
+- Verifier L1–L6 + L13–L16 coverage (in progress on PRs #76 / #77 in
+  a parallel session — wire-format proposal + L2 codec pre-staging)
+
 ### 2026-05-27 — Phase 2 carrier-ABI design + C5.1 corpus
 
 Multi-PR session opening the L2–L6 / L15 enforcement path on emitted
