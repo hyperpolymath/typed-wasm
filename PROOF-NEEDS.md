@@ -20,7 +20,199 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
-## RECONCILIATION 2026-05-18 (verified ground truth — read this first)
+## RECONCILIATION 2026-05-26 (A13 follow-up — read this FIRST)
+
+> **A13 follows A12 in the same calendar day.**  Per coordinator
+> pre-clearance for items 5 + 7 + 8 (and the small A12 leave-behind),
+> this round closes **the remaining post-A10 audit items in their
+> statement-level form**:
+>
+> 1. **Item 5a (L13 × L10) closed.**  `ModuleIsolation.idr` gains
+>    `LinearAcrossBoundary from to regName bs token`, pairing an L13
+>    `AccessWitness` with an L10 `LinHandle`.  The no-bypass theorem
+>    `linearTransferRequiresBoundary` proves that any non-local
+>    linear-handle transfer requires a concrete boundary in `bs` — a
+>    linear handle cannot leave an isolated module without an L13
+>    boundary declaration.  `linearTransferLocal` is the local-case
+>    constructor.  Proof shape reuses `crossAccessImpliesBoundary`
+>    from L13 directly; the cross-level claim is a clean lift.
+>
+> 2. **Item 5b (L14 × L13) closed.**  `SessionProtocol.idr` now
+>    imports `ModuleIsolation` and gains `SessionAcrossBoundary` with
+>    three theorems: `sessionAcrossPreservesState` (the state index
+>    survives the transfer), `sessionTransferRequiresBoundary` (the
+>    same no-bypass shape as L10), and `sessionTransferLocal`
+>    (local-case).  Together they prove a session handle cannot
+>    silently change state or escape its module without an L13
+>    witness.
+>
+> 3. **A12 leave-behind closed.**  `Region.idr` gains `RegionsOverlap`
+>    (an address lying inside both region footprints) and
+>    `disjointImpliesNoOverlap` proving `RegionDisjoint -> Not
+>    RegionsOverlap`.  This is the L7/L10 cross-level link the A12
+>    section header promised — disjointness now has byte-level
+>    teeth.  `regionsOverlapSym` is the symmetry companion.
+>
+> 4. **Items 7 + 8 stated as obligations.**  New module
+>    `VerifierSpec.idr` introduces `SpecAccepts m` (the Idris2 L7+L10
+>    structural acceptance predicate on `ModuleSummary`),
+>    `VerifierAccepts m` (opaque; witnessed by the Rust differential
+>    harness via `differentialAccepted`), and `SourceAccepts m`
+>    (opaque; witnessed by the source-side harness).  Two record
+>    obligations — `VerifierSpecAgreement` (item 7) and
+>    `SourceVerifierAgreement` (item 8) — bundle the soundness and
+>    completeness directions so partial proofs can land one face at
+>    a time.  Composition lemmas `sourceImpliesSpec` and
+>    `specImpliesSource` give the test harness end-to-end targets.
+>
+>    **What this does NOT do.**  Items 7 and 8 are stated, not
+>    proven.  The full equivalence proofs require either a full
+>    simulation between two implementations (multi-week) or
+>    extending the verifier's coverage to every level the source
+>    checker promises.  A13 pins the obligations as typed Idris2
+>    predicates so the long-tail work has a fixed target.
+>
+> **15 new named theorems / data types** (`LinearAcrossBoundary`,
+> `acrossWitness`, `acrossHandle`, `linearTransferRequiresBoundary`,
+> `linearTransferLocal`, `SessionAcrossBoundary`,
+> `sessionAcrossPreservesState`, `sessionTransferRequiresBoundary`,
+> `sessionTransferLocal`, `RegionsOverlap`,
+> `disjointImpliesNoOverlap`, `regionsOverlapSym`, `SpecAccepts`,
+> `VerifierAccepts`, `SourceAccepts` plus `VerifierSpecAgreement` /
+> `SourceVerifierAgreement` / `sourceImpliesSpec` /
+> `specImpliesSource`).  Regression **68/68** under Idris2 0.8.0
+> (both layers).
+>
+> **Open after A13.**  No items remain from the original post-A10
+> 8-item audit.  Long-tail work that exceeds a one-session scope:
+> the actual proof bodies for `VerifierSpecAgreement` /
+> `SourceVerifierAgreement`; the `LevelAttestation` reindexed-by-
+> witness redesign (standards#130 / epic standards#124); WasmCert-
+> Isabelle tie-back; emitted-wasm byte-equality for erasure
+> (P3.1(a), blocked on emitter); parser round-trip in Idris2
+> (ECHIDNA-only at present).
+
+## RECONCILIATION 2026-05-26 (A12 follow-up)
+
+> **A12 follows A11 in the same calendar day.**  Per coordinator-routed
+> A12 go-ahead, this round closes **3 more** of the 8 untracked gaps
+> from `project_typed_wasm_proof_debt_post_a10.md`:
+>
+> 1. **Item 4 closed IN FULL.**  The A11 partial (`composeAssocLists`
+>    was list-side only) is now superseded by `composeAssoc` proving
+>    three-way associativity of `composeCertificates` across all three
+>    fields (list parts, multi-module parts, AND the `highestProven`
+>    Nat).  Made possible by switching `composeCertificates` from the
+>    Ord-derived `Prelude.min` to the structural `Data.Nat.minimum`
+>    (per coordinator hint), which makes `minimumAssociative` apply
+>    directly.  `composeHighProvenComm` adds Nat-side commutativity
+>    via `minimumCommutative`.  The original `composeAssocLists` is
+>    kept as a back-compat corollary.
+>
+> 2. **Item 6 closed.**  `RegionDisjoint r1 r2` in `Region.idr` —
+>    a two-constructor data type witnessing that two regions' byte
+>    footprints `[baseAddr, baseAddr + totalSize)` don't overlap in
+>    either ordering.  `regionDisjointSym` proves symmetry.  The
+>    cross-level theorem linking disjointness to L7 aliasing-safety
+>    and L10 linearity is left for a future pass — disjointness as a
+>    predicate is the missing primitive the audit flagged.
+>
+> 3. **Item 3 closed.**  `jointBudgetCompose` in
+>    `ResourceCapabilities.idr` proves L8 ↔ L15 joint composition:
+>    given individual `EffectSubsumes` witnesses + individual
+>    `FunctionCaps` witnesses for two functions sharing an owner
+>    module, the compound function satisfies both the combined L8
+>    envelope (via `subsumeCompose`) AND the combined L15 module
+>    envelope (via the new `containedConcat` + the existing
+>    `l15bSoundness`).
+>
+> All five new theorems (`composeAssoc`, `composeHighProvenComm`,
+> `RegionDisjoint`, `regionDisjointSym`, `jointBudgetCompose`,
+> `containedConcat`) are guarded by `tests/proof/regression.mjs`.
+> Regression now **50/50**.
+>
+> Items remaining from the original post-A10 audit (all explicitly
+> A12 → A13 inheritance per coordinator clearance): item 5 (L13×L10,
+> L14×L13 cross-level), item 7 (Rust verifier ↔ Idris2 spec
+> equivalence), item 8 (source-checker ↔ verifier coverage agreement).
+
+## RECONCILIATION 2026-05-26 (A11 follow-up)
+
+> **A11 follows A10 in the same calendar day.**  Where A10 closed the
+> *named* deferred items, A11 attacks three of the **untracked** gaps
+> uncovered by the post-A10 audit (`project_typed_wasm_proof_debt_post_a10.md`):
+>
+> 1. **`Sync.WriteSync` no longer admits fake writers.**  The constructor
+>    now requires a `FieldVersion` witness with three equalities
+>    (`fv.field = field`, `fv.version = newVersion`,
+>    `fv.lastWriter = mod`) and the corollary
+>    `writeSyncIdentifiesWriter` extracts that witness.  An adversarial
+>    construction `WriteSync (MkFieldVersion otherField otherVer
+>    differentModule) Refl Refl Refl` is now ill-typed unless the three
+>    coincide with the indexed field/version/writer — the very
+>    "provenance gap" Audit Item 1 flagged.
+>
+> 2. **`Knowledge.Observed` is grounded in a `Sync` event.**  The
+>    constructor now takes `(sync : Sync mod field oldVer ver)` so
+>    `Observed mod field ver` cannot be inhabited without a
+>    causally-prior write.  `observedHasProvenance` reads the witness
+>    back out.  Audit Item 2 ("Knowledge.Observed admits unfounded
+>    versions") is closed.
+>
+> 3. **`composeCertificates` gets its first algebraic laws.**
+>    `achievedAppendSplit` proves `LevelAchievedIn n (xs ++ ys) ->
+>    Either (LevelAchievedIn n xs) (LevelAchievedIn n ys)`;
+>    `composeAssocLists` proves the achieved-set under three-way
+>    composition is associative; `composeAchievedSym` is the symmetric
+>    counterpart of `composeAchievedL`/`R`.  Audit Item 4
+>    ("composeCertificates laws unproven") is **partially** closed —
+>    list-level associativity is proven, but the `Nat`-min commutativity
+>    on `highestProven` is left for A12 because Idris2 0.8's `Prelude.min
+>    Nat` is a non-structural `if x < y then x else y` and does not
+>    reduce to `Refl` on symbolic inputs.  See `composeAssocLists`
+>    docstring in `Proofs.idr` for the discharge plan.
+>
+> All five new theorems (`writeSyncIdentifiesWriter`,
+> `observedHasProvenance`, `achievedAppendSplit`, `composeAssocLists`,
+> `composeAchievedSym`) are guarded by `tests/proof/regression.mjs`
+> Layer 1 grep + Layer 2 `--build`.  Items 3, 5, 6, 7, 8 from the
+> post-A10 audit remain open and inherit to a future A12.
+
+## RECONCILIATION 2026-05-26 (A10 closure — read this first)
+
+> **A10 closes the last two named "deferred" items** that survived the
+> 2026-05-18 reconciliation below.  Both are now mechanically proven and
+> guarded by `tests/proof/regression.mjs` (Layer 1 grep + Layer 2 build,
+> Layer 2 invocation fixed to `--build` from a no-op `--check`).
+>
+> 1. **L12 freshness propagation under concurrent writes** (PROOF-NEEDS
+>    §P1.2 and LEVEL-STATUS row 12) — closed by 8 new theorems in
+>    `Epistemic.idr` headlined by `freshnessPropagatesUnderWrites :
+>    Fresh mod field v v -> LT v cur -> Sync mod field v cur ->
+>    Fresh mod field cur cur` plus `concurrentWriteStales`,
+>    `resyncRecoversFresh`, `freshNotStale`, `freshImpliesEqual`,
+>    `staleImpliesLT`, `syncChainEndsFresh`, and the named
+>    `epistemicFreshness : (p : Level12Proof) -> Fresh p.reader p.field
+>    p.knownVersion p.currentVersion` projector that satisfies the
+>    P1.2 obligation directly.
+>
+> 2. **`compatCommute` mutual-subschema case** (PROOF-NEEDS §P0.5
+>    paragraph 246) — closed in `MultiModule.idr` by `compatCommute :
+>    ModuleCompat from to imp exp -> SchemaSub exp imp ->
+>    ModuleCompat to from exp imp` plus the `noSpoofingBidir`
+>    corollary.  A second worked example (`serviceA`/`serviceB` with
+>    permuted schemas, both `SchemaSub` directions inhabited)
+>    demonstrates the theorem on a non-trivial input.
+>
+> The only proof-side item still explicitly deferred is the **stronger
+> `LevelAttestation` reindexed by witness** noted at the end of the
+> 2026-05-18 reconciliation; everything LEVEL-STATUS or this file
+> previously called "deferred" or "future work" at the proof level is
+> now resolved.  L15-C call-graph **surface-checker** enforcement
+> remains future work (the proof-side `callCompose` was already in
+> place; LEVEL-STATUS row 15 carries the marker).
+
+## RECONCILIATION 2026-05-18 (verified ground truth)
 
 > Routed from estate proof-debt epic **hyperpolymath/standards#124**,
 > sub-issue **#130**. The 2026-04-13 inventory below is **superseded**

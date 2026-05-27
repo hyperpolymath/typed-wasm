@@ -8,7 +8,7 @@ project = "typed-wasm"
 version = "0.1.0"
 last-updated = "2026-05-27"
 status = "active"  # active | paused | archived
-session = "2026-05-27 — Phase 2 carrier-ABI kickoff. 3 PRs filed + 1 issue resolved. #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A (per-instruction (func_idx, instruction_byte_offset) -> (region_id, field_id)); Encoding B (LEB128) recommended for proposal 0002 (size measurement on issue). Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
+session = "2026-05-27 — Phase 2 carrier-ABI kickoff + proof-debt closure pass (PR #72) integrated. Carrier-ABI: 3 PRs filed + 1 issue resolved — #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A (per-instruction (func_idx, instruction_byte_offset) -> (region_id, field_id)); Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation via 8 theorems incl. `freshnessPropagatesUnderWrites` + `epistemicFreshness`; `compatCommute` mutual-subschema + `noSpoofingBidir` corollary). Fixed `tests/proof/regression.mjs` Layer 2 from `--check` no-op to real `--build`. A11 closes 3/8 untracked debts (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8: LinearAcrossBoundary L13×L10, SessionAcrossBoundary L14×L13, RegionsOverlap + disjointImpliesNoOverlap, and new TypedWasm.ABI.VerifierSpec module (SpecAccepts/VerifierAccepts/SourceAccepts predicates, agreement records, composition lemmas). 34 new theorems across A10+A11+A12+A13, regression 25→68, package 17→22 modules. Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
 
 [project-context]
 name = "typed-wasm"
@@ -51,6 +51,17 @@ milestones = [
   { name = "Wiki source-of-truth at docs/wiki/", completion = 100 },  # 2026-05-25 (PR #61)
   { name = "RSR-template taxonomy alignment (AUDIT.adoc + onboarding/status/proposals stubs)", completion = 100 },  # 2026-05-25 (PR #63)
   { name = "Parser migration ReScript -> AffineScript -> Idris2", completion = 50 },  # ReScript->AffineScript landed; AffineScript->Idris2 still ahead
+  { name = "L12 (Epistemic) freshness propagation proof", completion = 100 },  # 2026-05-26 (A10, PR #72) — closes PROOF-NEEDS §P1.2
+  { name = "MultiModule mutual-subschema commutativity (compatCommute)", completion = 100 },  # 2026-05-26 (A10, PR #72)
+  { name = "Sync/Knowledge constructor provenance tightening", completion = 100 },  # 2026-05-26 (A11, PR #72) — closes post-A10 audit items 1 + 2
+  { name = "composeCertificates algebraic laws", completion = 100 },  # 2026-05-26 — A11 list-side + A12 full assoc/comm (PR #72) — switched to Data.Nat.minimum, closes audit item 4
+  { name = "Region byte-disjointness predicate + symmetry", completion = 100 },  # 2026-05-26 (A12, PR #72) — closes audit item 6; L7/L10 cross-level theorem deferred
+  { name = "L8 ↔ L15 joint budget composition theorem", completion = 100 },  # 2026-05-26 (A12, PR #72) — closes audit item 3 via jointBudgetCompose
+  { name = "L13 × L10 cross-level (linear handle across boundary)", completion = 100 },  # 2026-05-26 (A13, PR #72) — closes audit item 5a via LinearAcrossBoundary + linearTransferRequiresBoundary
+  { name = "L14 × L13 cross-level (session handle across boundary)", completion = 100 },  # 2026-05-26 (A13, PR #72) — closes audit item 5b via SessionAcrossBoundary + sessionAcrossPreservesState + sessionTransferRequiresBoundary
+  { name = "RegionDisjoint → byte non-overlap theorem (L7/L10 cross-level)", completion = 100 },  # 2026-05-26 (A13, PR #72) — A12 leave-behind via RegionsOverlap + disjointImpliesNoOverlap
+  { name = "Verifier ↔ Idris2 spec equivalence — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: VerifierSpecAgreement obligation typed; full bodies multi-week
+  { name = "Source-checker ↔ verifier coverage agreement — STATEMENT", completion = 50 },  # 2026-05-26 (A13, PR #72) — VerifierSpec.idr: SourceVerifierAgreement obligation typed; full bodies multi-week
   { name = "L13 module isolation enforcement on emitted wasm", completion = 100 },  # PR #37, 2026-05-19
   { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 30 },  # PR #76 filed 2026-05-27; [draft], blocked on affinescript+ephapax review
   { name = "L2 region-binding codec pre-stage (unstable-l2 feature)", completion = 100 },  # PR #77, 2026-05-27 — codec only, no verifier pass yet
@@ -61,7 +72,7 @@ milestones = [
 
 [blockers-and-issues]
 issues = [
-  "L11-L12 research modules are not part of the checked package and currently fail standalone type-checking.",
+  "L11 (Tropical) remains research-only at the spec level; theorems live in-package but no surface or FFI exposure. L12 (Epistemic) is now spec-complete for freshness propagation (A10, 2026-05-26) but still lacks surface/FFI exposure.",
   "Venue-facing paper and benchmark claims still outrun the evidence present in-repo (now caught by tests/aspect/claim-envelope §8 drift detection).",
   "generated/abi/ C header pipeline not yet implemented (milestone at 0%).",
   "HostType F32 = Double in TypedAccess.idr — Idris2 lacks Float32; documented limitation.",
@@ -90,14 +101,14 @@ actions = [
 
 [maintenance-status]
 last-run-utc = "2026-05-27T10:30:00Z"
-last-report = "docs/PRODUCTION-PATH.adoc"   # the canonical strategic doc supersedes one-off audit reports
+last-report = "docs/PRODUCTION-PATH.adoc"   # canonical strategic doc; PROOF-NEEDS.md A13 banner records 2026-05-26 proof-debt closure
 last-result = "pass"  # unknown | pass | warn | fail
 open-warnings = 4  # Build+E2E + A2ML + K9 non-blocking advisories (PR #59) + anti-pattern policy (fixed by Track A's ReScript cut)
 open-failures = 0  # all gating CI is green; previously-red jobs are explicitly advisory now
 
 [test-surface]
-# Test surface as of 2026-05-27; ~559 assertions across 12 surfaces.
-total-assertions = 559
+# Test surface as of 2026-05-27; combines proof-regression bump (PR #72) and PR #81 C5.1 real fixtures.
+total-assertions = 577  # 545 baseline + 18 proof-regression (50→68 via A13/#72) + 14 from carrier-ABI/c5_real (#81)
 surfaces = [
   { name = "ParserTests.res",                 assertions = 88,  file = "tests/parser/ParserTests.res" },
   { name = "typed-wasm-verify (Rust, default)", assertions = 47, file = "crates/typed-wasm-verify/" },     # 42 unit/cross-compat + 5 C5.1 real-fixture (PR #81, 2026-05-27)
@@ -106,7 +117,7 @@ surfaces = [
   { name = "claim-envelope aspect",           assertions = 53,  file = "tests/aspect/claim-envelope.mjs" }, # bumped 49→53 in PR #60 (new section 8 drift detection)
   { name = "security-envelope aspect",        assertions = 10,  file = "tests/aspect/security-envelope.mjs" },  # added 2026-05-24 (PR #57)
   { name = "property tests",                  assertions = 29,  file = "tests/property/property_test.mjs" }, # added 2026-05-24 (PR #57)
-  { name = "proof regression",                assertions = 25,  file = "tests/proof/regression.mjs" },        # added 2026-05-24 (PR #57)
+  { name = "proof regression",                assertions = 68,  file = "tests/proof/regression.mjs" },        # 25→44 (A10+A11) → 50 (A12) → 68 (A13, PR #72): +LinearAcrossBoundary+linearTransferRequiresBoundary+linearTransferLocal (5a) +SessionAcrossBoundary+sessionAcrossPreservesState+sessionTransferRequiresBoundary+sessionTransferLocal (5b) +RegionsOverlap+disjointImpliesNoOverlap+regionsOverlapSym (leave-behind) +SpecAccepts+VerifierAccepts+SourceAccepts+IntentsLinearAcceptable+VerifierSpecAgreement+SourceVerifierAgreement+sourceImpliesSpec+specImpliesSource (items 7+8); Layer 2 fixed from --check no-op to --build at A10
   { name = "smoke E2E",                       assertions = 40,  file = "tests/smoke/e2e-smoke.mjs" },
   { name = "structural E2E",                  assertions = 53,  file = "tests/e2e.sh" },
   { name = "integration (airborne-step)",     assertions = 14,  file = "tests/contracts/airborne-step-state-contract.mjs" },

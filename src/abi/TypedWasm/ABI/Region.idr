@@ -409,3 +409,142 @@ lookupFieldName : {0 name : String} -> {schema : Schema}
                -> fieldName (lookupField prf) = name
 lookupFieldName {schema = _ :: _} (FieldHere {prf = p}) = p
 lookupFieldName {schema = _ :: _} (FieldThere later)    = lookupFieldName later
+
+-- ============================================================================
+-- Region Disjointness (A12, 2026-05-26 — closes post-A10 audit item 6)
+-- ============================================================================
+--
+-- Two regions are byte-disjoint when their footprints — `[baseAddr,
+-- baseAddr + totalSize)` — don't overlap in WASM linear memory.
+-- Disjointness is the foundation of any "no aliasing across regions"
+-- argument: a borrow into r1 and a borrow into r2 commute iff r1 and
+-- r2 are disjoint.
+--
+-- The schemas need not differ; two regions of the *same* schema can be
+-- disjoint (different addresses), and two regions of *different*
+-- schemas can overlap (same address, viewed two ways).  Schema identity
+-- is orthogonal to memory disjointness.
+--
+-- This file only states disjointness as a predicate plus its
+-- meta-properties (symmetry, anti-reflexivity for non-empty regions).
+-- The cross-level theorem linking disjointness to L7 aliasing-safety
+-- and L10 linearity lives in a future A12 / A13 pass.
+
+||| Byte-disjointness of two region footprints.
+|||
+||| `RegionDisjoint r1 r2` witnesses that the linear-memory byte ranges
+||| of `r1` and `r2` do not overlap.  Two constructors capture the two
+||| orderings: either r1 ends at or before r2 starts, or symmetrically.
+public export
+data RegionDisjoint : {0 s1, s2 : Schema} -> Region s1 -> Region s2 -> Type where
+  ||| `r1`'s footprint ends at or before `r2`'s starts.
+  DisjointBefore : {s1, s2 : Schema}
+                -> {r1 : Region s1} -> {r2 : Region s2}
+                -> LTE (baseAddr r1 + totalSize r1) (baseAddr r2)
+                -> RegionDisjoint r1 r2
+  ||| `r2`'s footprint ends at or before `r1`'s starts.
+  DisjointAfter  : {s1, s2 : Schema}
+                -> {r1 : Region s1} -> {r2 : Region s2}
+                -> LTE (baseAddr r2 + totalSize r2) (baseAddr r1)
+                -> RegionDisjoint r1 r2
+
+||| Region disjointness is symmetric.  If `r1` is disjoint from `r2`
+||| then `r2` is disjoint from `r1` — the "before" case becomes the
+||| "after" case and vice versa.
+public export
+regionDisjointSym : {s1, s2 : Schema}
+                 -> {r1 : Region s1} -> {r2 : Region s2}
+                 -> RegionDisjoint r1 r2 -> RegionDisjoint r2 r1
+regionDisjointSym (DisjointBefore p) = DisjointAfter  p
+regionDisjointSym (DisjointAfter  p) = DisjointBefore p
+
+-- ============================================================================
+-- A13 — Region disjointness × byte separation (L7 / L10 cross-level)
+-- ============================================================================
+--
+-- Closes the leave-behind from the A12 disjointness section: the
+-- predicate-level theorem linking `RegionDisjoint` to actual byte-level
+-- non-overlap.  Two regions are byte-disjoint when no single address
+-- `addr` lies in both their footprints `[baseAddr, baseAddr + totalSize)`.
+--
+-- This is the L7 / L10 cross-level shape promised in the A12 header
+-- comment: any aliasing argument (L7 ExclusiveWitness, L10 LinHandle
+-- pair) over distinct regions can appeal to byte separation as the
+-- underlying memory-safety reason.  Stated here as a predicate-level
+-- theorem so downstream proofs (Pointer.idr, Linear.idr) can re-export
+-- the corollary they need without re-deriving the arithmetic.
+
+||| Local LTE transitivity helper for the disjointness chain.  Idris2
+||| `Data.Nat` exports `transitive` (via the Transitive interface) and
+||| historically `lteTransitive`; using a local primitive avoids name
+||| churn across base-library revisions.
+lteTrans : LTE a b -> LTE b c -> LTE a c
+lteTrans LTEZero       _            = LTEZero
+lteTrans (LTESucc l1)  (LTESucc l2) = LTESucc (lteTrans l1 l2)
+
+||| `LT n n` is uninhabited.  Same shape as `Epistemic.ltIrreflexive`;
+||| reintroduced locally to keep Region.idr's import surface minimal.
+ltIrreflexiveRegion : LT n n -> Void
+ltIrreflexiveRegion (LTESucc rest) = ltIrreflexiveRegion rest
+
+||| Byte overlap of two regions: an address `addr` that lies inside
+||| both footprints `[baseAddr r, baseAddr r + totalSize r)`.
+|||
+||| Two-direction witnesses (lower-bound + strict upper-bound) for each
+||| region make the predicate symmetric in `r1` / `r2` and easy to
+||| consume in the disjointness theorem.
+public export
+data RegionsOverlap : {0 s1, s2 : Schema}
+                   -> (r1 : Region s1) -> (r2 : Region s2) -> Type where
+  MkOverlap : {s1, s2 : Schema}
+           -> {r1 : Region s1} -> {r2 : Region s2}
+           -> (addr : Nat)
+           -> (loR1 : LTE (baseAddr r1) addr)
+           -> (hiR1 : LT  addr (baseAddr r1 + totalSize r1))
+           -> (loR2 : LTE (baseAddr r2) addr)
+           -> (hiR2 : LT  addr (baseAddr r2 + totalSize r2))
+           -> RegionsOverlap r1 r2
+
+||| The cross-level theorem.  If `r1` and `r2` are `RegionDisjoint`,
+||| then no `addr` lies in both footprints — `RegionsOverlap` is
+||| uninhabited.  Proof: chain the disjointness witness with the
+||| overlap's lower- and upper-bound witnesses to derive `LT addr addr`,
+||| then dispatch to `ltIrreflexiveRegion`.
+|||
+||| Cross-level reading:
+|||   * **L7 (aliasing):** two `ExclusiveWitness`-holding pointers into
+|||     disjoint regions cannot byte-alias.  The corollary lives in
+|||     Pointer.idr once the L7 surface needs the link.
+|||   * **L10 (linearity):** two `LinHandle` values whose offsets are
+|||     anchored to disjoint regions cannot reference the same byte;
+|||     the linearity discipline is therefore non-overlapping by
+|||     construction.  Corollary lives in Linear.idr at the same call
+|||     site that needs it.
+public export
+disjointImpliesNoOverlap : {s1, s2 : Schema}
+                        -> {r1 : Region s1} -> {r2 : Region s2}
+                        -> RegionDisjoint r1 r2
+                        -> RegionsOverlap r1 r2
+                        -> Void
+disjointImpliesNoOverlap (DisjointBefore sep)
+                         (MkOverlap _ _ hiR1 loR2 _) =
+  -- hiR1 : LTE (S addr) (baseAddr r1 + totalSize r1)
+  -- sep  : LTE (baseAddr r1 + totalSize r1) (baseAddr r2)
+  -- loR2 : LTE (baseAddr r2) addr
+  ltIrreflexiveRegion (lteTrans (lteTrans hiR1 sep) loR2)
+disjointImpliesNoOverlap (DisjointAfter sep)
+                         (MkOverlap _ loR1 _ _ hiR2) =
+  -- hiR2 : LTE (S addr) (baseAddr r2 + totalSize r2)
+  -- sep  : LTE (baseAddr r2 + totalSize r2) (baseAddr r1)
+  -- loR1 : LTE (baseAddr r1) addr
+  ltIrreflexiveRegion (lteTrans (lteTrans hiR2 sep) loR1)
+
+||| Companion symmetry: overlap is symmetric in r1 / r2.  Useful when
+||| the downstream consumer holds an overlap witness in the opposite
+||| orientation from the disjointness witness.
+public export
+regionsOverlapSym : {s1, s2 : Schema}
+                 -> {r1 : Region s1} -> {r2 : Region s2}
+                 -> RegionsOverlap r1 r2 -> RegionsOverlap r2 r1
+regionsOverlapSym (MkOverlap addr lo1 hi1 lo2 hi2) =
+  MkOverlap addr lo2 hi2 lo1 hi1

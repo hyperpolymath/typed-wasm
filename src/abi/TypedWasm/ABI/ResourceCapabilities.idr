@@ -336,3 +336,55 @@ callReachesModule : {owner : ModuleCaps}
                  -> ContainedIn callee.required (declared owner)
 callReachesModule {caller} {callee} wf =
   containedTrans (l15cSoundness wf) (l15bSoundness caller)
+
+-- ============================================================================
+-- L8 ↔ L15 joint composition (A12, 2026-05-26 — closes post-A10 audit item 3)
+-- ============================================================================
+--
+-- L8 memory-effects and L15 capabilities live in independent lattices —
+-- but typed-wasm functions actually carry BOTH judgements simultaneously
+-- (every function attests to its memory effects AND its required caps).
+-- The compose theorem here states that the two compose independently:
+-- given two functions whose dual budgets are individually witnessed,
+-- their sequential composition is witnessed at the unions on both sides.
+--
+-- Without this lemma, every compound operation would have to re-verify
+-- both halves from scratch.
+
+||| Containment distributes over capability-set concatenation: if both
+||| `xs` and `ys` are contained in the same `declared` set, so is `xs ++
+||| ys`.  L15-side prerequisite for `jointBudgetCompose`.
+public export
+containedConcat : {xs, ys, declared : CapabilitySet}
+              -> ContainedIn xs declared
+              -> ContainedIn ys declared
+              -> ContainedIn (xs ++ ys) declared
+containedConcat ContainedNil         cy = cy
+containedConcat (ContainedCons h r)  cy =
+  ContainedCons h (containedConcat r cy)
+
+||| L8 ↔ L15 **joint** budget composition.  Two functions f, g with
+||| individual L8 declarations `d1`/`d2`, individual actual effect sets
+||| `a1`/`a2`, and individual function-capability witnesses `c1`/`c2`
+||| (each scoped to the same `owner` module) compose to a single
+||| function whose:
+|||
+||| * combined L8 declaration `d1 ++ d2` subsumes combined actuals `a1 ++ a2`
+|||   (via `subsumeCompose` from Effects.idr); AND
+||| * combined required capability set `c1.required ++ c2.required` is
+|||   contained in the OWNING module's declared capability set
+|||   (via `containedConcat` + `l15bSoundness`).
+|||
+||| Closes post-A10 audit item 3 ("No L8↔L15 composition theorem").
+public export
+jointBudgetCompose : {owner : ModuleCaps}
+                  -> {d1, d2, a1, a2 : EffectSet}
+                  -> EffectSubsumes d1 a1
+                  -> EffectSubsumes d2 a2
+                  -> (c1, c2 : FunctionCaps owner)
+                  -> ( EffectSubsumes (combineEffects d1 d2) (combineEffects a1 a2)
+                     , ContainedIn (c1.required ++ c2.required) (declared owner)
+                     )
+jointBudgetCompose s1 s2 c1 c2 =
+  (subsumeCompose s1 s2,
+   containedConcat (l15bSoundness c1) (l15bSoundness c2))
