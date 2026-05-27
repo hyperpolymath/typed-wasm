@@ -128,12 +128,42 @@ this crate re-checks them on the emitted IR to catch codegen bugs.
 | **Post-codegen verifier** | **Emitted wasm respects discipline** | **`crates/typed-wasm-verify/` (Rust)** + `hyperpolymath/affinescript:lib/{tw_verify,tw_interface}.ml` (OCaml, reference impl) |
 
 The Rust crate is a faithful port of the OCaml reference; the OCaml
-files remain the spec of record until the cross-compat suite at
-`crates/typed-wasm-verify/tests/cross_compat.rs` is supplemented with
-real affinescript-emitted fixtures (deferred work, "C5.1").
+files remain the spec of record. The synthetic-fixture cross-compat
+suite at `crates/typed-wasm-verify/tests/cross_compat.rs` is the
+parity oracle; **C5.1** (`tests/cross_compat_real.rs`, landed
+2026-05-27 via PR #81) cross-checks it against real
+`affinescript`-emitted bytes (4-fixture corpus, regenerate workflow
+pins affinescript SHA for drift detection).
 
-**Coverage:** L7 (ExclBorrow) + L10 (Linear) only.
-L1-L6, L13-L16 enforcement on emitted wasm is future work.
+**Coverage** (2026-05-27):
+
+| Level | Enforced on emitted wasm? | Where |
+|-------|---------------------------|-------|
+| L7 (aliasing) | **YES** | `verify_function` per-path use-range |
+| L10 (linearity) | **YES** | `verify_function` per-path use-range |
+| L13 (module isolation, negative form) | **YES** | `verify_from_module`, gated on ownership-section presence (PR #37, 2026-05-19) |
+| L2–L6 (region binding, type-compat, null, bounds, result-type) | **proposal-stage** | Carrier-section ABI draft at PR #76 (`docs/proposals/0001`); codec pre-staged behind `cargo feature = "unstable-l2"` at PR #77 |
+| L15 (resource capabilities, L15-A/B) | **proposal-stage** | Same proposal 0001 (separate `typedwasm.capabilities` section) |
+| L14, L16 | **out of scope** | Gated on AffineScript surface work (no `session`/`choreography` producer emission yet) |
+
+**Open gating items** (post proposal 0001 acceptance):
+
+1. **Access-site carrier** — issue #78. Proposal 0001's region/schema
+   carrier says *which regions exist*; it does not say which
+   `(region_id, field_id)` any individual wasm `i32.load offset=N`
+   targets. Owner-resolved 2026-05-27 as **option A**
+   (per-instruction `typedwasm.access-sites` carrier mapping
+   `(func_idx, instruction_byte_offset) → (region_id, field_id)`).
+   Wire-format design lands as `docs/proposals/0002-access-site-carrier.adoc`
+   (future session). Encoding-B size measurement recorded on issue #78
+   (~5 B/access, ~1.1% module overhead vs ~3.5 B raw access).
+2. **Cross-repo wire-format review** — affinescript#402, ephapax#165.
+   Both producers must sign off on the `typedwasm.regions` and
+   `typedwasm.capabilities` formats before proposal 0001 moves from
+   `[draft]` → `[review]` → `[accepted]`.
+3. **`verify_region_binding` Rust pass** — explicitly omitted from
+   PR #77; gated on proposal 0002's acceptance (needs the access-site
+   carrier to bind individual loads/stores back to regions).
 
 **Consumers** (live as of 2026-05-15):
 
