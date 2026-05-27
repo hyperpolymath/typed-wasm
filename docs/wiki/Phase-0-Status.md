@@ -110,3 +110,18 @@ None of D1–D6 from [Production-Path](Production-Path) have ADRs yet. D2 (produ
 ## What unblocks Phase 1
 
 Track A's codegen v0 PR. Track B can land in parallel without blocking the gate.
+
+## 2026-05-27 — Post-Phase-0 proof-debt closure pass
+
+Independent of the Phase 0 / Phase 1 gate transition, a 2026-05-27 sweep closed long-tail proof-debt items the 2026-05-18 PROOF-NEEDS reconciliation banner had deferred. See the dedicated [Proof-Debt-Status](Proof-Debt-Status) page for the full inventory.
+
+| PR | What it lands | Closes |
+|---|---|---|
+| [#79](https://github.com/hyperpolymath/typed-wasm/pull/79) | `TypedWasm.ABI.VerifierSpec` — total bodies for `VerifierSpecAgreement` + `SourceVerifierAgreement` | Post-A10 audit items 7 + 8 |
+| [#80](https://github.com/hyperpolymath/typed-wasm/pull/80) | `LevelAttestationW` witness-indexed GADT + `WitnessCertificate` heterogeneous-list lift | standards#130 "attestation entails the level's semantic property" long-tail |
+| [#74](https://github.com/hyperpolymath/typed-wasm/pull/74) | Closed as superseded by #79 (Maybe-bridge design replaced by witness-carrying ctor design) | — |
+
+**Test surface 545 → 627+ assertions** (proof regression 25 → 107 from +33 #79 + +49 #80).
+**Zero new `believe_me` / `assert_total` / `postulate` / `sorry` / `assert_smaller`; `%default total` preserved.**
+
+These PRs are independent of the Phase 0 → Phase 1 gate (which is still blocked on codegen v0). They close debt items that would otherwise haunt the v1.0 audit.

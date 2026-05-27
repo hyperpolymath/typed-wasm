@@ -109,6 +109,19 @@ Idris2 0.8.0 as of 2026-04-18 (see `PROOF-NEEDS.md` reconciliation). Their
 surface semantics remain research-grade — the parser, Zig FFI and downstream
 tooling do not yet expose L11/L12 features.
 
+[NOTE]
+.Spec-of-record for the Rust verifier (2026-05-27, PR #79)
+====
+`TypedWasm.ABI.VerifierSpec` is the Idris2 spec-of-record for
+`crates/typed-wasm-verify/`.  It carries totally-proven
+`VerifierSpecAgreement` and `SourceVerifierAgreement` records (with
+concrete inhabitants `verifierSpecAgreement` /
+`sourceVerifierAgreement`) bridging the spec to the verifier and the
+source checker — closes post-A10 audit items 7 + 8.  See the
+link:docs/wiki/Proof-Debt-Status.md[Proof-Debt-Status wiki page] for
+the design and what remains in the proof-debt long-tail.
+====
+
 == The Killer Feature: Multi-Module Type Safety
 
 When Module A (compiled from Rust) shares memory with Module B (compiled from
