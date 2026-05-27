@@ -1,0 +1,334 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= Proposal 0001: Multi-Producer Carrier Sections for L2–L6 and L15
+:toc: preamble
+:icons: font
+
+[cols="1,3"]
+|===
+| Status       | draft
+| Author       | hyperpolymath
+| Date         | 2026-05-27
+| Last-updated | 2026-05-27
+| Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/34[#34]
+| Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
+|===
+
+== Context
+
+The post-codegen verifier (`crates/typed-wasm-verify/`) enforces **L7
+(aliasing)**, **L10 (linearity)**, and **L13 (module isolation, negative
+form)** on emitted wasm today.  The only carrier it consults is the
+`typedwasm.ownership` custom section (4-kind: `Unrestricted` /
+`Linear` / `SharedBorrow` / `ExclBorrow` per function signature; renamed
+from `affinescript.ownership` in PR #65 to make it producer-neutral).
+
+`typedwasm.ownership` does not contain region/field schema, pointer
+nullability, bounds cardinality, or capability data.  Without that
+data, **L2 (region-binding), L3 (type-compatible access), L4 (null
+safety), L5 (bounds-proof), L6 (result-type)**, and **L15 (resource
+capabilities)** cannot be re-checked on emitted bytes — the source-level
+checker (`MultiModule.idr`, `ResourceCapabilities.idr`, plus the
+AffineScript `Checker`) is the only line of defence.
+
+The Idris2 spec side already models all the required structure:
+
+* `Region.idr` — `WasmType`, `Field`, `Schema`, `FieldIn`
+* `MultiModule.idr` — `SchemaSub`, `ModuleCompat`, `noSpoofing`
+* `Pointer.idr` — `PtrKind` (Owning / Borrowing / Exclusive),
+  `Nullability` (NonNull / Nullable)
+* `ResourceCapabilities.idr` — `CapabilitySet`, `DistinctCaps`,
+  `ContainedIn`
+
+So the gap is purely on the **wire** side: there is nowhere to put any
+of this information when AffineScript or Ephapax emits wasm.  This is
+an **ABI** problem, not an enforcement problem.
+
+L14 (session protocols) and L16 (agent choreography) are out of scope
+of this proposal: their language-surface work
+(`session`/`choreography` declarations) is not yet emittable by any
+producer; carrying their state on the wire is premature.
+
+== Proposal
+
+Add **two new producer-neutral custom sections** to the typed-wasm
+ABI, distinct from `typedwasm.ownership`, both versioned and
+lenient-readable in the same shape as the existing codec.
+
+. `typedwasm.regions` — carries everything L2–L6 need.
+. `typedwasm.capabilities` — carries the L15 capability lattice.
+
+The two are split (rather than fused into one omnibus section) so a
+producer can adopt L2–L6 without also committing to L15, and so the
+wire formats can evolve independently.  All three sections
+(`typedwasm.ownership`, `typedwasm.regions`, `typedwasm.capabilities`)
+are independently optional from the verifier's perspective; absence is
+"no claim made," not "claim of compliance."
+
+=== Wire format — `typedwasm.regions`
+
+Little-endian, byte-aligned, lenient on truncation (matches
+`section.rs::LenientReader`).
+
+----
+u16le   version              (= 1)
+u32le   region_count
+for each region (in index order, 0..region_count-1):
+    u32le  name_len
+    u8[]   name              (UTF-8, no NUL terminator)
+    u32le  field_count
+    for each field (in declaration order):
+        u32le  field_name_len
+        u8[]   field_name    (UTF-8)
+        u8     kind          (0 = Scalar,
+                              1 = PtrOwning,
+                              2 = PtrBorrow,
+                              3 = PtrExclusive)
+        u8     wasm_ty       (0 = U8,  1 = U16,  2 = U32,  3 = U64,
+                              4 = I8,  5 = I16,  6 = I32,  7 = I64,
+                              8 = F32, 9 = F64, 10 = WBool,
+                              0xFF = N/A — set for pointer kinds)
+        u32le  target_region (0xFFFFFFFF if kind = Scalar;
+                              else index into this section's region table)
+        u8     nullability   (0 = NonNull, 1 = Nullable)
+        u32le  cardinality   (1 = single value, n>1 = fixed-length array
+                              of n elements, 0 = unbounded /
+                              dynamic-bounds — verifier treats as L5
+                              "needs runtime check")
+    u32le  region_byte_size  (∑ over fields of cardinality × sizeOf(wasm_ty);
+                              redundant w.r.t. field table; verifier
+                              cross-checks)
+----
+
+Mapping to the spec types:
+
+[cols="1,3"]
+|===
+| Wire field          | Idris2 spec
+| `region_count`, `region` table | `List Region` (lookup-by-index)
+| `field_count`, `field` table   | `Schema` (per region)
+| `name`, `field_name`           | `String` (via `fieldName`)
+| `wasm_ty`                      | `WasmType` (11-variant enum)
+| `kind`                         | `PtrKind` (extended with `Scalar`)
+| `nullability`                  | `Nullability`
+| `cardinality`                  | feeds `InBounds idx count` for L5
+| `target_region`                | foreign-key into `Region` table (L2)
+|===
+
+=== Wire format — `typedwasm.capabilities`
+
+----
+u16le   version              (= 1)
+u32le   capability_count
+for each capability (in index order):
+    u32le  name_len
+    u8[]   name              (UTF-8)
+u32le   function_count
+for each function:
+    u32le  func_idx          (index into wasm function section)
+    u32le  required_count
+    u32le[required_count]    required_capability_indices
+                             (indices into capability table above;
+                              must be strictly increasing → trivially
+                              encodes `DistinctCaps`)
+----
+
+Mapping to `ResourceCapabilities.idr`:
+
+* The flat capability table = `CapabilitySet`.
+* Strictly-increasing required indices structurally encode
+  `DistinctCaps` (no duplicates, fixed comparison order).
+* Per-function `required_capability_indices` ⊆ capability-table is the
+  raw data the verifier feeds to `ContainedIn`.
+* L15-C (call-graph monotonicity / `CallCompatible`) is **deferred to
+  v1.4.x** (per LEVEL-STATUS) and needs a separate per-call-site grant
+  record; out of scope for v1.
+
+=== Versioning policy
+
+Both new sections start with `u16le version = 1`.  Future versions:
+
+* **Additive** changes (new trailing fields per record) MAY ship as
+  the same major version, since the lenient reader will silently
+  ignore the new bytes on a v1 consumer.  This is the same forward-
+  compatibility contract as `typedwasm.ownership`.
+* **Breaking** changes bump the version and the verifier rejects
+  unknown versions with a fresh `OwnershipError`-style variant.
+* `typedwasm.ownership` is unchanged by this proposal.  Adding a
+  version prefix to it is desirable but is its own change (latent
+  issue — track separately).
+
+=== Producer obligations
+
+A conforming producer that emits either new section MUST:
+
+. Emit it with a value of `version` it knows the consumer accepts.
+. Use **stable region indices** within a single module (used as
+  foreign keys both in this section and, eventually, by L14/L16
+  protocol carriers).
+. Either emit *all* fields of *all* regions it accesses, or emit
+  *none* — partial carriers are interpreted as "no claim made about
+  unlisted fields" and L2 will flag any access to an unlisted field.
+. For L15: emit only capabilities actually declared by the source
+  module; do not synthesise.
+
+=== Consumer obligations (verifier)
+
+`crates/typed-wasm-verify/` will gain:
+
+. `section.rs` — `parse_regions_section_payload`,
+  `build_regions_section_payload`, `parse_capabilities_section_payload`,
+  `build_capabilities_section_payload`.  Same lenient-reader pattern.
+. `verify.rs` — new passes `verify_region_binding` (L2),
+  `verify_type_compat` (L3), `verify_null_safety` (L4),
+  `verify_bounds` (L5), `verify_result_type` (L6),
+  `verify_capabilities` (L15).
+. `lib.rs` — new `OwnershipError` variants per failure mode, plus a
+  top-level `VerifyError::UnsupportedCarrierVersion`.
+
+Each pass is gated behind a cargo feature
+(`unstable-l2`, …, `unstable-l15`) until the proposal is accepted, so
+the v1.0 verifier surface is unchanged.
+
+=== Coordination with downstream producers
+
+This proposal is filed in `typed-wasm` because the verifier and the
+Idris2 spec live here.  It MUST be reviewed by:
+
+* https://github.com/hyperpolymath/affinescript[`affinescript`] —
+  `lib/tw_verify.ml`, `lib/tw_interface.ml`, and the AffineScript
+  codegen path that today emits `typedwasm.ownership`.
+* https://github.com/hyperpolymath/ephapax[`ephapax`] —
+  `src/ephapax-wasm/` (emits the same `typedwasm.ownership` section).
+* Any third-party producer named in Phase 2 (TypedQLiser; LLVM
+  lowering guide consumers).
+
+No producer should ship either new section until the cross-repo
+review is closed and the spec is promoted from `[draft]` to
+`[accepted]`.
+
+== Alternatives considered
+
+=== A. One omnibus section
+
+Fuse regions + capabilities into a single `typedwasm.metadata`
+section.
+
+*Rejected.* L2–L6 and L15 are orthogonal concerns and have different
+adoption curves: an early producer may want regions without yet
+declaring capabilities, or vice versa.  A single section forces both
+to land at the same version.  Wire-format evolution is also entangled
+— a breaking change to the capability layout invalidates region data
+that was fine on its own.
+
+=== B. Reuse `typedwasm.ownership`
+
+Extend the existing section's per-entry payload with optional fields.
+
+*Rejected.* The ownership section is keyed by function index and
+carries per-function signatures; regions and capabilities are
+module-scoped (regions) or have a different per-function shape
+(required-caps lists).  Cramming them in would either break the
+current parser or require a sub-record discriminator on every entry.
+The split-section approach keeps each codec linear and per-concern.
+
+=== C. Reuse a wasm-component-model interface type
+
+Encode region schemas as wasm component-model record types and let
+the component-model machinery carry them.
+
+*Rejected for v1.*  Component-model adoption in the typed-wasm
+producer set is too early — AffineScript and Ephapax both currently
+target core wasm.  Worth revisiting in Phase 4 (Tooling / DX) once
+`wasm-tools component new` is in the producer cookbook.
+
+=== D. Embed in `name` section
+
+Use the standard `name` custom section's free-form sub-sections to
+piggy-back schema data.
+
+*Rejected.* The `name` section is for debug names; tools strip it
+under `-Os`.  Schema/capability data is load-bearing for
+verification, not debug info, and must not be optimised out.
+
+== Open questions
+
+. **String table.** The format above duplicates region names if a
+  field's `target_region` is referenced from multiple fields.  Worth
+  it to add a single shared string table at the front of the
+  section?  Trade-off: smaller modules (~5–15% on representative
+  AffineScript fixtures, untested) vs. an extra indirection in the
+  parser.  Default: ship v1 inline, add string table in v2 only if
+  measurements justify it.
+
+. **Cardinality `0 = unbounded` sentinel.** Should the verifier treat
+  unbounded as L5-unprovable (downgrade), or refuse to admit the
+  section at all?  Source-side AffineScript today doesn't emit
+  unbounded regions; the sentinel is reserved for future dynamic-
+  bounds work.  Default: downgrade with a verifier diagnostic, do
+  not refuse.
+
+. **Endianness of UTF-8 strings.** Trivially answered (none — UTF-8 is
+  a byte stream) but worth being explicit in the spec to avoid
+  producer drift.
+
+. **Per-function vs per-call-site capability annotations.** L15-A
+  (required-caps per function) is enough for v1; L15-C (per-call-site
+  grants) needs a separate annotation that ideally lives in a third
+  section (`typedwasm.capability-grants`) so the v1.4 → v1.4.x
+  transition is purely additive.  Defer the wire format for grants to
+  a follow-up proposal.
+
+. **Interaction with `noSpoofing` (L13 cross-module).** A multi-module
+  setting needs the importing module's region table to refer to the
+  exporting module's region by something other than a local index.
+  Two options: (a) a separate `typedwasm.region-imports` section
+  that mirrors wasm's standard `(import …)` syntax; or (b) extend the
+  per-region record with a `(producer-name, region-name)` pair when
+  cross-module.  Out of scope of v1 (single-module L2–L6 is the v1
+  milestone); needs its own proposal.
+
+== Acceptance criteria
+
+. Reviewed and signed off by maintainers of `affinescript` and
+  `ephapax` (the only current producers of `typedwasm.ownership`).
+. Wire format reviewed against the Idris2 spec types in `Region.idr`,
+  `Pointer.idr`, `ResourceCapabilities.idr` — every wire field maps
+  cleanly to a spec witness.
+. A draft codec lands in `crates/typed-wasm-verify/src/section.rs`
+  behind cargo features (`unstable-l2`, `unstable-l15`); round-trip
+  tests show parse(build(x)) = x for non-empty fixtures.
+. A draft section in
+  `spec/type-safety-levels-for-wasm.adoc` documents the new sections
+  alongside the existing `typedwasm.ownership` description.
+. Cross-repo issues are filed against `affinescript` and `ephapax`
+  for codegen of the new sections (out of scope of *this* proposal —
+  this proposal only defines the wire format).
+
+After acceptance, this file is promoted to an ADR under
+`docs/decisions/` (per `docs/proposals/README.adoc`'s status legend)
+and the level-table in `LEVEL-STATUS.md` gains "verifier (carrier-
+backed)" status columns for L2–L6 and L15.
+
+== Related
+
+* Issue https://github.com/hyperpolymath/typed-wasm/issues/34[#34] —
+  this proposal directly addresses it.
+* Issue https://github.com/hyperpolymath/typed-wasm/issues/35[#35] —
+  L13 isolation Rust mirror (part 1 landed in PR #37; part 2 / C5.1
+  is independent).
+* Issue https://github.com/hyperpolymath/typed-wasm/issues/50[#50] —
+  Phase 2 (multi-producer adoption); producer specification work
+  consumes this proposal's output.
+* PR https://github.com/hyperpolymath/typed-wasm/pull/65[#65] —
+  rename `affinescript.ownership` → `typedwasm.ownership`
+  (precedent for producer-neutral naming).
+* `LEVEL-STATUS.md` lines 109–143 — current verifier coverage
+  description.
+* `crates/typed-wasm-verify/src/section.rs` — existing codec to
+  mirror.
+* `src/abi/TypedWasm/ABI/Region.idr`,
+  `src/abi/TypedWasm/ABI/Pointer.idr`,
+  `src/abi/TypedWasm/ABI/MultiModule.idr`,
+  `src/abi/TypedWasm/ABI/ResourceCapabilities.idr` — spec types.
