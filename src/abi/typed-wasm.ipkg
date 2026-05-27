@@ -25,6 +25,7 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.Epistemic
         , TypedWasm.ABI.Layout
         , TypedWasm.ABI.Proofs
+        , TypedWasm.ABI.VerifierSpec
         -- Cross-language layout contracts (aggregate library role, ADR-004).
         -- Restored 2026-04-18 after fixing the Idris2 0.8 reduction + parsing
         -- issues in `Layout/Types.idr` and siblings: added public export to

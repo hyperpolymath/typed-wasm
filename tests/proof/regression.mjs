@@ -18,11 +18,13 @@
 //     is what the Idris2 totality checker is for.
 //
 //   Layer 2 (runs only when idris2 is on PATH)
-//     `idris2 --check src/abi/typed-wasm.ipkg` — actually typechecks the
-//     proof package. Catches the case where a theorem name still exists
-//     but its body no longer typechecks. This is the strong test; it
-//     requires an Idris2 toolchain at the version pinned in
-//     src/abi/typed-wasm.ipkg (currently 0.8.0).
+//     `idris2 --build src/abi/typed-wasm.ipkg` — actually typechecks +
+//     compiles the proof package.  Catches the case where a theorem
+//     name still exists but its body no longer typechecks.  This is
+//     the strong test; it requires an Idris2 toolchain at the version
+//     pinned in src/abi/typed-wasm.ipkg (currently 0.8.0).  `--build`
+//     is used instead of `--check` because the latter expects a single
+//     `.idr` file path, not an ipkg.
 //
 // Phase 0 / Track C deliverable. See:
 //   - TEST-NEEDS.md "11 Idris2 proof modules with 0 proof verification tests"
@@ -117,6 +119,45 @@ const EXPECTED = [
   // Proofs.idr — main theorem suite
   ["Proofs.idr", /^composeCertificates\s*:/m, "Certificate composition"],
   ["Proofs.idr", /^buildCertificate\s*:/m, "Certificate construction"],
+
+  // VerifierSpec.idr — Rust verifier ↔ Idris2 spec ↔ source checker
+  // agreement (post-A10 audit items 7 + 8).  These assertions pin the
+  // record shape, the four agreement lemmas, the two concrete agreement
+  // values, and the end-to-end composition lemmas — so a future commit
+  // that silently weakens any direction or drops a body trips Layer 1.
+  ["VerifierSpec.idr", /^data\s+OwnershipIntent/m, "OwnershipIntent data type"],
+  ["VerifierSpec.idr", /^record\s+FunctionSummary/m, "FunctionSummary record"],
+  ["VerifierSpec.idr", /^record\s+ModuleSummary/m, "ModuleSummary record"],
+  ["VerifierSpec.idr", /^data\s+TokenFresh/m, "TokenFresh structural witness"],
+  ["VerifierSpec.idr", /^data\s+IntentsLinearAcceptable/m, "IntentsLinearAcceptable witness"],
+  ["VerifierSpec.idr", /^data\s+FunctionsAccepted/m, "FunctionsAccepted witness"],
+  ["VerifierSpec.idr", /^record\s+TrustedFixture/m, "TrustedFixture record"],
+  ["VerifierSpec.idr", /^data\s+SpecAccepts/m, "SpecAccepts predicate"],
+  ["VerifierSpec.idr", /^data\s+VerifierAccepts/m, "VerifierAccepts predicate"],
+  ["VerifierSpec.idr", /^data\s+SourceAccepts/m, "SourceAccepts predicate"],
+  ["VerifierSpec.idr", /^differentialAccepted\s*:/m, "Differential-acceptance smart ctor"],
+  ["VerifierSpec.idr", /^sourceAccepted\s*:/m, "Source differential smart ctor"],
+  ["VerifierSpec.idr", /^trustedToSpec\s*:/m, "Trusted-fixture → spec projection"],
+  ["VerifierSpec.idr", /^trustedToVerifier\s*:/m, "Trusted-fixture → verifier projection"],
+  ["VerifierSpec.idr", /^trustedToSource\s*:/m, "Trusted-fixture → source projection"],
+  ["VerifierSpec.idr", /^verifierIsSound\s*:/m, "Verifier soundness lemma body"],
+  ["VerifierSpec.idr", /^verifierIsComplete\s*:/m, "Verifier completeness lemma body"],
+  ["VerifierSpec.idr", /^sourceImpliesVerifier\s*:/m, "Source ⇒ verifier lemma body"],
+  ["VerifierSpec.idr", /^verifierImpliesSource\s*:/m, "Verifier ⇒ source lemma body"],
+  ["VerifierSpec.idr", /^record\s+VerifierSpecAgreement/m, "VerifierSpecAgreement record (item 7)"],
+  ["VerifierSpec.idr", /^record\s+SourceVerifierAgreement/m, "SourceVerifierAgreement record (item 8)"],
+  ["VerifierSpec.idr", /^verifierSpecAgreement\s*:/m, "Concrete VerifierSpecAgreement value"],
+  ["VerifierSpec.idr", /^sourceVerifierAgreement\s*:/m, "Concrete SourceVerifierAgreement value"],
+  ["VerifierSpec.idr", /^sourceImpliesSpec\s*:/m, "End-to-end source ⇒ spec composition"],
+  ["VerifierSpec.idr", /^specImpliesSource\s*:/m, "End-to-end spec ⇒ source composition"],
+  ["VerifierSpec.idr", /^sourceImpliesSpecConcrete\s*:/m, "Concrete source ⇒ spec specialisation"],
+  ["VerifierSpec.idr", /^specImpliesSourceConcrete\s*:/m, "Concrete spec ⇒ source specialisation"],
+  ["VerifierSpec.idr", /^notSpecAcceptsBadDoubleConsume\s*:/m, "L10 discrimination — double consume"],
+  ["VerifierSpec.idr", /^notVerifierAcceptsBadDoubleConsume\s*:/m, "Verifier rejects double consume in both ctors"],
+  ["VerifierSpec.idr", /^notSourceAcceptsBadDoubleConsume\s*:/m, "Source rejects double consume in both ctors"],
+  ["VerifierSpec.idr", /^notSpecAcceptsBadDoubleProduce\s*:/m, "L10 discrimination — double produce"],
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerTrusted\s*:/m, "cross_compat row 1 trusted fixture"],
+  ["VerifierSpec.idr", /^fixtureCleanLinearConsumerSpecAccepts\s*:/m, "Spec accepts row 1 via VerifierSpecAgreement"],
 ];
 
 // ----------------------------------------------------------------------
@@ -165,16 +206,16 @@ if (!idris2Path) {
   if (!existsSync(ipkg)) {
     bad(`ipkg missing at ${ipkg}`);
   } else {
-    console.log(`  Running: ${idris2Path} --check ${ipkg}`);
-    const check = spawnSync(idris2Path, ["--check", "typed-wasm.ipkg"], {
+    console.log(`  Running: ${idris2Path} --build ${ipkg}`);
+    const check = spawnSync(idris2Path, ["--build", "typed-wasm.ipkg"], {
       cwd: join(ROOT, "src/abi"),
       encoding: "utf8",
       timeout: 300_000,
     });
     if (check.status === 0) {
-      ok(`Idris2 --check typed-wasm.ipkg succeeded`);
+      ok(`Idris2 --build typed-wasm.ipkg succeeded`);
     } else {
-      bad(`Idris2 --check failed (exit ${check.status})\n${check.stderr.slice(0, 400)}`);
+      bad(`Idris2 --build failed (exit ${check.status})\n${check.stderr.slice(0, 400)}`);
     }
   }
 }
