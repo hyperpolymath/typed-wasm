@@ -221,6 +221,21 @@ const EXPECTED = [
   ["VerifierSpec.idr", /^liftTrustedFixture\s*:/m, "Transport TrustedFixture along propositional equality (A16)"],
   ["VerifierSpec.idr", /^fixtureLookupDispatching\s*:/m, "Dispatching fixture lookup over registered fixtures (A16)"],
   ["VerifierSpec.idr", /^firstExtendedAgreement\s*:/m, "First non-empty ExtendedAgreement (A16)"],
+
+  // VerifierSpec.idr — A17 evidence-track GADT + Maybe-free bridges
+  ["VerifierSpec.idr", /^data RegisteredFixture\s*:/m, "RegisteredFixture GADT — closed-world fixture evidence (A17)"],
+  ["VerifierSpec.idr", /^\s*RFCleanLinear\s*:/m, "RFCleanLinear constructor — row 1 evidence (A17)"],
+  ["VerifierSpec.idr", /^\s*RFExtractExports\s*:/m, "RFExtractExports constructor — row 9 evidence (A17)"],
+  ["VerifierSpec.idr", /^\s*RFRealisticClean\s*:/m, "RFRealisticClean constructor — row 10 evidence (A17)"],
+  ["VerifierSpec.idr", /^fixtureFromEvidence\s*:/m, "Evidence-track dispatcher — pattern match, definitional reduction (A17)"],
+  ["VerifierSpec.idr", /^nameRow1\s*:/m, "Row-1 projector round-trip: name (A17)"],
+  ["VerifierSpec.idr", /^idRow1\s*:/m, "Row-1 projector round-trip: id (A17)"],
+  ["VerifierSpec.idr", /^nameRow9\s*:/m, "Row-9 projector round-trip: name (A17)"],
+  ["VerifierSpec.idr", /^idRow9\s*:/m, "Row-9 projector round-trip: id (A17)"],
+  ["VerifierSpec.idr", /^nameRow10\s*:/m, "Row-10 projector round-trip: name (A17)"],
+  ["VerifierSpec.idr", /^idRow10\s*:/m, "Row-10 projector round-trip: id (A17)"],
+  ["VerifierSpec.idr", /^verifierImpliesSpecEvidence\s*:/m, "Maybe-free verifier→spec bridge from evidence (A17)"],
+  ["VerifierSpec.idr", /^sourceImpliesSpecEvidence\s*:/m, "Maybe-free source→spec bridge from evidence (A17)"],
 ];
 
 // ----------------------------------------------------------------------

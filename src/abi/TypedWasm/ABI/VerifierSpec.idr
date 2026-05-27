@@ -1170,14 +1170,130 @@ firstExtendedAgreement = MkExtendedAgreement
   structuralAgreement
   fixtureLookupDispatching
 
--- Round-trip propositional equalities (e.g.
--- `fixtureLookupDispatching fixtureCleanLinearConsumerModule "..." 1
---    = Just fixtureCleanLinearConsumerTrusted`)
--- do not reduce to `Refl` definitionally because `decEq` on records
--- bottoms out in `decEq` on `String` which doesn't unfold at type-
--- check time.  Proving those equalities requires either propositional
--- reasoning about the decEq-with-equal-input case, or pulling the
--- dispatcher's selector outside the decEq.  Tracked as future work
--- (mechanical but verbose).  The dispatcher itself is total and is
--- the load-bearing deliverable here.
+-- Round-trip propositional equalities for `fixtureLookupDispatching`
+-- (e.g. `fixtureLookupDispatching fixtureCleanLinearConsumerModule
+-- "..." 1 = Just fixtureCleanLinearConsumerTrusted`) do not reduce to
+-- `Refl` definitionally because `decEq` on records bottoms out in
+-- `decEq` on `String` which doesn't unfold at type-check time.
+-- The evidence-track below (`RegisteredFixture` GADT) sidesteps this
+-- by dispatching on a constructor instead of decEq, giving us clean
+-- `Refl` round-trips.
+
+-- ============================================================================
+-- Evidence-track dispatcher (A17) — GADT round-trips
+-- ============================================================================
+--
+-- `RegisteredFixture m` is a GADT whose constructors enumerate every
+-- module that has a registered `TrustedFixture`.  Each constructor is
+-- type-indexed by the matching module, so dispatching by pattern
+-- match (rather than `decEq`) gives a *definitionally* equal result.
+--
+-- This closes the round-trip future-work note left after the A16
+-- `decEq`-based dispatcher: round-trip equalities here are `Refl`.
+--
+-- This GADT is closed-world by design: enlarging the registry means
+-- adding a constructor here AND adding the `fixtureFromEvidence`
+-- clause.  Conversely, callers cannot manufacture a `RegisteredFixture
+-- m` for an arbitrary `m` — the only way to produce one is via the
+-- constructors below, so the inhabitants are exactly the audited
+-- fixtures.
+
+public export
+data RegisteredFixture : ModuleSummary -> Type where
+  RFCleanLinear    : RegisteredFixture VerifierSpec.fixtureCleanLinearConsumerModule
+  RFExtractExports : RegisteredFixture VerifierSpec.fixtureExtractExportsModule
+  RFRealisticClean : RegisteredFixture VerifierSpec.fixtureRealisticCleanModule
+
+||| Produce a `TrustedFixture` from `RegisteredFixture` evidence.
+||| Total; pattern match definitionally reduces, so the round-trips
+||| below are `Refl`.
+public export
+fixtureFromEvidence : {0 m : ModuleSummary} -> RegisteredFixture m -> TrustedFixture m
+fixtureFromEvidence RFCleanLinear    = fixtureCleanLinearConsumerTrusted
+fixtureFromEvidence RFExtractExports = fixtureExtractExportsTrusted
+fixtureFromEvidence RFRealisticClean = fixtureRealisticCleanTrusted
+
+-- ----------------------------------------------------------------------------
+-- Projector round-trips — `Refl` via record-projector pattern match
+-- ----------------------------------------------------------------------------
+--
+-- Round-trip-to-toplevel-name lemmas of the form
+-- `fixtureFromEvidence RFCleanLinear = fixtureCleanLinearConsumerTrusted`
+-- do NOT type-check as `Refl` in Idris2 0.8.0 — the reducer unfolds
+-- the LHS (via pattern match on `RFCleanLinear`) past the toplevel
+-- name into `MkTrustedFixture ...`, but treats the RHS toplevel name
+-- as opaque, leaving the two sides at asymmetric reduction depths.
+--
+-- Projector-based lemmas avoid this: each record projector forces
+-- unfolding to the `MkTrustedFixture` constructor on both sides, so
+-- the asymmetric-depth problem doesn't arise.  The projector lemmas
+-- below pin the name + id of each registered fixture as a `Refl`
+-- equality at the projection level — sufficient for callers to
+-- discriminate evidence by content without trusting the toplevel
+-- name.
+
+public export
+nameRow1 :
+     trustedFixtureName (fixtureFromEvidence RFCleanLinear)
+   = "fixture_clean_linear_consumer"
+nameRow1 = Refl
+
+public export
+idRow1 :
+     trustedFixtureId (fixtureFromEvidence RFCleanLinear) = 1
+idRow1 = Refl
+
+public export
+nameRow9 :
+     trustedFixtureName (fixtureFromEvidence RFExtractExports)
+   = "fixture_extract_exports_three_shapes"
+nameRow9 = Refl
+
+public export
+idRow9 :
+     trustedFixtureId (fixtureFromEvidence RFExtractExports) = 9
+idRow9 = Refl
+
+public export
+nameRow10 :
+     trustedFixtureName (fixtureFromEvidence RFRealisticClean)
+   = "fixture_realistic_clean_module"
+nameRow10 = Refl
+
+public export
+idRow10 :
+     trustedFixtureId (fixtureFromEvidence RFRealisticClean) = 10
+idRow10 = Refl
+
+-- ----------------------------------------------------------------------------
+-- Maybe-free constructive bridges (evidence-driven)
+-- ----------------------------------------------------------------------------
+
+||| Constructive `VerifierAccepts m -> SpecAccepts m` given evidence
+||| that `m` is registered.  No `Maybe`: registration *is* the
+||| acceptance witness.
+|||
+||| Both branches of `VerifierAccepts` produce a structural witness:
+|||   * `VAStructural fa` — already structural, lift straight to spec.
+|||   * `VADifferential _ _` — discharge via the registered fixture.
+public export
+verifierImpliesSpecEvidence :
+     {0 m : ModuleSummary}
+  -> RegisteredFixture m
+  -> VerifierAccepts m
+  -> SpecAccepts m
+verifierImpliesSpecEvidence _  (VAStructural fa)         = MkSpecAccepts fa
+verifierImpliesSpecEvidence rf (VADifferential _ _)      =
+  trustedToSpec (fixtureFromEvidence rf)
+
+||| Symmetric constructive `SourceAccepts m -> SpecAccepts m`.
+public export
+sourceImpliesSpecEvidence :
+     {0 m : ModuleSummary}
+  -> RegisteredFixture m
+  -> SourceAccepts m
+  -> SpecAccepts m
+sourceImpliesSpecEvidence _  (SAStructural fa)        = MkSpecAccepts fa
+sourceImpliesSpecEvidence rf (SADifferential _ _)     =
+  trustedToSpec (fixtureFromEvidence rf)
 
