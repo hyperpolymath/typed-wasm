@@ -159,6 +159,25 @@ const EXPECTED = [
   ["Proofs.idr", /^toLegacyMatchesL1\s*:/m, "L1 round-trip Refl"],
   ["Proofs.idr", /^toLegacyMatchesL15\s*:/m, "L15 round-trip Refl"],
   ["Proofs.idr", /^attestLW_AchievedIn\s*:/m, "Uniform LevelAchievedIn lemma (subsumes A9 family)"],
+
+  // Proofs.idr — WitnessCertificate: ProofCertificate lifted to
+  // witness-carrying form via SomeAttestationW existential wrapper.
+  // Pins the new shape so a future refactor doesn't silently drop the
+  // bridge or the composition-compat lemma.
+  ["Proofs.idr", /^data\s+SomeAttestationW/m, "SomeAttestationW existential wrapper"],
+  ["Proofs.idr", /^someAttLevel\s*:/m, "Level-index projection"],
+  ["Proofs.idr", /^someAttToLegacy\s*:/m, "Wrapped attestation → legacy projection"],
+  ["Proofs.idr", /^record\s+WitnessCertificate/m, "WitnessCertificate record"],
+  ["Proofs.idr", /^witnessLevelsToLegacy\s*:/m, "List projection helper"],
+  ["Proofs.idr", /^witnessToLegacy\s*:/m, "WitnessCertificate → ProofCertificate bridge"],
+  ["Proofs.idr", /^composeWitness\s*:/m, "Witness-side composition"],
+  ["Proofs.idr", /^witnessLevelsToLegacyAppend\s*:/m, "map distributes over ++ (helper)"],
+  ["Proofs.idr", /^composeWitnessLegacyAgree\s*:/m, "Witness composition agrees with legacy under projection"],
+  ["Proofs.idr", /^WitnessAchieved\s*:/m, "Achievement predicate lifted"],
+  ["Proofs.idr", /^witnessAchievedIsLegacy\s*:/m, "Definitional bridge for WitnessAchieved"],
+  ["Proofs.idr", /^emptyWitnessCertificate\s*:/m, "Empty witness certificate (concrete inhabitant)"],
+  ["Proofs.idr", /^singletonWitnessCertificate\s*:/m, "Singleton witness certificate smart ctor"],
+  ["Proofs.idr", /^emptyWitnessToLegacy\s*:/m, "Empty round-trip Refl"],
 ];
 
 // ----------------------------------------------------------------------
