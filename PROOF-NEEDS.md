@@ -20,6 +20,67 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
+## RECONCILIATION 2026-05-27 (standards#130 long-tail closed — read this FIRST)
+
+> **The "LevelAttestation reindexed by witness" residual is closed.**
+> The 2026-05-18 reconciliation banner below flagged that the A9
+> `attestLN_Sound` family proves only "the certificate provably claims
+> level N", not the stronger "attestation entails the level's
+> semantic property" claim — and that the stronger version required
+> `LevelAttestation` reindexed by the witness.  That redesign now
+> lands in `Proofs.idr` as the **purely additive** `LevelAttestationW`
+> section.
+>
+> 1. **`data LevelAttestationW : (n : Nat) -> Type`** — witness-indexed
+>    GADT, fifteen constructors, one per level.  Each constructor
+>    packages the actual level-specific witness (`Schema`, `FieldIn`,
+>    `WasmTypeCompat`, `Pointer.Ptr ... NonNull`, `InBounds`,
+>    `AccessResult`, `ExclusiveWitness`, `EffectSubsumes`,
+>    `Lifetime.Outlives`, `CompletedProtocol`, `AllPairsCosts`,
+>    `Level12Proof`, `IsolatedModule`, `WellFormedProtocol`,
+>    `FunctionCaps`).
+>
+> 2. **Fifteen `attestLNW_*` smart constructors** mirror the legacy
+>    `attestLN_*` family but return the witness-carrying variant
+>    instead of the unindexed `LevelAttestation`.
+>
+> 3. **Fifteen `attestLNW_Entails<Property>` extractors** — the
+>    "attestation entails the level's semantic property" lemmas.
+>    Each is a one-line pattern match that returns the witness (paired
+>    with its existential type-level indices via dependent pair where
+>    applicable).  A consumer holding `LevelAttestationW 7` can now
+>    discharge the L7 semantic property (alias-freeness via
+>    `ExclusiveWitness s`) — not just the predicate "claims L7".
+>
+> 4. **Legacy bridge `toLegacy : {n : Nat} -> LevelAttestationW n ->
+>    LevelAttestation`** projects to the unindexed shape so existing
+>    callers of `List LevelAttestation` (e.g. `ProofCertificate`)
+>    keep working unchanged.
+>
+> 5. **Fifteen round-trip `Refl` equalities** `toLegacy
+>    (attestLNW_X w) = attestLN_X w` pin the two representations
+>    together at the type-equality level — any future drift trips
+>    the typechecker.
+>
+> 6. **`attestLW_AchievedIn : (att : LevelAttestationW n) ->
+>    LevelAchievedIn n [toLegacy att]`** — uniform achievement lemma
+>    subsuming the fifteen A9 `attestLN_Sound` cases.  One lemma
+>    covers every level under the witness-carrying redesign.
+>
+> **Purely additive.**  Existing `LevelAttestation`, `MkAttestation`,
+> `attestLN_*`, `attestLN_Sound`, `LevelAchievedIn`,
+> `composeCertificates`, `ProofCertificate` — all unchanged, all
+> prior proofs unaffected.  Idris2 0.8.0 `--build` green, 21/21
+> modules, rc=0, zero new `believe_me` / `assert_total` / `postulate`
+> / `sorry` / `assert_smaller`, `%default total` preserved.
+>
+> **Open after this closure.**  Standards#130 sub-issue is fully
+> discharged (its A9 weak form + this stronger reindexed form).
+> Other long-tail items unchanged: WasmCert-Isabelle tie-back,
+> emitted-wasm byte-equality (P3.1(a), blocked on emitter), parser
+> round-trip in Idris2 (blocked on parser port), verifier L1-L6 +
+> L13-L16 coverage (#34/#35, in progress on PRs #76/#77).
+
 ## RECONCILIATION 2026-05-18 (verified ground truth — read this first)
 
 > Routed from estate proof-debt epic **hyperpolymath/standards#124**,
