@@ -23,6 +23,10 @@ Status legend:
 | link:0001-multi-producer-carrier-section.adoc[0001]
 | Multi-producer carrier sections for L2–L6 and L15
 | `[draft]`
+
+| link:0002-access-site-carrier.adoc[0002]
+| Access-site carrier section (`typedwasm.access-sites`) for L2 enforcement
+| `[draft]`
 |===
 
 The strategic decisions (D1–D6) from
