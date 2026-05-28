@@ -67,7 +67,7 @@ milestones = [
   { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 30 },  # PR #76 filed 2026-05-27; [draft], blocked on affinescript+ephapax review
   { name = "L2 region-binding codec pre-stage (unstable-l2 feature)", completion = 100 },  # PR #77, 2026-05-27 — codec only, no verifier pass yet
   { name = "L15 capability carrier ABI", completion = 30 },  # bundled into proposal 0001 (typedwasm.capabilities section)
-  { name = "Access-site carrier (proposal 0002)", completion = 15 },  # issue #78 resolved option A; size measurement done (Encoding B recommended); proposal not yet authored
+  { name = "Access-site carrier (proposal 0002)", completion = 30 },  # PR #86 filed + merged 2026-05-28 — proposal authored as [draft] specifying typedwasm.access-sites with Encoding B per issue #78 measurement; next gates: cross-repo affinescript+ephapax review → promote to [accepted] → land unstable-l2-access-sites codec + verify_region_binding pass
   { name = "C5.1 real-AffineScript fixture corpus", completion = 100 },  # PR #81, 2026-05-27 — 4 fixtures + regenerate workflow
 ]
 
@@ -88,8 +88,8 @@ issues = [
 [critical-next-actions]
 actions = [
   "Phase 2: cross-repo review of proposal 0001 carrier-section ABI — externally gated (affinescript#402 + ephapax#165 sit in maintainers' queues).",
-  "Phase 2: after proposal 0001 [accepted], author proposal 0002 (access-site carrier — option A); use Encoding B per the size measurement on issue #78.",
-  "Phase 2: after proposal 0002 [accepted], unstable-l2 codec gets the verify_region_binding pass (deliberately omitted from PR #77).",
+  "Phase 2: cross-repo review of proposal 0002 access-site carrier (PR #86, [draft]) — affinescript + ephapax codegen-path maintainers gate promotion to [accepted].",
+  "Phase 2: after proposal 0002 [accepted], unstable-l2-access-sites codec + verify_region_binding pass land in crates/typed-wasm-verify/ (closes the deliberate PR #77 omission).",
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
   "Track A: ReScript cut single PR (auto-closes anti-pattern policy red).",
