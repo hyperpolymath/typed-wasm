@@ -172,11 +172,17 @@ Active design work:
 * **Codec pre-stage** (PR #77) — `cargo feature = "unstable-l2"`
   enables the `typedwasm.regions` codec ahead of `[accepted]` so
   the wire format gets stress-tested through round-trip tests.
-* **Access-site carrier** — issue #78 (resolved option A;
-  proposal 0002 to be authored once 0001 settles). Closes the
-  "L2-the-enforcement" gap (region/field carriers say *what
-  exists*; access-site carrier says *which load/store hits which
-  field*).
+* **Proposal 0002** —
+  link:proposals/0002-access-site-carrier.adoc[Access-site carrier
+  section] (PR #86, `[draft]` 2026-05-28). Authors the
+  `typedwasm.access-sites` wire format using **Encoding B (LEB128
+  per field, ~5B/access)** per the issue #78 prototype size
+  measurement. Closes the "L2-the-enforcement" gap (region/field
+  carriers say *what exists*; access-site carrier says *which
+  load/store hits which field*). Gated on proposal 0001
+  acceptance; verifier's `verify_region_binding` pass (deliberately
+  omitted from PR #77) lands behind `unstable-l2-access-sites`
+  cargo feature once 0002 is `[accepted]`.
 
 Deliverables:
 
