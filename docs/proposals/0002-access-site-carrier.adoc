@@ -1,0 +1,432 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= Proposal 0002: Access-Site Carrier Section (`typedwasm.access-sites`)
+:toc: preamble
+:icons: font
+
+[cols="1,3"]
+|===
+| Status       | draft
+| Author       | hyperpolymath
+| Date         | 2026-05-28
+| Last-updated | 2026-05-28
+| Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/78[#78]
+| Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
+| Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (multi-producer carrier sections)
+|===
+
+== Context
+
+link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (PR
+https://github.com/hyperpolymath/typed-wasm/pull/76[#76], merged) defines
+the `typedwasm.regions` schema carrier. That section tells the
+post-codegen verifier *which regions exist* and *which fields each
+region declares with what type, nullability, and cardinality*. What it
+does **not** tell the verifier is **which `(region_id, field_id)` any
+individual `i32.load` / `i32.store` is supposed to be against**.
+
+The source-level checker has no problem: it sees `region.get $r .f`
+directly in the AST and resolves `$r → region`, `.f → field` at compile
+time. After codegen, that statement is some sequence ending in
+`i32.load offset=N align=A` — and the `($r, .f)` annotation is gone.
+The verifier can re-derive *which region's offset window N falls into*
+only if the producer tells it which base pointer (region instance) was
+loaded, and a single function may touch several regions.
+
+This is exactly the gap recorded as **Open Question §5 (RESOLVED —
+option A)** in proposal 0001 and the asks block of issue
+https://github.com/hyperpolymath/typed-wasm/issues/78[#78]. Owner
+resolution (2026-05-27) adopted option A (per-instruction access-site
+carrier). This proposal specifies its wire format.
+
+Without this section, **L2-the-enforcement** (every typed access
+resolves to a declared region/field) cannot fire on emitted bytes —
+even though **L2-the-spec** (regions/fields exist; cross-module
+schema agreement) is fully covered by `typedwasm.regions`. The L2
+verifier pass `verify_region_binding` was deliberately omitted from
+PR https://github.com/hyperpolymath/typed-wasm/pull/77[#77] for
+exactly this reason; this proposal unblocks it.
+
+== Proposal
+
+Add a third producer-neutral custom section to the typed-wasm ABI,
+versioned and lenient-readable in the same shape as
+`typedwasm.ownership` and `typedwasm.regions`:
+
+* `typedwasm.access-sites` — per-instruction mapping
+  `(func_idx, instruction_byte_offset_in_function) → (region_id, field_id)`
+
+The section is independently optional from the verifier's perspective;
+absence is "no claim made," not "claim of compliance." A module may
+emit `typedwasm.regions` without `typedwasm.access-sites` (schema
+agreement only) or both (full L2 enforcement).
+
+=== Encoding decision (B — LEB128 per field)
+
+Issue #78's prototype measurement (see "Refs" below for the table)
+considered three encodings against the 6 spec fixtures
+(`examples/01..06`):
+
+[cols="1,2,1,1,1", options="header"]
+|===
+| Encoding | Shape | Bytes/access | Module overhead (2× src est) | Status
+| A | Flat 4 × `u32le` per entry | 16.0 | ~2.9% | rejected
+| B | LEB128 per field           | 5.0  | ~1.1% | **adopted (v1)**
+| C | Per-function batched + delta offsets | 3.5 | ~1.2% | rejected (v1)
+|===
+
+**B is the v1 wire format.** Rationale:
+
+* **A's per-access cost (+357% vs a bare `i32.load` ≈ 3.5 B) is
+  prohibitive for performance-sensitive code.** A typical wasm module's
+  *value* is in the code section; bloating it ~4.6× per typed access
+  is a hard sell to producers. The flat-fixed shape simplifies the
+  codec but at a cost the producer side will reasonably push back on.
+* **C's per-access cost (~0% vs the access itself) is the theoretical
+  optimum, but the format complexity (outer-group + delta offsets +
+  two nested LEB128 streams) doubles the codec surface area for a
+  ~0.1-point reduction in module overhead vs B at our fixture scale.**
+  Defer to a v2 — `typedwasm.access-sites` v1 may be parsed by a v2
+  consumer with no semantic change, and the v2 codec is itself
+  additive (different `version` byte, same section name).
+* **B (LEB128 per field) sits at ~5 B/access and ~1.1% module overhead
+  across every fixture — comfortably under any reasonable budget,
+  trivial codec, no nested structure.** It is the right place to ship
+  v1.
+
+=== Wire format — `typedwasm.access-sites`
+
+Little-endian for fixed-width fields; LEB128 (unsigned) for variable-
+width fields. Byte-aligned. Lenient on truncation (matches
+`section.rs::LenientReader`).
+
+----
+u16le         version                (= 1)
+u32le_leb128  entry_count
+for each entry (in producer-emission order):
+    u32le_leb128  func_idx                       (index into wasm function section)
+    u32le_leb128  instruction_byte_offset        (offset within the function body
+                                                  bytecode of the FIRST byte of the
+                                                  typed access opcode — i.e., the
+                                                  byte after the function body's
+                                                  size prefix, counted from 0)
+    u32le_leb128  region_id                      (index into typedwasm.regions'
+                                                  region table)
+    u32le_leb128  field_id                       (index into the targeted region's
+                                                  field table)
+----
+
+Notes on the encoding:
+
+* `u32le_leb128` is *unsigned LEB128* over a `u32` value space.
+  Producers MUST emit the shortest encoding (no redundant padding
+  bytes); consumers MUST reject overlong encodings as malformed.
+  (Same convention as wasm's own immediates.)
+* `version` is kept fixed-width `u16le` for symmetry with
+  `typedwasm.regions` and `typedwasm.ownership` — a malformed-version
+  diagnostic should not depend on a working varint decoder.
+* `instruction_byte_offset` is **per-function** (NOT per-module). A
+  v1 module with N functions therefore needs N separate offset
+  spaces; the `(func_idx, instruction_byte_offset)` pair is the
+  primary key.
+* Entries are NOT required to be sorted in v1. A future v2 MAY
+  require sorted-by-`(func_idx, offset)` to enable binary search;
+  v1 consumers build a `HashMap<(u32, u32), (u32, u32)>` at parse
+  time.
+
+=== Mapping to the spec types
+
+[cols="1,3"]
+|===
+| Wire field                  | Idris2 spec / verifier consumer
+| `func_idx`                  | index into wasm `(func …)` section
+| `instruction_byte_offset`   | byte offset within the function body (post-codegen, post-rewrite)
+| `region_id`                 | foreign key into `typedwasm.regions` region table → `Region` (from `Region.idr`)
+| `field_id`                  | foreign key into that region's field table → `Field` (from `Region.idr`)
+|===
+
+The verifier resolves a typed access at `(func_idx,
+instruction_byte_offset)` by:
+
+. Looking up the entry in the `typedwasm.access-sites` map.
+. Resolving `region_id` to a `Region` via `typedwasm.regions`.
+. Resolving `field_id` to a `Field` within that region's `Schema`.
+. Cross-checking the wasm instruction's load/store type against
+  `Field.wasm_ty` (L3 check), `Field.nullability` (L4), the offset
+  against the region's `cardinality × sizeOf(wasm_ty)` envelope
+  (L5), and the result type against `Field.wasm_ty` (L6).
+. The base pointer used by the access is NOT carried (would
+  require dataflow tracking on the wasm side); the
+  `(region_id, field_id)` annotation IS the producer's assertion
+  that the access targets that field. The verifier validates the
+  schema match but does NOT prove the base pointer is correct —
+  that is L7 (aliasing) territory and feeds the linearity carrier
+  separately. This is a deliberate scope: access-site carriers are
+  a schema-binding mechanism, not a pointer-provenance mechanism.
+
+=== Versioning policy
+
+`typedwasm.access-sites` starts at `u16le version = 1`. Future
+versions:
+
+* **Additive** changes (new trailing fields per entry; new
+  trailing global headers; sort-order constraints) MAY ship as the
+  same major version, since the lenient reader will silently ignore
+  the new bytes on a v1 consumer.
+* **Breaking** changes (different entry shape; new entry-type
+  discriminator) bump the version and the verifier rejects unknown
+  versions with `VerifyError::UnsupportedCarrierVersion` (added in
+  proposal 0001's PR landings).
+* `typedwasm.regions` and `typedwasm.ownership` are unchanged by
+  this proposal.
+
+=== Producer obligations
+
+A conforming producer that emits `typedwasm.access-sites` MUST:
+
+. Emit it AFTER any post-codegen wasm rewrite (`wasm-opt`, `snip`,
+  `wasm-gc`, custom optimisation passes). The
+  `instruction_byte_offset` field is fragile — any pass that
+  reorders, removes, or inserts instructions desyncs the offset
+  space. Emitting before such a pass produces an unverifiable
+  module; the verifier will fail every access lookup with
+  `AccessSiteMisalignment`.
+. Emit a `typedwasm.regions` section in the same module (the
+  `region_id` / `field_id` fields are dangling pointers otherwise).
+  A v1 verifier rejects `typedwasm.access-sites` without
+  `typedwasm.regions` with `MissingDependentCarrier`.
+. Use the SAME `region_id` indices it used in `typedwasm.regions`
+  for the same module. (Per proposal 0001 §"Producer obligations"
+  ¶2: stable region indices.)
+. Emit an entry for EVERY typed access in EVERY function, OR for
+  NONE. Partial emission is interpreted as "no claim made about
+  unlisted accesses" and L2 will flag every unlisted access as
+  `AccessSiteUnbound`. (The all-or-nothing rule matches proposal
+  0001 §"Producer obligations" ¶3 for fields.)
+. NOT emit entries for non-typed accesses (e.g., raw memory
+  manipulation that the producer chose to leave outside the type
+  system). The verifier interprets an entry as a claim that the
+  access IS typed.
+
+=== Consumer obligations (verifier)
+
+`crates/typed-wasm-verify/` will gain (gated behind
+`unstable-l2-access-sites` cargo feature):
+
+. `section.rs` — `parse_access_sites_section_payload`,
+  `build_access_sites_section_payload`. LEB128 reader/writer
+  helpers if not already present (wasmparser ships these; check
+  before re-implementing).
+. `verify.rs` — `verify_region_binding` pass (deliberately omitted
+  from PR #77). For every typed memory access in every function:
++
+[loweralpha]
+.. Look up `(func_idx, byte_offset)` in the access-sites map.
+.. If not found: `AccessSiteUnbound` (the producer emitted a
+   partial section).
+.. If found: cross-check the instruction's load/store type against
+   the resolved `Field`'s wire-format `wasm_ty` (L3); the
+   instruction's offset immediate against the field's offset
+   within the region (computed from preceding field cardinalities
+   × `sizeOf(wasm_ty)`); the result type (L6) and nullability
+   (L4) flags.
+. `lib.rs` — new `OwnershipError` variants:
++
+[loweralpha]
+.. `AccessSiteUnbound { func_idx, byte_offset }` — partial
+   carrier; access not in the map.
+.. `AccessSiteFieldMismatch { func_idx, byte_offset, expected,
+   actual }` — L3 violation.
+.. `AccessSiteOffsetMismatch { func_idx, byte_offset, expected,
+   actual }` — L5 violation.
+.. `AccessSiteMisalignment { func_idx }` — derived signal that the
+   producer likely emitted the carrier before wasm-opt (multiple
+   adjacent unbound entries on the same function).
+.. `MissingDependentCarrier { needed }` — the access-sites
+   section was present but `typedwasm.regions` was not.
+
+The pass is feature-gated until this proposal is `[accepted]`, so
+the v1.0 verifier surface is unchanged.
+
+=== Coordination with downstream producers
+
+This proposal is filed in `typed-wasm` because the verifier and the
+Idris2 spec live here. It MUST be reviewed by:
+
+* https://github.com/hyperpolymath/affinescript[`affinescript`] —
+  `lib/tw_verify.ml`, `lib/tw_interface.ml`, and the AffineScript
+  codegen path that emits `typedwasm.regions` (cross-repo issue
+  to be filed against affinescript on acceptance, mirroring the
+  proposal-0001 review pattern).
+* https://github.com/hyperpolymath/ephapax[`ephapax`] —
+  `src/ephapax-wasm/`.
+
+No producer should ship `typedwasm.access-sites` until this proposal
+is `[accepted]`.
+
+== Alternatives considered
+
+=== A. Flat fixed-width 4 × `u32le` per entry
+
+Each entry is 16 bytes: 4-byte func_idx + 4-byte byte_offset +
+4-byte region_id + 4-byte field_id.
+
+*Rejected for v1.* +357% bytes-per-access overhead (16 B vs a bare
+`i32.load` ≈ 3.5 B). On the 6 spec fixtures the module-level
+overhead is still small (~2.9%), but the per-access ratio is the
+real cost driver as code-section density grows: a producer with
+millions of typed accesses inherits a ~4.6× code-section bloat
+factor for every access. Reject — encoding B sits in the same
+module-overhead ballpark (~1.1%) at ~3× lower per-access cost.
+
+=== C. Per-function batched + delta offsets
+
+Outer (count, group×(func_idx, count_in_func,
+entries×(delta_offset, region_id, field_id))). Entries use LEB128
+deltas — typically the smallest representation.
+
+*Deferred to v2.* At ~3.5 B/access (~0% per-access overhead vs the
+access itself) this is the theoretical optimum. But: the format
+adds a nested-loop structure with two LEB128 streams (outer for
+groups, inner for entries), a delta-offset state machine, and
+ordering constraints across entries-in-a-group. Codec surface area
+roughly doubles vs B. For a 0.1-point module-overhead reduction
+at our fixture scale (~1.2% vs ~1.1%), v1 is the wrong place to
+absorb that complexity. Re-evaluate in v2 once multiple producers
+have shipped B and there is real-world `wasm-tools strip` /
+`wasm-opt` data on the per-access cost in production modules.
+
+=== D. Named-import ABI (issue #78 option B)
+
+Typed accesses route through fixed-name imported functions like
+`__typedwasm_load_$region_$field`.
+
+*Rejected at owner-resolution time* (issue #78 comments). Reasons
+documented there: constrains codegen shape (no inline `i32.load`
+even on perf-critical paths); pollutes the import surface; global
+name-escaping rules become a spec problem. Producers can still
+adopt this voluntarily as a debug aid; the access-site carrier is
+the universal mechanism.
+
+=== E. Hybrid (issue #78 option C)
+
+Default to inline access-site carrier; opt-in named-import shape
+for producers that prefer it.
+
+*Out of scope of v1.* If a producer-side ergonomic case for the
+named-import shape emerges, file a follow-up proposal that adds
+named-import support as a parallel (not replacement) mechanism.
+The access-site carrier remains the canonical answer to
+"L2-the-enforcement on emitted bytes."
+
+=== F. Embed in `typedwasm.regions`
+
+Cram the access-site mapping into the existing `typedwasm.regions`
+section by adding an "access list" per field.
+
+*Rejected.* `typedwasm.regions` is module-scoped schema data; access
+sites are per-instruction. Embedding entangles two different
+adoption curves (a producer may want regions but not yet emit
+post-rewrite access carriers), forces the version-bump cycles to
+move in lockstep, and bloats every parse of the schema section
+even when the verifier doesn't need access data. Split sections,
+per proposal 0001 §"Alternatives considered" §B.
+
+== Open questions
+
+. **LEB128 from wasmparser vs hand-rolled.** `wasmparser` (already a
+  verifier dependency) ships `LebReader` / `LebWriter` helpers; the
+  hand-rolled `LenientReader` in `section.rs` is a small superset
+  for length-tag handling. Reuse the wasmparser helpers for the
+  LEB128 fields inside this section, OR add LEB128 to
+  `LenientReader`? Trade-off: extra dep surface in `section.rs` vs.
+  one more small helper to maintain. Default: reuse wasmparser; the
+  hand-rolled reader keeps responsibility for the section-level
+  framing (length prefix, lenient EOF).
+
+. **Sorted-entry constraint at v1.** Producers usually emit in
+  function-order naturally; declaring sorted-`(func_idx, byte_offset)`
+  as a producer obligation at v1 would let the verifier binary-search
+  rather than build a HashMap. Trade-off: tighter spec vs. weaker
+  forward compat (re-sortable post-rewrite passes break it). Default:
+  unsorted in v1; revisit at v2 if profiling shows HashMap build
+  dominates parse cost.
+
+. **Cross-module access sites.** Proposal 0001 §"Open questions" ¶5
+  flagged that cross-module L13 / `noSpoofing` needs the importing
+  module's region table to refer to the exporting module's region by
+  something other than a local index. The same problem applies to
+  `region_id` in this section: a call into an imported function
+  reaches that function's typed accesses, which carry the EXPORTING
+  module's region IDs. v1 scope is per-module: every entry's
+  `region_id` resolves against the local module's
+  `typedwasm.regions`. Cross-module access-site resolution defers to
+  the same future proposal that solves cross-module region imports.
+
+. **Delete an emitted entry when its instruction is removed by a
+  later pass?** A pass like `snip` or DCE may remove an instruction
+  whose access-site entry is in the section. v1 says: producers MUST
+  emit AFTER all such passes; a verifier that finds an orphan entry
+  (`func_idx` valid, `byte_offset` doesn't point to a typed access)
+  reports `AccessSiteOrphan`. Producers SHOULD prefer emitting fresh
+  vs. attempting incremental edits. (Same flavour as proposal 0001's
+  string-table open question — defer optimisation work to v2.)
+
+. **DWARF / source-mapping interaction.** A producer that emits
+  source-map data and an access-site carrier has two parallel
+  per-instruction streams. v1 explicitly does not coordinate the
+  two; future work could merge them under a single
+  `typedwasm.debug-info` umbrella. Out of scope.
+
+== Acceptance criteria
+
+. Reviewed and signed off by maintainers of `affinescript` and
+  `ephapax` (the only current producers of `typedwasm.ownership`
+  and the planned producers of `typedwasm.regions`).
+. Wire format reviewed against the issue #78 prototype measurement
+  table — Encoding B is the v1 ship; v2 is reserved for Encoding
+  C revisitation.
+. A draft codec lands in `crates/typed-wasm-verify/src/section.rs`
+  behind the `unstable-l2-access-sites` cargo feature; round-trip
+  tests show `parse(build(x)) = x` for non-empty fixtures (target:
+  the 6 spec fixtures + 3 hand-rolled stress fixtures with
+  artificially dense typed accesses).
+. The `verify_region_binding` pass (omitted from PR #77 per the
+  resolution recorded in proposal 0001 §"Open questions" ¶5) lands
+  in `crates/typed-wasm-verify/src/verify.rs` behind the same cargo
+  feature.
+. A draft section in
+  `spec/type-safety-levels-for-wasm.adoc` documents
+  `typedwasm.access-sites` alongside `typedwasm.regions` and
+  `typedwasm.ownership`.
+. Cross-repo issues are filed against `affinescript` and `ephapax`
+  for codegen of the new section (out of scope of *this* proposal
+  — this proposal only defines the wire format).
+
+After acceptance, this file is promoted to an ADR under
+`docs/decisions/` (per `docs/proposals/README.adoc`'s status legend)
+and the level-table in `LEVEL-STATUS.md` gains "verifier
+(access-site-bound)" status for L2 alongside the existing
+"verifier (carrier-backed)" entry from proposal 0001.
+
+== Related
+
+* Issue https://github.com/hyperpolymath/typed-wasm/issues/78[#78] —
+  this proposal directly addresses it; the prototype measurement
+  table in its second comment is the load-bearing evidence for
+  encoding B.
+* Proposal link:0001-multi-producer-carrier-section.adoc[0001] —
+  the schema carrier this proposal binds against; its Open Questions
+  §5 (RESOLVED — option A) records the resolution this proposal
+  implements.
+* PR https://github.com/hyperpolymath/typed-wasm/pull/77[#77] —
+  pre-stage codec; deliberately omits `verify_region_binding`
+  pending this proposal's acceptance.
+* `LEVEL-STATUS.md` lines 109–143 — current verifier coverage
+  description; L2 row gets an "access-site-bound" status after
+  this proposal lands.
+* `crates/typed-wasm-verify/src/section.rs` — codec to extend.
+* `crates/typed-wasm-verify/src/verify.rs` — verifier pass site.
+* `src/abi/TypedWasm/ABI/Region.idr` — `Region`, `Schema`, `Field`,
+  `FieldIn` spec types (consumer-side foreign keys).
