@@ -4,7 +4,7 @@
 
 ## Status
 
-Pre-alpha / research. Foundation defensibly engineered as of 2026-05-24. See [Phase-0-Status](Phase-0-Status) for what's done and what remains.
+Pre-alpha / research. Foundation defensibly engineered as of 2026-05-24; proof-debt long-tail items closed in a 2026-05-27 sweep. See [Phase-0-Status](Phase-0-Status) for the engineering surface, and [Proof-Debt-Status](Proof-Debt-Status) for what's mechanically proven, what's outstanding, and what's blocked.
 
 The path from here to a production-quality compile target adopted outside the hyperpolymath ecosystem is laid out as a 6-phase plan in [Production-Path](Production-Path) and [`docs/PRODUCTION-PATH.adoc`](https://github.com/hyperpolymath/typed-wasm/blob/main/docs/PRODUCTION-PATH.adoc). See [Comparison](Comparison) for how typed-wasm sits among neighbouring approaches at each maturity level.
 
@@ -50,7 +50,7 @@ Levels are progressive — you cannot skip from L1 to L7. L11 (tropical cost-tra
 
 Follows the hyperpolymath ABI-FFI standard:
 
-- **Idris2 ABI** (`src/abi/TypedWasm/ABI/`) — formal dependent-type proofs; 0 `believe_me`, 0 `assert_total`, 0 `postulate`
+- **Idris2 ABI** (`src/abi/TypedWasm/ABI/`) — formal dependent-type proofs; 0 `believe_me`, 0 `assert_total`, 0 `postulate`. Includes `TypedWasm.ABI.VerifierSpec` (added 2026-05-27 via PR #79) as the Idris2 spec-of-record for the Rust post-codegen verifier — with totally-proven `VerifierSpecAgreement` / `SourceVerifierAgreement` records bridging the spec to verifier and source-checker. See [Proof-Debt-Status](Proof-Debt-Status) for the inventory.
 - **Zig FFI** (`ffi/zig/`) — C-ABI bridge for runtime region management + typed load/store
 - **Rust verifier** (`crates/typed-wasm-verify/`) — post-codegen verification of the 10-level discipline against compiled wasm
 - **Surface syntax** (`spec/grammar.ebnf`) — `.twasm` source format (EBNF)

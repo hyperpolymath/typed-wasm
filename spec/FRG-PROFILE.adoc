@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+= FRG-PROFILE — typed-wasm
+:toc: left
+:toclevels: 2
+
+[cols="1,3"]
+|===
+| Field | Value
+
+| Artefact | typed-wasm (compilation target, language-shaped)
+| Repository | https://github.com/hyperpolymath/typed-wasm
+| Current FRG Grade | *C*  (X \| F \| E \| D \| C \| B \| A)
+| Assessed | 2026-05-28
+| Assessor | Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+| FRG Spec Version | 1.0
+| ARG Profile | spec/ARG-PROFILE.adoc
+| TRG Profile | spec/TRG-PROFILE.adoc
+| CRG Profile | spec/CRG-PROFILE.adoc
+| Formalisation Directory | `src/abi/TypedWasm/ABI/` + `src/abi/Layout/` (22 Idris2 files)
+| Qualifying Prover(s) | Idris2 (with QTT linearity)
+|===
+
+== About this profile
+
+typed-wasm is the strongest of the audit-cohort artefacts on the
+foundations axis. Its formalisation surface comprises *22 Idris2
+files* in `src/abi/` encoding a safety protocol using QTT
+linearity + dependent types, zero `believe_me`/`assert_total` in
+the ABI files (per `PROOF-NEEDS.md` 2026-04-13 audit), and the
+A10 closure (PR #79) which inhabited the previously-residual
+`VerifierSpecAgreement` and `SourceVerifierAgreement` records with
+totally-proven bodies.
+
+FRG = *C*. The grade is not yet B because — per the load-bearing
+honesty statement in `PROOF-NEEDS.md`:
+
+[quote]
+____
+typed-wasm has eleven Idris2 files encoding a safety protocol using
+QTT linearity and dependent types, zero dangerous patterns, but
+almost no explicit theorems — most of the guarantees are
+structural consequences of the type encoding rather than
+propositions that have been stated and mechanically proven.
+____
+
+(Note: the file count is now 22, not 11, post-2026-04-13.) Grade
+C is reached because the structural guarantees + A10 agreement
+records + 88/88 parser tests + explicit Idris2 theorems for
+L13-L16 (per `LEVEL-STATUS.md`) clear the C-bar. Grade B requires
+per-level preservation lemmas, which is open work.
+
+The chain of axes:
+
+* ARG: *D* (per `spec/ARG-PROFILE.adoc`)
+* TRG: *C* (per `spec/TRG-PROFILE.adoc`)
+* FRG: *C* (this profile)
+* CRG: *D* (per `spec/CRG-PROFILE.adoc`)
+* RSR: Compliant at TRG-C level
+
+== Formalisation inventory
+
+[cols="2,1,5", options="header"]
+|===
+| Surface | File count | Path
+
+| Level theorems (L1-L10 + L13-L16)
+| 13
+| `src/abi/TypedWasm/ABI/{Levels,Region,Lifetime,Effects,Layout,Linear,Pointer,Tropical,Epistemic,ModuleIsolation,SessionProtocol,ResourceCapabilities,Choreography}.idr`
+
+| Echo / multi-module / typed-access composition
+| 3
+| `src/abi/TypedWasm/ABI/{Echo,MultiModule,TypedAccess}.idr`
+
+| Verifier + bridge
+| 4
+| `src/abi/TypedWasm/ABI/{Proofs,VerifierSpec,ABI,Types}.idr`
+
+| Stdlib + concrete-feature corpus
+| 2
+| `src/abi/TypedWasm/ABI/{Stdlib,AirborneSubmarineSquadron}.idr`
+
+| Layout-side
+| 4
+| `src/abi/Layout/{Types,ABI,Stdlib,AirborneSubmarineSquadron}.idr`
+
+| TOTAL
+| 22
+|
+|===
+
+Hygiene status (per `PROOF-NEEDS.md` audit 2026-04-13):
+
+* Zero live uses of `believe_me` in ABI files.
+* Zero live uses of `assert_total` in ABI files.
+* No hole-filled (`?foo`) productions in committed code.
+* QTT linearity discipline enforced via dependent types.
+
+== Grade rationale (evidence for C)
+
+[cols="2,1,4", options="header"]
+|===
+| Criterion | Met? | Evidence
+
+| *E1 — Formal artefact exists*
+| YES
+| 22 Idris2 files at `src/abi/`.
+
+| *E2 — Prover qualifies under FRG*
+| YES
+| Idris2 with QTT is on the qualifying-prover list.
+
+| *D1 — Artefact is named + located + version-pinned*
+| YES
+| `Cargo.toml` workspace pins; CHANGELOG tracks levels per release.
+
+| *D2 — Artefact compiles + checks*
+| YES
+| CI per `.github/workflows/`. Idris2 typecheck runs in CI.
+
+| *C1 — Documented design rationale*
+| YES
+| `README.adoc` "Proofs and implementation" section + `spec/type-safety-levels-for-wasm.adoc` + `docs/proposals/0001-*.md` + `docs/proposals/0002-*.md`.
+
+| *C2 — Documented proof-debt*
+| YES
+| `PROOF-NEEDS.md` is the canonical handoff doc; `docs/proof-debt.md` companion.
+
+| *C3 — Audit cadence*
+| YES
+| 2026-04-13 audit + 2026-05-27 RECONCILIATION block (A10 closure) + ongoing.
+
+| *B1 — Per-level preservation lemmas (explicit, not structural)*
+| PARTIAL
+| L13-L16 have explicit Idris2 theorems (DistinctCaps, ContainedIn, CallCompatible, etc. per LEVEL-STATUS); L1-L10 carry structural guarantees but no separately-stated preservation lemmas.
+
+| *B2 — Verifier ↔ spec refinement theorem*
+| PARTIAL
+| A10 closure inhabits the agreement records (`VerifierSpecAgreement`, `SourceVerifierAgreement`); the formal refinement claim is implicit in the inhabitation.
+
+| *B3 — External review of the formalisation*
+| NO
+| No published external review of the Idris2 corpus.
+
+| *A1 — Published soundness for the whole stack*
+| NO
+| Not yet.
+
+| *VeriSimDB attestation (grade C+)*
+| NO
+| typed-wasm not yet `DECLARE`'d.
+|===
+
+== Language-specific tightening (this profile only)
+
+For typed-wasm, the following additional FRG obligations apply at
+the stated grades:
+
+* *Grade C tightening:* No `believe_me` / `assert_total` in
+  `src/abi/`. Currently met.
+* *Grade B tightening:* Every level L1-L17 has an explicit
+  preservation lemma. Currently met for L13-L16; L1-L12 open.
+* *Grade A tightening:* External audit by a third party of the
+  Idris2 corpus.
+
+These tightenings are *additional* to the baseline.
+
+== What is NOT yet met (honest gaps)
+
+Gating gaps for grade *B*:
+
+* *L1-L10 preservation lemmas not yet stated as theorems.* Most
+  guarantees are structural consequences of the type encoding.
+  This is the load-bearing PROOF-NEEDS handoff.
+* *L11 (Tropical) and L12 (Epistemic) remain draft-only at v1.1.*
+* *No external review.*
+
+== Path to next grade (*B*)
+
+* State + prove L1-L10 preservation lemmas per level. Per
+  PROOF-NEEDS, this is the work that turns "the types forbid it
+  at compile time" into "here is a lemma proving it is forbidden."
+  (~weeks per level)
+* Promote L11 + L12 from draft to checked.
+* State the verifier-spec refinement theorem explicitly citing
+  A10's agreement records.
+
+*Realistic timeline estimate:* 3-6 months for the L1-L10
+preservation work; L11/L12 independent timeline.
+
+== Path to grade beyond that (*A*)
+
+* External review of the Idris2 corpus.
+* Published soundness theorem for the whole stack.
+* Registered VeriSimDB instance.
+
+== Demotion risk
+
+* *Lowest:* A new `*.idr` file commits a `believe_me` or
+  `assert_total`.
+* *Medium:* The A10 agreement records are found to be inhabitable
+  only via an unspoken assumption.
+* *Catastrophic:* A consumer language's CI detects that an
+  Idris2-encoded invariant is actually violated at the WASM
+  emission layer — would force FRG and TRG demotion together.
+
+== Iteration history
+
+[cols="1,1,4", options="header"]
+|===
+| Date | Grade | Notes
+
+| 2026-05-28 | C | Initial FRG assessment per FRG v1.0. The strongest foundation surface in the audit cohort; gated below B by absence of explicit L1-L10 preservation lemmas.
+|===
+
+== Review cycle
+
+* *Routine:* Reassess on every release cycle (per FRG §6).
+* *Immediate:* Reassess within 7 days of any `believe_me` /
+  `assert_total` introduction in `src/abi/`.
+* *VeriSimDB drift alert:* Reassess within 24 hours.
+
+== Footer
+
+Run `just frg-badge` in this repo to generate the shields.io badge.

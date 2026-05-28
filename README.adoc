@@ -109,6 +109,19 @@ Idris2 0.8.0 as of 2026-04-18 (see `PROOF-NEEDS.md` reconciliation). Their
 surface semantics remain research-grade — the parser, Zig FFI and downstream
 tooling do not yet expose L11/L12 features.
 
+[NOTE]
+.Spec-of-record for the Rust verifier (2026-05-27, PR #79)
+====
+`TypedWasm.ABI.VerifierSpec` is the Idris2 spec-of-record for
+`crates/typed-wasm-verify/`.  It carries totally-proven
+`VerifierSpecAgreement` and `SourceVerifierAgreement` records (with
+concrete inhabitants `verifierSpecAgreement` /
+`sourceVerifierAgreement`) bridging the spec to the verifier and the
+source checker — closes post-A10 audit items 7 + 8.  See the
+link:docs/wiki/Proof-Debt-Status.md[Proof-Debt-Status wiki page] for
+the design and what remains in the proof-debt long-tail.
+====
+
 == The Killer Feature: Multi-Module Type Safety
 
 When Module A (compiled from Rust) shares memory with Module B (compiled from
@@ -226,6 +239,15 @@ with explicit gates, load-bearing decisions, and a comparison landscape
 locating typed-wasm against neighbouring wasm-safety projects at each
 maturity level. `ROADMAP.adoc` tracks the version-by-version delivery
 against that plan.
+
+== Forward-Looking Work
+
+Design proposals for Phase 2+ features are tracked in link:docs/proposals/[`docs/proposals/`]:
+
+* **Proposal 0001** — link:docs/proposals/0001-multi-producer-carrier-section.adoc[Multi-producer carrier sections] for L2–L6 (`typedwasm.regions`) and L15 (`typedwasm.capabilities`). Status: `[draft]`, cross-repo review under way (affinescript#402, ephapax#165).
+* **Proposal 0002** — link:docs/proposals/0002-access-site-carrier.adoc[Access-site carrier section] (`typedwasm.access-sites`) closing the "L2-the-enforcement" gap via per-instruction `(func_idx, byte_offset) → (region_id, field_id)` mapping. Encoding B (LEB128 per field, ~5B/access) per issue #78 size measurement. Status: `[draft]`, gated on proposal 0001 acceptance.
+
+The post-codegen verifier's `verify_region_binding` pass is gated on proposal 0002's acceptance; until then, L2-the-enforcement on emitted wasm bytes is producer-side only.
 
 == Related Projects
 

@@ -42,6 +42,7 @@ import Data.List
 import Data.List.Elem
 
 import TypedWasm.ABI.Linear
+import TypedWasm.ABI.ModuleIsolation
 
 %default total
 
@@ -308,3 +309,115 @@ sessionToLinear : {proto : SessionId} -> {state : StateId}
                -> SessionHandle proto state
                -> (tk ** LinHandle tk)
 sessionToLinear h = sessionInner h
+
+-- ============================================================================
+-- A13 — Cross-Level: L14 (sessions) × L13 (isolation)
+-- ============================================================================
+--
+-- Closes the post-A10 audit item 5b (L14 × L13 interaction): when an
+-- L14 `SessionHandle` is "moved" from one isolated module to another,
+-- the move is mediated by an L13 `AccessWitness` AND preserves the
+-- protocol's state index across the boundary.  Two propositional
+-- claims:
+--
+--   1. **Existence + state preservation**: pairing an `AccessWitness`
+--      with a `SessionHandle proto state` produces a
+--      `SessionAcrossBoundary` carrying the same state index — the
+--      transfer does not silently advance or rewind the protocol.
+--   2. **No-bypass**: any non-local `SessionAcrossBoundary` requires a
+--      boundary on the source module's declared list (reused from
+--      L13's `crossAccessImpliesBoundary`).
+--
+-- The session handle's inner L10 obligation is preserved because the
+-- inner `LinHandle` is unchanged across the transfer.  This is the
+-- L14 × L13 face of the cross-level story already begun in
+-- ModuleIsolation.idr by `LinearAcrossBoundary` (L10 × L13).
+
+||| L14 × L13 cross-level witness: an L14 session handle paired with
+||| the L13 access witness that authorises its move from `from` to
+||| `to`.  The protocol identifier and state index are pinned in the
+||| type, so transferring a session handle CANNOT change its state.
+public export
+data SessionAcrossBoundary : (from, to : IsolatedModuleId)
+                          -> (proto : SessionId)
+                          -> (state : StateId)
+                          -> (regName : String)
+                          -> (bs : BoundaryList)
+                          -> Type where
+  MkSessionAcrossBoundary :
+       (aw : AccessWitness from to regName bs)
+    -> (h  : SessionHandle proto state)
+    -> SessionAcrossBoundary from to proto state regName bs
+
+||| Project the L13 access witness from a cross-boundary session.
+public export
+sessionAcrossWitness :
+     {from, to : IsolatedModuleId}
+  -> {proto : SessionId} -> {state : StateId}
+  -> {regName : String} -> {bs : BoundaryList}
+  -> SessionAcrossBoundary from to proto state regName bs
+  -> AccessWitness from to regName bs
+sessionAcrossWitness (MkSessionAcrossBoundary aw _) = aw
+
+||| Project the L14 session handle from a cross-boundary session.
+public export
+sessionAcrossHandle :
+     {from, to : IsolatedModuleId}
+  -> {proto : SessionId} -> {state : StateId}
+  -> {regName : String} -> {bs : BoundaryList}
+  -> SessionAcrossBoundary from to proto state regName bs
+  -> SessionHandle proto state
+sessionAcrossHandle (MkSessionAcrossBoundary _ h) = h
+
+||| L14 × L13 soundness (state preservation).
+|||
+||| Statement: the state index of the session handle inside a
+||| `SessionAcrossBoundary` equals the `state` index pinned by the
+||| `SessionAcrossBoundary` type.  Definitional, but stated as a
+||| separate lemma so downstream code can refer to it without
+||| unfolding the projection.
+public export
+sessionAcrossPreservesState :
+     {from, to : IsolatedModuleId}
+  -> {proto : SessionId} -> {state : StateId}
+  -> {regName : String} -> {bs : BoundaryList}
+  -> (sab : SessionAcrossBoundary from to proto state regName bs)
+  -> handleState (sessionAcrossHandle sab) = state
+sessionAcrossPreservesState (MkSessionAcrossBoundary _ _) = Refl
+
+||| L14 × L13 soundness (no-bypass).
+|||
+||| Statement: if a session handle has moved from `from` to `to` and
+||| `from /= to`, then the boundary list `bs` of `from` MUST contain a
+||| concrete boundary witnessing the transfer.  Contrapositive: no
+||| boundary means no `SessionAcrossBoundary` exists for a non-local
+||| pair — the session handle cannot leave `from`'s memory.
+|||
+||| Proof: directly reuse `crossAccessImpliesBoundary` on the embedded
+||| access witness.  Same shape as `linearTransferRequiresBoundary`
+||| from ModuleIsolation.idr, just one level up.
+public export
+sessionTransferRequiresBoundary :
+     {from, to : IsolatedModuleId}
+  -> {proto : SessionId} -> {state : StateId}
+  -> {regName : String} -> {bs : BoundaryList}
+  -> (xfer : SessionAcrossBoundary from to proto state regName bs)
+  -> (notLocal : Not (from = to))
+  -> (b : Boundary ** Elem b bs)
+sessionTransferRequiresBoundary xfer notLocal =
+  crossAccessImpliesBoundary (sessionAcrossWitness xfer) notLocal
+
+||| L14 × L13 soundness (local-case).
+|||
+||| Statement: a session handle moving WITHIN one isolated module
+||| (`from = to = m`) needs no boundary — `LocalAccess` suffices and
+||| state preservation is automatic.
+public export
+sessionTransferLocal :
+     (m : IsolatedModuleId)
+  -> (regName : String)
+  -> (bs : BoundaryList)
+  -> {proto : SessionId} -> {state : StateId}
+  -> (h : SessionHandle proto state)
+  -> SessionAcrossBoundary m m proto state regName bs
+sessionTransferLocal m _ _ h = MkSessionAcrossBoundary LocalAccess h

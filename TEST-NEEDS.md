@@ -6,14 +6,14 @@
 
 | Category | Count | Details |
 |----------|-------|---------|
-| **Source modules** | 21 | 11 Idris2 ABI (Region, TypedAccess, Levels, Pointer, Effects, Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic), 4 AffineScript parser (Ast, Parser, Lexer, Checker), 3 Idris2 interface ABI, 2 Zig FFI + cache, 1 Rust verifier crate (typed-wasm-verify, ~1.6k LOC + 53 tests) |
+| **Source modules** | 22 | 12 Idris2 ABI (Region, TypedAccess, Levels, Pointer, Effects, Lifetime, Linear, MultiModule, Proofs, Tropical, Epistemic, **VerifierSpec — added 2026-05-27 via PR #79** as the spec-of-record for the Rust post-codegen verifier), 4 AffineScript parser (Ast, Parser, Lexer, Checker), 3 Idris2 interface ABI, 2 Zig FFI + cache, 1 Rust verifier crate (typed-wasm-verify, ~1.6k LOC + 53 tests) |
 | **Unit tests** | 2 files | ParserTests.affine (88 assertions), crates/typed-wasm-verify (43 unit + 10 cross-compat) |
 | **Integration tests** | 1 | tests/contracts/airborne-step-state-contract.mjs (14 assertions) |
 | **E2E tests** | 2 | tests/smoke/e2e-smoke.mjs (40 assertions), tests/e2e/e2e-driver.mjs (corpus driver) |
 | **Per-level tests** | 10 | tests/levels/L1.mjs .. L10.mjs (56 assertions total) |
-| **Aspect tests** | 2 | tests/aspect/claim-envelope.mjs (49 assertions — added 2026-05 to catch cross-doc claim drift after deep audit found 5 such drifts), tests/aspect/security-envelope.mjs (10 assertions — added 2026-05-24 to catch SECURITY.md/security.txt drift, SPDX gaps, badge-vs-reality, committed secrets) |
-| **Property-based tests** | 1 | tests/property/property_test.mjs (29 assertions across 6 invariants P1-P6: parser determinism, comment stability, diagnostic positional consistency, example-corpus liveness, level-fixture coverage, 5-trial stability — added 2026-05-24, closes the 2026-04-04 ghost) |
-| **Proof regression** | 1 | tests/proof/regression.mjs (25 named-theorem presence assertions + optional idris2 --check layer — added 2026-05-24) |
+| **Aspect tests** | 2 | tests/aspect/claim-envelope.mjs (53 assertions — added 2026-05, bumped 49→53 in PR #60 for §8 drift detection), tests/aspect/security-envelope.mjs (10 assertions — added 2026-05-24) |
+| **Property-based tests** | 1 | tests/property/property_test.mjs (29 assertions across 6 invariants P1-P6) |
+| **Proof regression** | 1 | tests/proof/regression.mjs (107 named-theorem presence assertions + optional idris2 `--build` layer; bumped 25→58→107 across 2026-05-24, PR #79 +33, PR #80 +49) |
 | **Benchmarks** | 1 | benchmarks/parser-bench.mjs (per-example wallclock; median/p95/min/throughput; JSON summary on stderr; added 2026-05) |
 | **ECHIDNA harness** | 1 | tests/echidna/echidna-harness.mjs (659 LOC, 124 local assertions, remote prover-wars submission) |
 

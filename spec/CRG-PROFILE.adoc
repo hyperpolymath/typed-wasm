@@ -1,0 +1,211 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+= CRG-PROFILE — typed-wasm
+:toc: left
+:toclevels: 2
+
+[cols="1,3"]
+|===
+| Field | Value
+
+| Artefact | typed-wasm (compilation target, language-shaped)
+| Repository | https://github.com/hyperpolymath/typed-wasm
+| Current CRG Grade | *D*  (X \| F \| E \| D \| C \| B \| A)
+| Assessed | 2026-05-28
+| Assessor | Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+| CRG Spec Version | 2.2
+| ARG Profile | spec/ARG-PROFILE.adoc
+| TRG Profile | spec/TRG-PROFILE.adoc
+| FRG Profile | spec/FRG-PROFILE.adoc
+|===
+
+== About this profile
+
+This profile applies the *CRG v2.2 (STRICT)* baseline to typed-wasm
+released components. The only externally-released component is the
+Rust verifier crate `typed-wasm-verify` v0.1.0 (workspace-internal,
+not yet on crates.io). The Idris2 ABI files at `src/abi/` are
+consumed as a source surface by downstream languages via the
+existing AffineScript / ephapax integrations.
+
+CRG = *D*. The full chain of axes:
+
+* ARG: *D*
+* TRG: *C*
+* FRG: *C*
+* CRG: *D* (this profile)
+* RSR: Compliant at TRG-C level
+
+== Released components
+
+A *released component* is any unit of work this repository publishes
+under its own name + version: crate, library, binary, plugin, schema,
+or vendored artefact.
+
+[cols="2,1,3,4", options="header"]
+|===
+| Component | Grade | Release stage | Evidence
+
+| `typed-wasm-verify` (Rust crate) v0.1.0
+| *D*
+| Pre-alpha (workspace-internal, unpublished)
+| `crates/typed-wasm-verify/Cargo.toml`. Post-codegen verifier for L7 (aliasing) + L10 (linearity). 2221 lines (cross 535, lib 180, section 681, verify 825). Feature gate `unstable-l2` pre-stages the L2 region-binding carrier codec for proposal #76. Pinned to wasmparser =0.250.0 / wasm-encoder =0.250.0.
+
+| Idris2 ABI surface at `src/abi/`
+| *C*
+| Consumed-as-source
+| 22 Idris2 files acting as the typed ABI surface that downstream languages target. Consumed by ephapax + AffineScript today. Not a Cargo/npm/opam package — the release shape is "stable source files within the typed-wasm repo at a tagged version."
+
+| `Parser.affine` (AffineScript-implemented parser)
+| *D*
+| Workspace-internal
+| Parser implementation referenced by `LEVEL-STATUS.md` (Parser.affine:2088 etc). 88/88 parser tests pass at v1.5. Distributed within the typed-wasm repo, not as a separate AffineScript package.
+
+| Zig FFI surface at `ffi/zig/`
+| *D*
+| Workspace-internal
+| `ffi/zig/{build.zig, src, test}`. Acts as the canonical Zig binding per the estate-wide convention (Zig for APIs/FFIs).
+
+| Examples (`.twasm` corpus + `.affine` integration)
+| *E*
+| Documentation surface
+| 6 `.twasm` examples + `SafeDOMExample.affine` + `web-project-deno.json`. Documentation rather than consumable release.
+|===
+
+== Per-component evidence (deep)
+
+For `typed-wasm-verify` at grade D, the v2.2 STRICT deep-annotation
+requirements (CRG §4.5+) are not yet met:
+
+* No `audits/audit-typed-wasm-verify.md` exists.
+* `crates/typed-wasm-verify/README.md` covers usage; no per-file
+  CRG annotation.
+* CI runs the verifier against the proposal-0001 4-fixture corpus
+  (per the standards#130 long-tail tracker referenced in
+  CHANGELOG.md).
+
+For the Idris2 ABI surface at grade C, the v2.2 STRICT clauses are
+substantially met via the `PROOF-NEEDS.md` reconciliation block +
+the LEVEL-STATUS surface table — these together act as a
+per-file + per-level annotation surface.
+
+== Grade rationale
+
+[cols="2,1,4", options="header"]
+|===
+| Grade clause (CRG §4) | Met? | Evidence
+
+| *E1 — At least one test exists*
+| YES
+| 88/88 parser tests pass at v1.5; verifier crate has test suite.
+
+| *E2 — Failures documented*
+| YES
+| `PROOF-NEEDS.md` is the canonical record of "what is not yet proven."
+
+| *D1 — Test matrix documented*
+| YES
+| `LEVEL-STATUS.md` documents per-level + per-feature test status.
+
+| *D2 — Scope documented*
+| YES
+| `README.adoc`, `EXPLAINME.adoc`, `QUICKSTART.adoc`, `ROADMAP.adoc`.
+
+| *D3 — RSR compliance*
+| YES
+| RSR baseline files present.
+
+| *C1 — Dogfooded*
+| YES
+| typed-wasm is dogfooded by ephapax + AffineScript (both are downstream consumer languages of typed-wasm as a compilation target).
+
+| *C2 — CI green*
+| YES
+| CI per `.github/workflows/`.
+
+| *C3 — Deep annotation (per-file + per-dir)*
+| PARTIAL
+| Idris2 ABI surface effectively documented via `PROOF-NEEDS.md` + LEVEL-STATUS; the verifier crate has no per-file CRG audit.
+
+| *B1 — ≥6 diverse external targets*
+| PARTIAL
+| Downstream language consumers: ephapax + AffineScript. The `features/{boj-server,panic-attacker,ssg}/` give 3 substantive feature surfaces. Below the conventional ≥6-target threshold but meaningful for a compilation target.
+
+| *B2 — Issues fed back from external use*
+| YES
+| ephapax CI surfaces typed-wasm version-pin drift; AffineScript fixture corpus catches verifier-side breakage. Closed-issue trail per the standards#130 tracker.
+
+| *A1 — Confirmed real-world value, no harm*
+| PARTIAL
+| Real internal value confirmed (multiple downstream consumers); no external (non-hyperpolymath) adopters.
+
+| *VeriSimDB attestation (grade C+)*
+| NO
+| typed-wasm not yet `DECLARE`'d.
+|===
+
+== Language-specific tightening (this profile only)
+
+For typed-wasm, the following additional CRG obligations apply at
+the stated grades:
+
+* *Grade C tightening:* `typed-wasm-verify` MUST keep
+  wasmparser + wasm-encoder version pins explicit + bumped in a
+  visible Cargo.toml diff (currently met via the `=0.250.0` exact
+  pin convention).
+* *Grade B tightening:* `typed-wasm-verify` MUST be published on
+  crates.io as v1.0 with at least one external consumer not
+  maintained by hyperpolymath.
+* *Grade A tightening:* Registered VeriSimDB instance + public
+  health check + third-party language adopter.
+
+These tightenings are *additional* to the baseline.
+
+== What is NOT yet met (honest gaps)
+
+* `typed-wasm-verify` not yet on crates.io.
+* No `audits/audit-typed-wasm-verify.md` per CRG §4.5 + TRG §3.
+* No external (non-hyperpolymath) consumer languages.
+* No VeriSimDB attestation.
+
+== Path to next grade (*C*)
+
+* Author `audits/audit-typed-wasm-verify.md` covering the verifier
+  crate at v2.2 STRICT depth. (~2-3 weeks)
+* Land VeriSimDB attestation. (~1 week)
+
+*Realistic timeline estimate:* 4-6 weeks.
+
+== Path to grade beyond that (*B*)
+
+* Publish `typed-wasm-verify` v1.0 on crates.io.
+* Onboard ≥1 external consumer language.
+
+== Demotion risk
+
+* *Lowest:* `typed-wasm-verify` CI flips to red.
+* *Medium:* wasmparser API drift breaks the build despite the pin
+  (e.g. transitive dep break).
+* *Catastrophic:* A consumer of `typed-wasm-verify` is broken by
+  a release change and the change is not rolled back.
+
+== Iteration history
+
+[cols="1,1,4", options="header"]
+|===
+| Date | Grade | Notes
+
+| 2026-05-28 | D | Initial CRG-PROFILE per CRG v2.2 STRICT. Single externally-released component (`typed-wasm-verify` v0.1.0, workspace-internal, unpublished).
+|===
+
+== Review cycle
+
+* *Routine:* Reassess on every release cycle (per CRG §6.3).
+* *Immediate:* Reassess within 7 days of any released-component
+  regression.
+* *VeriSimDB drift alert:* Reassess within 24 hours.
+
+== Footer
+
+Run `just crg-badge` in this repo to generate the shields.io badge.

@@ -10,6 +10,306 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Proof-debt closure pass (2026-05-27)
+
+Post-Phase-0 sweep of the long-tail items the 2026-05-18 PROOF-NEEDS
+reconciliation banner deferred. Closes the named obligations against
+post-A10 audit items 7 + 8 (verifier ↔ spec, source ↔ verifier
+agreement records) and the standards#130 "LevelAttestation reindexed
+by witness" long-tail. All work additive (no existing definitions
+touched, no prior proofs can regress) and all changes preserve
+`%default total` with zero new `believe_me` / `assert_total` /
+`postulate` / `sorry` / `assert_smaller`.
+
+**3 PRs landed/in flight, all auto-merge SQUASH armed**:
+
+- **#79** — `TypedWasm.ABI.VerifierSpec`: total bodies for
+  `VerifierSpecAgreement` and `SourceVerifierAgreement` (post-A10
+  audit items 7 + 8). New module (~620 LOC) defining the shared
+  spec-of-record surface (`ModuleSummary` / `FunctionSummary` /
+  `OwnershipIntent`), structural acceptance predicates
+  (`TokenFresh` / `IntentsLinearAcceptable` / `FunctionsAccepted`),
+  three acceptance predicates (`SpecAccepts`, `VerifierAccepts`,
+  `SourceAccepts`), the two agreement records with totally-proven
+  bodies, and concrete inhabitants `verifierSpecAgreement` /
+  `sourceVerifierAgreement` (the first total no-`believe_me`
+  agreement values in the codebase). Design choice that unblocked
+  the bodies: `VADifferential` / `SADifferential` carry an inline
+  `TrustedFixture` so the structural witness travels with the
+  fixture metadata — trust-injection moment moves to
+  `MkTrustedFixture` (single audit grep). End-to-end demo through
+  `fixtureCleanLinearConsumerModule` (cross_compat row 1).
+  Discrimination proofs across both ctors show L10 has teeth and
+  the differential escape hatch can't smuggle a bad module past
+  the verifier. **+33 Layer 1 regression assertions.**
+  Side-fix: latent `idris2 --check typed-wasm.ipkg` bug in
+  `regression.mjs` Layer 2 corrected to `--build` (Idris2 0.8.0
+  `--check` rejects ipkg paths; CI was unaffected because Layer 2
+  skips when idris2 not on PATH, but local strict runs failed).
+- **#74** — closed as superseded by #79 (competing `Maybe`-returning
+  bridge design; the witness-carrying ctor design in #79 closes the
+  full bodies that #74's design explicitly framed as "multi-week
+  residual").
+- **#80** — `Proofs.idr` `LevelAttestationW` + `WitnessCertificate`:
+  closes the standards#130 long-tail flagged in PROOF-NEEDS
+  2026-05-18 reconciliation banner ("Stronger 'attestation entails
+  the level's semantic property' (needs `LevelAttestation` reindexed
+  by witness) remains tracked future work under standards#130").
+  Two stacked slices (PR #83 instant-merged into #80's branch
+  because the stacked base wasn't protected; the squashed commit
+  carries both):
+    - **`LevelAttestationW : (n : Nat) -> Type`** — witness-indexed
+      attestation GADT, one constructor per level (15 total). Each
+      packages the level-specific witness. 15 `attestLNW_*` smart
+      ctors. 15 `attestLNW_Entails<Property>` extractors (the
+      "entails-semantic-property" lemmas). `toLegacy` bridge. 15
+      round-trip `Refl`s. Uniform `attestLW_AchievedIn` subsuming
+      the A9 `attestLN_Sound` family.
+    - **`WitnessCertificate`** — `ProofCertificate` lifted to
+      witness-carrying form via existential `SomeAttestationW`.
+      Mirror record. `witnessToLegacy` bridge. `composeWitness`
+      mirror of `composeCertificates`. `composeWitnessLegacyAgree`
+      composition-compat lemma. `WitnessAchieved` predicate lifted.
+      Empty + singleton smart ctors.
+  **+49 Layer 1 regression assertions.**
+
+**Test surface after this pass**: 627+ assertions (up from 545+).
+Per-surface delta: proof regression 25 → 107 (33 from #79 + 49 from
+#80, plus the existing 25).
+
+**What this does NOT close**:
+
+- WasmCert-Isabelle tie-back (requires external Isabelle install)
+- Emitted-wasm byte-equality, P3.1(a) (blocked on `.twasm`→`.wasm`
+  emitter)
+- Parser round-trip in Idris2 (blocked on AffineScript parser port)
+- Verifier L1–L6 + L13–L16 coverage (in progress on PRs #76 / #77 in
+  a parallel session — wire-format proposal + L2 codec pre-staging)
+
+### 2026-05-27 — Phase 2 carrier-ABI design + C5.1 corpus
+
+Multi-PR session opening the L2–L6 / L15 enforcement path on emitted
+wasm. The verifier today covers L7+L10 (PR #21) + L13 (PR #37);
+proposal 0001 below addresses why L2–L6 / L15 cannot follow without
+a carrier-format ABI, and lands the codec pre-stage + the long-deferred
+real-AffineScript fixture corpus.
+
+**3 PRs filed, auto-merge SQUASH armed:**
+
+- **#76** — `docs/proposals/0001-multi-producer-carrier-section.adoc`.
+  Proposes two new producer-neutral custom sections
+  (`typedwasm.regions` for L2–L6, `typedwasm.capabilities` for L15)
+  alongside the existing `typedwasm.ownership`. Versioned,
+  lenient-readable, field-by-field mapping to `Region.idr` /
+  `Pointer.idr` / `ResourceCapabilities.idr`. Status `[draft]` —
+  blocked on cross-repo review by affinescript and ephapax (both
+  producers of `typedwasm.ownership`). Includes an amendment commit
+  (`7520f00`) recording the resolved Open Question #6 (access-site
+  carrier — option A).
+- **#77** — `cargo feature = "unstable-l2"` codec pre-stage:
+  `typedwasm.regions` parse + build (`section.rs`), 9 round-trip
+  tests, no `verify_region_binding` pass (deliberately omitted —
+  see issue #78). Default surface unchanged; opt-in build for the
+  unstable feature.
+- **#81** — C5.1 real-AffineScript fixture corpus: 4 `.affine`
+  sources + paired `.wasm` bytes + `tests/cross_compat_real.rs`
+  (5 verdict tests) + `.github/workflows/c5-regenerate.yml` drift-
+  detection workflow pinning `affinescript` HEAD
+  `21edc159caee06a930cb7339b3e729ed5627b823`. Closes typed-wasm#35
+  part 2.
+
+**1 issue resolved on the spot:**
+
+- **#78** — access-site carrier gap (discovered while writing the
+  L2 codec; proposal 0001 names regions but does not say how the
+  verifier maps a wasm-level `i32.load offset=N` back to
+  `(region_id, field_id)`). Owner-resolved as option A
+  (per-instruction `typedwasm.access-sites` carrier).
+  Size-measurement comment posted to the issue: across the 6
+  spec examples, Encoding B (LEB128 per field) is the v1
+  recommendation — ~5 B per access, ~1.1% module overhead.
+
+**2 cross-repo review issues filed** (gating proposal 0001
+promotion to `[review]`):
+
+- affinescript#402 — review request, AffineScript-specific
+  producer touchpoints called out (`lib/tw_verify.ml`,
+  `lib/tw_interface.ml`, codegen path).
+- ephapax#165 — review request with the disambiguation note,
+  ephapax-wasm-specific touchpoints (`src/ephapax-wasm/`,
+  `src/ephapax-cli/`).
+
+**Test surface deltas:**
+
+- `typed-wasm-verify` Rust crate: 42 → 47 default tests
+  (+5 C5.1 real-fixture verdict tests).
+- With `--features unstable-l2`: 47 → 52 (+5 with the regions
+  codec round-trip tests; 9 codec tests minus 4 overlap with the
+  base set).
+
+### Proof-debt pass A13 (2026-05-26, same-day continuation)
+
+Per coordinator pre-clearance for items 5 + 7 + 8, this round closes
+the last of the post-A10 audit items at the **statement level**
+(same PR [#72](https://github.com/hyperpolymath/typed-wasm/pull/72)).
+No items remain from that audit; items 7 + 8 are stated as typed
+obligations (full proofs are multi-week and out of one-session
+scope).
+
+- **Item 5a closed** (L13 × L10 cross-level).
+  `ModuleIsolation.idr` imports `Linear` and gains
+  `LinearAcrossBoundary from to regName bs token` (an L13
+  `AccessWitness` paired with an L10 `LinHandle`) plus three
+  theorems: `linearTransferRequiresBoundary` (no-bypass — any
+  non-local handle move requires a concrete boundary in `bs`),
+  `linearTransferLocal` (local-case constructor), and projections
+  `acrossWitness` / `acrossHandle`.
+- **Item 5b closed** (L14 × L13 cross-level).
+  `SessionProtocol.idr` imports `ModuleIsolation` and gains
+  `SessionAcrossBoundary` with `sessionAcrossPreservesState` (the
+  state index survives transfer), `sessionTransferRequiresBoundary`
+  (no-bypass), `sessionTransferLocal` (local-case), and projections.
+  Together they prove a session handle cannot silently change state
+  or escape its module without an L13 witness.
+- **A12 leave-behind closed.**  `Region.idr` gains `RegionsOverlap`
+  (an address inside both region footprints) and
+  `disjointImpliesNoOverlap`, the L7/L10-flavour cross-level lemma
+  that `RegionDisjoint` implies byte-level non-overlap.  Closes the
+  link the A12 disjointness section header explicitly deferred.
+- **Items 7 + 8 stated as obligations.**  New module
+  `TypedWasm.ABI.VerifierSpec` introduces three predicates —
+  `SpecAccepts m` (Idris2 L7+L10 structural acceptance on
+  `ModuleSummary`), `VerifierAccepts m` (opaque; witnessed only by
+  the Rust differential harness via `differentialAccepted`), and
+  `SourceAccepts m` (opaque; witnessed by the source-side harness)
+  — plus two agreement records: `VerifierSpecAgreement` (item 7,
+  Rust verifier ↔ Idris2 spec) and `SourceVerifierAgreement` (item
+  8, source-checker ↔ verifier coverage).  Each record bundles
+  soundness + completeness so partial proofs can land one face at
+  a time.  `sourceImpliesSpec` / `specImpliesSource` are the
+  composition lemmas under both agreements.  The opaque acceptance
+  predicates make the trust boundary inspectable: every
+  `VerifierAccepts` / `SourceAccepts` use traces back to a named
+  fixture id.
+
+**15 new named items added** (`LinearAcrossBoundary`,
+`linearTransferRequiresBoundary`, `linearTransferLocal`,
+`SessionAcrossBoundary`, `sessionAcrossPreservesState`,
+`sessionTransferRequiresBoundary`, `sessionTransferLocal`,
+`RegionsOverlap`, `disjointImpliesNoOverlap`, `regionsOverlapSym`,
+`SpecAccepts`, `VerifierAccepts`, `SourceAccepts`,
+`IntentsLinearAcceptable`, `VerifierSpecAgreement` /
+`SourceVerifierAgreement` / `sourceImpliesSpec` /
+`specImpliesSource`).  Regression: **68/68** under Idris2 0.8.0
+(both layers: source grep + `idris2 --build`).  Package now 22
+modules (was 21 — `VerifierSpec` is the only addition).
+
+**Closed after A13** (post-A10 audit complete): items 5a, 5b, 6
+leave-behind, 7-statement, 8-statement.  Long-tail: full proofs of
+the two agreement records; `LevelAttestation` reindexed-by-witness
+redesign (standards#130 / epic standards#124); WasmCert-Isabelle
+tie-back; emitted-wasm byte-equality.
+
+### Proof-debt pass A12 (2026-05-26, same-day continuation)
+
+Per coordinator clearance, three more untracked items from the post-A10
+audit are closed in the same PR ([#72](https://github.com/hyperpolymath/typed-wasm/pull/72)):
+
+- **Item 4 closed IN FULL.** A11's partial `composeAssocLists`
+  (list-side only) is superseded by `composeAssoc`, which proves
+  three-way associativity of `composeCertificates` across all three
+  fields. Enabled by switching `composeCertificates` from
+  `Prelude.min` to `Data.Nat.minimum` (structural Nat), making
+  `minimumAssociative` apply directly. `composeHighProvenComm` adds
+  Nat-side commutativity via `minimumCommutative`. The old
+  `composeAssocLists` kept as a back-compat corollary.
+- **Item 6 closed.** `Region.idr` gains `RegionDisjoint r1 r2` (two
+  constructors for byte-footprint non-overlap, both orderings) plus
+  `regionDisjointSym` proving symmetry. Cross-level theorem linking
+  disjointness to L7 + L10 deferred to a future pass — the predicate
+  itself was the missing primitive.
+- **Item 3 closed.** `ResourceCapabilities.idr` gains `containedConcat`
+  (proving `ContainedIn` distributes over `++`) plus
+  `jointBudgetCompose`, the L8 ↔ L15 joint composition theorem.
+  Composing two functions with individual `EffectSubsumes` and
+  `FunctionCaps` witnesses yields a single function whose combined
+  effects subsume combined actuals (via L8 `subsumeCompose`) AND
+  whose combined required caps are contained in the owner module's
+  declared caps (via the new `containedConcat` + the existing
+  `l15bSoundness`).
+
+**6 new theorems added** (`composeAssoc`, `composeHighProvenComm`,
+`RegionDisjoint`, `regionDisjointSym`, `containedConcat`,
+`jointBudgetCompose`). Regression: **50/50** under Idris2 0.8.0
+(both layers: source grep + `idris2 --build`).
+
+Open after A12 (→ A13): post-A10 audit items 5 (L13×L10, L14×L13
+cross-level), 7 (Rust verifier ↔ Idris2 spec equivalence), 8
+(source-checker ↔ verifier coverage agreement).
+
+### Proof-debt pass A10 + A11 (2026-05-26)
+
+Two same-day rounds attacking proof debt against `PROOF-NEEDS.md`. PR
+[#72](https://github.com/hyperpolymath/typed-wasm/pull/72).
+
+**A10 (named, deferred)** — closes the last two items the 2026-05-18
+reconciliation banner still called "deferred":
+
+- **L12 freshness propagation under concurrent writes** (Epistemic.idr).
+  8 new theorems headlined by `freshnessPropagatesUnderWrites :
+  Fresh mod field v v -> LT v cur -> Sync mod field v cur ->
+  Fresh mod field cur cur`. Supporting: `concurrentWriteStales`,
+  `resyncRecoversFresh`, `freshNotStale`, `freshImpliesEqual`,
+  `staleImpliesLT`, `syncChainEndsFresh`, and the
+  `epistemicFreshness : (p : Level12Proof) -> Fresh …` projector that
+  closes PROOF-NEEDS §P1.2 directly.
+- **`compatCommute` mutual-subschema case** (MultiModule.idr).
+  `compatCommute : ModuleCompat from to imp exp -> SchemaSub exp imp ->
+  ModuleCompat to from exp imp` + `noSpoofingBidir` corollary.
+  Second worked example (`serviceA`/`serviceB` with permuted schemas)
+  exercises the theorem on a non-trivial input.
+- **`tests/proof/regression.mjs` Layer 2 fixed** from a silent no-op
+  (`--check typed-wasm.ipkg` tried to parse the ipkg as `.idr`) to an
+  actual `idris2 --build`.
+
+**A11 (untracked, audit-driven)** — closes 3 of 8 untracked gaps the
+A10 post-mortem surfaced (full inventory:
+`project_typed_wasm_proof_debt_post_a10.md`):
+
+- **Item 1** — `Sync.WriteSync` no longer admits fake writers. The
+  constructor now requires a `FieldVersion` witness with three
+  projection equalities (`fv.field = field`, `fv.version = newVersion`,
+  `fv.lastWriter = mod`). Adversarial constructions like
+  `WriteSync (MkFieldVersion otherField …) Refl Refl Refl` are now
+  ill-typed unless the witness coincides with the indexed
+  field/version/writer. Corollary `writeSyncIdentifiesWriter`
+  extracts the witness.
+- **Item 2** — `Knowledge.Observed` is grounded in a `Sync` event.
+  Constructor now takes `(sync : Sync mod field oldVer ver)`, so
+  `Observed mod field ver` cannot be inhabited without a
+  causally-prior write. Corollary `observedHasProvenance` reads the
+  prior version + Sync witness back out.
+- **Item 4 (partial)** — first algebraic laws for
+  `composeCertificates`. `achievedAppendSplit` proves
+  `LevelAchievedIn n (xs ++ ys) -> Either (LevelAchievedIn n xs)
+  (LevelAchievedIn n ys)`; `composeAssocLists` proves list-level
+  associativity of three-way composition; `composeAchievedSym` is the
+  symmetric counterpart of `composeAchievedL`/`R`. The `Nat`-min
+  commutativity on `highestProven` is **deferred to A12**:
+  `Prelude.min Nat = if x < y then x else y` is non-structural and
+  does not reduce to `Refl` on symbolic inputs.
+
+**Test surface:** 13 named theorems added (8 in A10, 5 in A11), all
+guarded by both `tests/proof/regression.mjs` layers (Layer 1 source
+grep + Layer 2 `idris2 --build`). Total: **44/44 passing** under
+Idris2 0.8.0.
+
+**Open after A11** (→ A12): post-A10-audit items 3 (L8↔L15 joint
+budget), 5 (L13×L10, L14×L13 cross-level), 6 (region disjointness in
+linear memory), 7 (Rust verifier ↔ Idris2 spec equivalence), 8
+(source-checker ↔ verifier coverage agreement), plus the Nat-min half
+of item 4.
+
 ### Phase 0 closure pass (2026-05-24 / 2026-05-25)
 
 Two sessions of focused engineering-surface stabilisation, closing the

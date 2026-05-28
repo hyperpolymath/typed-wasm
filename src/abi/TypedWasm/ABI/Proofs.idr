@@ -17,6 +17,8 @@
 
 module TypedWasm.ABI.Proofs
 
+import Data.List
+import Data.Nat
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.TypedAccess
 import TypedWasm.ABI.Levels
@@ -150,10 +152,17 @@ attestL15_CapsSafe _ = MkAttestation 15 Proven
 ||| The composed certificate takes the MINIMUM highest level:
 ||| if Module A is proven to Level 8 and Module B to Level 6,
 ||| the combined guarantee is Level 6 (the weakest link).
+|||
+||| Uses `Data.Nat.minimum` (the structural Nat version) rather than the
+||| Ord-derived `Prelude.min` so that `minimumAssociative` /
+||| `minimumCommutative` from `Data.Nat` apply directly — this is what
+||| makes `composeAssoc` and `composeHighProvenComm` (A12, 2026-05-26) one
+||| line each.  The numeric behaviour is identical; only the proof
+||| ergonomics change.
 public export
 composeCertificates : ProofCertificate -> ProofCertificate -> ProofCertificate
 composeCertificates (MkCertificate ls1 h1 mm1) (MkCertificate ls2 h2 mm2) =
-  MkCertificate (ls1 ++ ls2) (min h1 h2) (mm1 ++ mm2)
+  MkCertificate (ls1 ++ ls2) (minimum h1 h2) (mm1 ++ mm2)
 
 -- ============================================================================
 -- Level-Specific Certificate Constructors (PROOF-NEEDS §P1.1 — A7)
@@ -497,6 +506,22 @@ achievedAppendR : {0 n : Nat}
 achievedAppendR []        p = p
 achievedAppendR (_ :: xs) p = LAThere (achievedAppendR xs p)
 
+||| Decomposition: a level achieved in `xs ++ ys` was achieved in
+||| either `xs` or `ys`.  Inverse of `achievedAppendL` /
+||| `achievedAppendR`; needed for the `composeAchievedSym`
+||| semantic-commutativity theorem (A11.3).
+public export
+achievedAppendSplit : {0 n : Nat}
+                   -> (xs, ys : List LevelAttestation)
+                   -> LevelAchievedIn n (xs ++ ys)
+                   -> Either (LevelAchievedIn n xs) (LevelAchievedIn n ys)
+achievedAppendSplit []        ys p           = Right p
+achievedAppendSplit (_ :: _)  _  LAHere      = Left LAHere
+achievedAppendSplit (_ :: xs) ys (LAThere p) =
+  case achievedAppendSplit xs ys p of
+    Left  inXs => Left  (LAThere inXs)
+    Right inYs => Right inYs
+
 ||| Predicate lifted to full proof certificates: "this certificate
 ||| claims level `n`".
 public export
@@ -522,6 +547,90 @@ composeAchievedR : (c1, c2 : ProofCertificate)
                 -> LevelAchieved n (composeCertificates c1 c2)
 composeAchievedR (MkCertificate a1 _ _) (MkCertificate _ _ _) p =
   achievedAppendR a1 p
+
+-- ============================================================================
+-- Composition algebra (A11.3, 2026-05-26 — closes the unstated
+-- "composeCertificates algebraic laws" residual debt item)
+-- ============================================================================
+
+||| `composeCertificates` is **fully** associative — list parts,
+||| multi-module parts, and the `highestProven` Nat side all align.
+||| List components compose via `appendAssociative`; the Nat side
+||| via `minimumAssociative` from `Data.Nat` (now applicable because
+||| `composeCertificates` was switched from the Ord-generic
+||| `Prelude.min` to the structural `Data.Nat.minimum` at A12).
+|||
+||| Supersedes the A11 list-only `composeAssocLists` (kept as a
+||| corollary below for back-compat); closes post-A10 audit item 4 in
+||| full.
+public export
+composeAssoc :
+  (a, b, c : ProofCertificate) ->
+  composeCertificates (composeCertificates a b) c
+  = composeCertificates a (composeCertificates b c)
+composeAssoc (MkCertificate ls1 h1 mm1)
+             (MkCertificate ls2 h2 mm2)
+             (MkCertificate ls3 h3 mm3) =
+  rewrite appendAssociative ls1 ls2 ls3 in
+  rewrite appendAssociative mm1 mm2 mm3 in
+  rewrite minimumAssociative h1 h2 h3 in
+  Refl
+
+||| List-level associativity of `composeCertificates`.  Original A11
+||| statement; now derived as a corollary of the full A12 `composeAssoc`
+||| via projection on the first field of the equated certificates.
+public export
+composeAssocLists :
+  (a, b, c : ProofCertificate) ->
+  let MkCertificate as _ _ = composeCertificates (composeCertificates a b) c
+      MkCertificate bs _ _ = composeCertificates a (composeCertificates b c)
+  in as = bs
+composeAssocLists (MkCertificate ls1 _ _)
+                  (MkCertificate ls2 _ _)
+                  (MkCertificate ls3 _ _) =
+  sym (appendAssociative ls1 ls2 ls3)
+
+||| The `highestProven` Nat component of `composeCertificates` is
+||| **commutative**: the minimum doesn't care which side an operand
+||| comes from.  This is the Nat-side counterpart of
+||| `composeAchievedSym`'s list-side achievement-swap.
+|||
+||| Closes the second half of post-A10 audit item 4 (algebraic laws
+||| for `composeCertificates`).  Coordinator hint (2026-05-26)
+||| pointed at `minimumCommutative` from `Data.Nat` as the right
+||| primitive — works because `composeCertificates` was switched to
+||| `minimum` at A12.
+public export
+composeHighProvenComm :
+  (a, b : ProofCertificate) ->
+  let MkCertificate _ ha _ = composeCertificates a b
+      MkCertificate _ hb _ = composeCertificates b a
+  in ha = hb
+composeHighProvenComm (MkCertificate _ h1 _) (MkCertificate _ h2 _) =
+  minimumCommutative h1 h2
+
+||| Semantic commutativity of composition under `LevelAchieved`.
+||| `composeCertificates` is NOT strictly commutative — the list
+||| components are concatenated and concatenation is not commutative
+||| on raw lists.  But for the property that actually matters at the
+||| certificate level — "level N is achieved" — the order is
+||| irrelevant: a level achieved in `compose a b` is also achieved in
+||| `compose b a`.
+|||
+||| Proved by splitting `achieved-in-append` into the two component
+||| cases and re-introducing on the swapped form.  Closes the
+||| "composeCertificates algebra not stated" residual gap from the
+||| post-A10 inventory.
+public export
+composeAchievedSym :
+  {n : Nat} ->
+  (a, b : ProofCertificate) ->
+  LevelAchieved n (composeCertificates a b) ->
+  LevelAchieved n (composeCertificates b a)
+composeAchievedSym {n} (MkCertificate as _ _) (MkCertificate bs _ _) p =
+  case achievedAppendSplit as bs p of
+    Left  inA => achievedAppendR bs inA
+    Right inB => achievedAppendL inB
 
 -- ============================================================================
 -- Proof Erasure Guarantee (PROOF-NEEDS §P3.1)
@@ -729,3 +838,709 @@ attestL15_Sound : {owner : ModuleCaps}
                -> (w : FunctionCaps owner)
                -> LevelAchievedIn 15 [attestL15_CapsSafe w]
 attestL15_Sound _ = LAHere
+
+-- ============================================================================
+-- Witness-indexed attestations (standards#130 long-tail closure)
+-- ============================================================================
+--
+-- A9's `attestLN_Sound` family proves `LevelAchievedIn N [attestLN_X w]`
+-- — i.e. "the certificate provably claims level N".  That is the
+-- weaker face of the soundness story.  The reconciliation banner at
+-- the head of `PROOF-NEEDS.md` (2026-05-18, A9 entry) explicitly
+-- flagged the stronger claim as outstanding:
+--
+--     "Stronger 'attestation entails the level's semantic property'
+--     (needs `LevelAttestation` reindexed by witness) remains tracked
+--     future work under standards#130."
+--
+-- This section closes that residual.  `LevelAttestationW : (n : Nat)
+-- -> Type` is the witness-indexed attestation GADT.  Each constructor
+-- packages the *actual witness* that was used to produce the
+-- attestation, indexed by the level number.  A consumer holding a
+-- `LevelAttestationW N` can project the witness back out (per-level
+-- extractor / "entails-semantic-property" lemma) and use it to
+-- discharge the underlying safety property — not just the
+-- "certificate claims level N" claim.
+--
+-- The design choice mirrors the post-A14 typed-wasm pattern (PR #79
+-- on `VerifierSpec.idr`): the constructor carries the witness, and
+-- the trust-injection moment is at construction time.  The legacy
+-- bridge `toLegacy` projects each `LevelAttestationW N` back to the
+-- unindexed `LevelAttestation` representation, so callers that still
+-- consume `List LevelAttestation` (e.g. `ProofCertificate`'s
+-- `levels` field) are unaffected.  This section is purely additive:
+-- no existing definition is touched, so no prior proof can regress.
+--
+-- Closes the standards#130 long-tail item recorded in the
+-- 2026-05-18 reconciliation banner.
+
+||| Witness-indexed attestation GADT.  One constructor per level;
+||| each carries the witness required by the corresponding
+||| `attestLN_*` smart constructor.  The type index `n` constrains
+||| both the witness shape (each constructor only inhabits the matching
+||| `LevelAttestationW n`) and the semantic property it certifies
+||| (extracting the witness gives back the level-N safety evidence).
+|||
+||| Constructing a value of `LevelAttestationW n` is the legitimate
+||| witness-injection moment for level `n`.  Pattern-matching on the
+||| constructor recovers the exact witness type required to discharge
+||| level `n`'s semantic property.
+|||
+||| Type-level indices are kept RUNTIME-AVAILABLE on these
+||| constructors (no `{0}` erasure) so per-level extractors can
+||| project both the witness AND the indices into a dependent pair.
+||| The legacy `attestLN_*` family erased the same indices because it
+||| discarded them; here we retain them precisely because the
+||| "entails-semantic-property" lemmas need to surface the witness's
+||| type-level context.  Runtime cost is negligible (`Nat` / `String`
+||| / `Schema` etc., no heavy structures).
+public export
+data LevelAttestationW : (n : Nat) -> Type where
+  ||| L1 attestation: a `Schema` value witnesses instruction validity.
+  AttestL1W  : (s : Schema) -> LevelAttestationW 1
+  ||| L2 attestation: a region-binding witness `FieldIn name schema`.
+  AttestL2W  : {name : String} -> {schema : Schema}
+            -> (w : FieldIn name schema)
+            -> LevelAttestationW 2
+  ||| L3 attestation: a `WasmTypeCompat` equality witness.
+  AttestL3W  : {a, b : WasmType}
+            -> (w : WasmTypeCompat a b)
+            -> LevelAttestationW 3
+  ||| L4 attestation: a non-null `Pointer.Ptr`.
+  AttestL4W  : {k : PtrKind} -> {s : Schema} -> {l : Levels.Lifetime}
+            -> (w : Pointer.Ptr k s l NonNull)
+            -> LevelAttestationW 4
+  ||| L5 attestation: a compile-time `InBounds` proof.
+  AttestL5W  : {idx, count : Nat}
+            -> (w : InBounds idx count)
+            -> LevelAttestationW 5
+  ||| L6 attestation: an `AccessResult` recording the access return type.
+  AttestL6W  : {ty : WasmType}
+            -> (w : AccessResult ty)
+            -> LevelAttestationW 6
+  ||| L7 attestation: an `ExclusiveWitness s` proving alias-freeness.
+  AttestL7W  : {s : Schema}
+            -> (w : ExclusiveWitness s)
+            -> LevelAttestationW 7
+  ||| L8 attestation: an `EffectSubsumes declared actual` proof.
+  AttestL8W  : {declared, actual : EffectSet}
+            -> (w : EffectSubsumes declared actual)
+            -> LevelAttestationW 8
+  ||| L9 attestation: a `Lifetime.Outlives` proof.
+  AttestL9W  : {rl, sl : Lifetime.Lifetime}
+            -> (w : Lifetime.Outlives rl sl)
+            -> LevelAttestationW 9
+  ||| L10 attestation: a `CompletedProtocol` linear-usage witness.
+  AttestL10W : {tok : Nat}
+            -> (w : CompletedProtocol tok)
+            -> LevelAttestationW 10
+  ||| L11 attestation: an `AllPairsCosts` cost-bound witness.
+  AttestL11W : {n : Nat}
+            -> (w : AllPairsCosts n)
+            -> LevelAttestationW 11
+  ||| L12 attestation: a `Level12Proof` epistemic-freshness witness.
+  AttestL12W : (w : Level12Proof) -> LevelAttestationW 12
+  ||| L13 attestation: an `IsolatedModule` witness.
+  AttestL13W : (w : IsolatedModule) -> LevelAttestationW 13
+  ||| L14 attestation: a `WellFormedProtocol` witness.
+  AttestL14W : {p : Protocol}
+            -> (w : WellFormedProtocol p)
+            -> LevelAttestationW 14
+  ||| L15 attestation: a `FunctionCaps` containment witness.
+  AttestL15W : {owner : ModuleCaps}
+            -> (w : FunctionCaps owner)
+            -> LevelAttestationW 15
+
+-- ----------------------------------------------------------------------------
+-- Smart constructors mirroring the legacy `attestLN_*` family
+-- ----------------------------------------------------------------------------
+--
+-- Each `attestLNW_*` smart constructor accepts the same witness shape
+-- as the corresponding legacy `attestLN_*` function but returns the
+-- witness-carrying `LevelAttestationW N` instead of the unindexed
+-- `LevelAttestation`.  Callers that want both representations get
+-- them via `toLegacy` below.
+
+public export
+attestL1W_InstructionValid : (s : Schema) -> LevelAttestationW 1
+attestL1W_InstructionValid = AttestL1W
+
+public export
+attestL2W_RegionBound :
+     {name : String} -> {schema : Schema}
+  -> (w : FieldIn name schema)
+  -> LevelAttestationW 2
+attestL2W_RegionBound = AttestL2W
+
+public export
+attestL3W_TypeCompat :
+     {a, b : WasmType}
+  -> (w : WasmTypeCompat a b)
+  -> LevelAttestationW 3
+attestL3W_TypeCompat = AttestL3W
+
+public export
+attestL4W_NullSafe :
+     {k : PtrKind} -> {s : Schema} -> {l : Levels.Lifetime}
+  -> (w : Pointer.Ptr k s l NonNull)
+  -> LevelAttestationW 4
+attestL4W_NullSafe = AttestL4W
+
+public export
+attestL5W_BoundsProof :
+     {idx, count : Nat}
+  -> (w : InBounds idx count)
+  -> LevelAttestationW 5
+attestL5W_BoundsProof = AttestL5W
+
+public export
+attestL6W_ResultType :
+     {ty : WasmType}
+  -> (w : AccessResult ty)
+  -> LevelAttestationW 6
+attestL6W_ResultType = AttestL6W
+
+public export
+attestL7W_AliasFree :
+     {s : Schema}
+  -> (w : ExclusiveWitness s)
+  -> LevelAttestationW 7
+attestL7W_AliasFree = AttestL7W
+
+public export
+attestL8W_EffectSafe :
+     {declared, actual : EffectSet}
+  -> (w : EffectSubsumes declared actual)
+  -> LevelAttestationW 8
+attestL8W_EffectSafe = AttestL8W
+
+public export
+attestL9W_LifetimeSafe :
+     {rl, sl : Lifetime.Lifetime}
+  -> (w : Lifetime.Outlives rl sl)
+  -> LevelAttestationW 9
+attestL9W_LifetimeSafe = AttestL9W
+
+public export
+attestL10W_Linear :
+     {tok : Nat}
+  -> (w : CompletedProtocol tok)
+  -> LevelAttestationW 10
+attestL10W_Linear = AttestL10W
+
+public export
+attestL11W_CostBounded :
+     {n : Nat}
+  -> (w : AllPairsCosts n)
+  -> LevelAttestationW 11
+attestL11W_CostBounded = AttestL11W
+
+public export
+attestL12W_EpistemicFresh : (w : Level12Proof) -> LevelAttestationW 12
+attestL12W_EpistemicFresh = AttestL12W
+
+public export
+attestL13W_Isolated : (w : IsolatedModule) -> LevelAttestationW 13
+attestL13W_Isolated = AttestL13W
+
+public export
+attestL14W_SessionSafe :
+     {p : Protocol}
+  -> (w : WellFormedProtocol p)
+  -> LevelAttestationW 14
+attestL14W_SessionSafe = AttestL14W
+
+public export
+attestL15W_CapsSafe :
+     {owner : ModuleCaps}
+  -> (w : FunctionCaps owner)
+  -> LevelAttestationW 15
+attestL15W_CapsSafe = AttestL15W
+
+-- ----------------------------------------------------------------------------
+-- Witness extractors — "attestation entails the level's semantic property"
+-- ----------------------------------------------------------------------------
+--
+-- The standards#130 long-tail asks for a way to recover the
+-- level-specific semantic-property witness from an attestation.
+-- For `LevelAttestationW N`, this is literally pattern matching:
+-- the constructor packages the witness, so the extractor is a one-line
+-- match that returns it (paired with any existential indices the
+-- witness carries).  Each lemma below is total, no `believe_me`, no
+-- `assert_total`.
+--
+-- The names follow the pattern `attestLNW_Entails<Property>` so a
+-- reader scanning the file sees the semantic claim attached to the
+-- name.  Where the witness carries existential type-level data
+-- (e.g. `ExclusiveWitness s` for an unknown `s`), the extractor
+-- returns a dependent pair `(s ** ExclusiveWitness s)`.
+
+||| L1 entails instruction validity: extract the `Schema` witness.
+public export
+attestL1W_EntailsInstructionValid : LevelAttestationW 1 -> Schema
+attestL1W_EntailsInstructionValid (AttestL1W s) = s
+
+||| L2 entails region-binding: recover the existentially-quantified
+||| `(name, schema)` indices plus the `FieldIn` witness.
+public export
+attestL2W_EntailsRegionBound :
+     LevelAttestationW 2
+  -> (name : String ** schema : Schema ** FieldIn name schema)
+attestL2W_EntailsRegionBound (AttestL2W {name} {schema} w) =
+  (name ** schema ** w)
+
+||| L3 entails type compatibility.
+public export
+attestL3W_EntailsTypeCompat :
+     LevelAttestationW 3
+  -> (a : WasmType ** b : WasmType ** WasmTypeCompat a b)
+attestL3W_EntailsTypeCompat (AttestL3W {a} {b} w) = (a ** b ** w)
+
+||| L4 entails null-safety.
+public export
+attestL4W_EntailsNullSafe :
+     LevelAttestationW 4
+  -> (k : PtrKind
+     ** s : Schema
+     ** l : Levels.Lifetime
+     ** Pointer.Ptr k s l NonNull)
+attestL4W_EntailsNullSafe (AttestL4W {k} {s} {l} w) = (k ** s ** l ** w)
+
+||| L5 entails bounds-safety.
+public export
+attestL5W_EntailsBoundsProof :
+     LevelAttestationW 5
+  -> (idx : Nat ** count : Nat ** InBounds idx count)
+attestL5W_EntailsBoundsProof (AttestL5W {idx} {count} w) =
+  (idx ** count ** w)
+
+||| L6 entails the access-result type.
+public export
+attestL6W_EntailsResultType :
+     LevelAttestationW 6
+  -> (ty : WasmType ** AccessResult ty)
+attestL6W_EntailsResultType (AttestL6W {ty} w) = (ty ** w)
+
+||| L7 entails alias-freeness.  The extractor surfaces the actual
+||| `ExclusiveWitness s` that justifies the L7 claim — anyone with a
+||| `LevelAttestationW 7` can now discharge the L7 semantic property,
+||| not merely the "certificate claims level 7" predicate.
+public export
+attestL7W_EntailsAliasFree :
+     LevelAttestationW 7
+  -> (s : Schema ** ExclusiveWitness s)
+attestL7W_EntailsAliasFree (AttestL7W {s} w) = (s ** w)
+
+||| L8 entails effect-subsumption.
+public export
+attestL8W_EntailsEffectSafe :
+     LevelAttestationW 8
+  -> (declared : EffectSet
+     ** actual : EffectSet
+     ** EffectSubsumes declared actual)
+attestL8W_EntailsEffectSafe (AttestL8W {declared} {actual} w) =
+  (declared ** actual ** w)
+
+||| L9 entails lifetime safety.
+public export
+attestL9W_EntailsLifetimeSafe :
+     LevelAttestationW 9
+  -> (rl : Lifetime.Lifetime
+     ** sl : Lifetime.Lifetime
+     ** Lifetime.Outlives rl sl)
+attestL9W_EntailsLifetimeSafe (AttestL9W {rl} {sl} w) = (rl ** sl ** w)
+
+||| L10 entails linearity (single-consumption).
+public export
+attestL10W_EntailsLinear :
+     LevelAttestationW 10
+  -> (tok : Nat ** CompletedProtocol tok)
+attestL10W_EntailsLinear (AttestL10W {tok} w) = (tok ** w)
+
+||| L11 entails cost-boundedness.
+public export
+attestL11W_EntailsCostBounded :
+     LevelAttestationW 11
+  -> (n : Nat ** AllPairsCosts n)
+attestL11W_EntailsCostBounded (AttestL11W {n} w) = (n ** w)
+
+||| L12 entails epistemic freshness.
+public export
+attestL12W_EntailsEpistemicFresh : LevelAttestationW 12 -> Level12Proof
+attestL12W_EntailsEpistemicFresh (AttestL12W w) = w
+
+||| L13 entails module isolation.
+public export
+attestL13W_EntailsIsolated : LevelAttestationW 13 -> IsolatedModule
+attestL13W_EntailsIsolated (AttestL13W w) = w
+
+||| L14 entails session-protocol safety.
+public export
+attestL14W_EntailsSessionSafe :
+     LevelAttestationW 14
+  -> (p : Protocol ** WellFormedProtocol p)
+attestL14W_EntailsSessionSafe (AttestL14W {p} w) = (p ** w)
+
+||| L15 entails resource-capability containment.
+public export
+attestL15W_EntailsCapsSafe :
+     LevelAttestationW 15
+  -> (owner : ModuleCaps ** FunctionCaps owner)
+attestL15W_EntailsCapsSafe (AttestL15W {owner} w) = (owner ** w)
+
+-- ----------------------------------------------------------------------------
+-- Legacy bridge — `LevelAttestationW n` → `LevelAttestation`
+-- ----------------------------------------------------------------------------
+--
+-- Callers that still consume the unindexed `LevelAttestation` (e.g.
+-- `ProofCertificate`'s `levels : List LevelAttestation` field) can
+-- project a witness-indexed attestation to the legacy shape by
+-- discarding the witness and recording the level + Proven status.
+-- This is the back-compat one-way arrow; in the other direction,
+-- `LevelAttestation -> LevelAttestationW n` is not constructible
+-- without a witness, by design.
+
+||| Project a witness-indexed attestation to the legacy `LevelAttestation`
+||| representation.  The witness is discarded, but the soundness story
+||| is preserved: the legacy `MkAttestation n Proven` corresponds to a
+||| value that was constructed *with* a witness (visible at the source
+||| site that called `toLegacy`).
+public export
+toLegacy : {n : Nat} -> LevelAttestationW n -> LevelAttestation
+toLegacy {n} _ = MkAttestation n Proven
+
+-- ----------------------------------------------------------------------------
+-- Round-trip equalities with the legacy `attestLN_*` family
+-- ----------------------------------------------------------------------------
+--
+-- The legacy `attestLN_X w = MkAttestation N Proven` definition is
+-- definitionally equal to `toLegacy (attestLNW_X w)`.  The fifteen
+-- `Refl` equalities below pin that down at the source level so any
+-- future change that drifts the two representations apart is caught
+-- by the typechecker (and by the regression test's Layer 1 grep).
+
+public export
+toLegacyMatchesL1 : (s : Schema)
+                 -> toLegacy (attestL1W_InstructionValid s)
+                  = attestL1_InstructionValid s
+toLegacyMatchesL1 _ = Refl
+
+public export
+toLegacyMatchesL2 : {name : String} -> {schema : Schema}
+                 -> (w : FieldIn name schema)
+                 -> toLegacy (attestL2W_RegionBound w)
+                  = attestL2_RegionBound w
+toLegacyMatchesL2 _ = Refl
+
+public export
+toLegacyMatchesL3 : {a, b : WasmType}
+                 -> (w : WasmTypeCompat a b)
+                 -> toLegacy (attestL3W_TypeCompat w)
+                  = attestL3_TypeCompat w
+toLegacyMatchesL3 _ = Refl
+
+public export
+toLegacyMatchesL4 : {k : PtrKind} -> {s : Schema} -> {l : Levels.Lifetime}
+                 -> (w : Pointer.Ptr k s l NonNull)
+                 -> toLegacy (attestL4W_NullSafe w)
+                  = attestL4_NullSafe w
+toLegacyMatchesL4 _ = Refl
+
+public export
+toLegacyMatchesL5 : {idx, count : Nat}
+                 -> (w : InBounds idx count)
+                 -> toLegacy (attestL5W_BoundsProof w)
+                  = attestL5_BoundsProof w
+toLegacyMatchesL5 _ = Refl
+
+public export
+toLegacyMatchesL6 : {ty : WasmType}
+                 -> (w : AccessResult ty)
+                 -> toLegacy (attestL6W_ResultType w)
+                  = attestL6_ResultType w
+toLegacyMatchesL6 _ = Refl
+
+public export
+toLegacyMatchesL7 : {s : Schema}
+                 -> (w : ExclusiveWitness s)
+                 -> toLegacy (attestL7W_AliasFree w)
+                  = attestL7_AliasFree w
+toLegacyMatchesL7 _ = Refl
+
+public export
+toLegacyMatchesL8 : {declared, actual : EffectSet}
+                 -> (w : EffectSubsumes declared actual)
+                 -> toLegacy (attestL8W_EffectSafe w)
+                  = attestL8_EffectSafe w
+toLegacyMatchesL8 _ = Refl
+
+public export
+toLegacyMatchesL9 : {rl, sl : Lifetime.Lifetime}
+                 -> (w : Lifetime.Outlives rl sl)
+                 -> toLegacy (attestL9W_LifetimeSafe w)
+                  = attestL9_LifetimeSafe w
+toLegacyMatchesL9 _ = Refl
+
+public export
+toLegacyMatchesL10 : {tok : Nat}
+                  -> (w : CompletedProtocol tok)
+                  -> toLegacy (attestL10W_Linear w)
+                   = attestL10_Linear w
+toLegacyMatchesL10 _ = Refl
+
+public export
+toLegacyMatchesL11 : {n : Nat}
+                  -> (w : AllPairsCosts n)
+                  -> toLegacy (attestL11W_CostBounded w)
+                   = attestL11_CostBounded w
+toLegacyMatchesL11 _ = Refl
+
+public export
+toLegacyMatchesL12 : (w : Level12Proof)
+                  -> toLegacy (attestL12W_EpistemicFresh w)
+                   = attestL12_EpistemicFresh w
+toLegacyMatchesL12 _ = Refl
+
+public export
+toLegacyMatchesL13 : (w : IsolatedModule)
+                  -> toLegacy (attestL13W_Isolated w)
+                   = attestL13_Isolated w
+toLegacyMatchesL13 _ = Refl
+
+public export
+toLegacyMatchesL14 : {p : Protocol}
+                  -> (w : WellFormedProtocol p)
+                  -> toLegacy (attestL14W_SessionSafe w)
+                   = attestL14_SessionSafe w
+toLegacyMatchesL14 _ = Refl
+
+public export
+toLegacyMatchesL15 : {owner : ModuleCaps}
+                  -> (w : FunctionCaps owner)
+                  -> toLegacy (attestL15W_CapsSafe w)
+                   = attestL15_CapsSafe w
+toLegacyMatchesL15 _ = Refl
+
+-- ----------------------------------------------------------------------------
+-- Achievement bridge — witness-indexed attestation → `LevelAchievedIn`
+-- ----------------------------------------------------------------------------
+--
+-- The legacy A9 `attestLN_Sound` lemmas prove `LevelAchievedIn N
+-- [attestLN_X w]`.  The witness-indexed analogue is uniform: for
+-- any `LevelAttestationW n`, the singleton list `[toLegacy att]`
+-- contains `MkAttestation n Proven` at its head, hence
+-- `LevelAchievedIn n [toLegacy att]`.  One lemma covers all 15
+-- levels — the witness was retained through construction and is
+-- still available at the consumer via the `attestLNW_Entails*`
+-- extractors above.
+
+||| For any witness-indexed attestation of level `n`, the singleton
+||| legacy-projected list witnesses `LevelAchievedIn n`.  This
+||| subsumes the fifteen per-level `attestLN_Sound` lemmas under the
+||| witness-carrying redesign.
+public export
+attestLW_AchievedIn :
+     {n : Nat}
+  -> (att : LevelAttestationW n)
+  -> LevelAchievedIn n [toLegacy att]
+attestLW_AchievedIn _ = LAHere
+
+-- ============================================================================
+-- WitnessCertificate — the certificate lifted to witness-carrying form
+-- ============================================================================
+--
+-- `LevelAttestationW n` upgrades a single attestation to witness-
+-- carrying form.  `ProofCertificate` still uses `List LevelAttestation`
+-- (unindexed) for its `levels` field, so a heterogeneous certificate
+-- (different levels with different witness types) can't be built
+-- directly out of `LevelAttestationW n`s — Idris2 lists are
+-- homogeneous, and each `LevelAttestationW n` lives at a different
+-- type per level.
+--
+-- The standard fix is an existential wrapper: `SomeAttestationW`
+-- packages a `LevelAttestationW n` for *some* `n`, hiding the index
+-- under the constructor.  A `List SomeAttestationW` is then
+-- homogeneous and can replace `List LevelAttestation` in a
+-- witness-carrying certificate.
+--
+-- The level number is RETAINED on `SomeAttestationW` (no `{0}`
+-- erasure) so it can be projected at the consumer side without
+-- losing information.  This mirrors the design choice on
+-- `LevelAttestationW` itself.
+--
+-- Bridge `witnessToLegacy : WitnessCertificate -> ProofCertificate`
+-- projects each `SomeAttestationW` down to the legacy unindexed shape
+-- and reassembles a `ProofCertificate`.  Pure projection; no trust
+-- injection.
+
+||| Existential wrapper hiding the level index.  Constructing one
+||| packages a `LevelAttestationW n` for *some* `n`; pattern-matching
+||| recovers both `n` and the witness-carrying attestation.
+|||
+||| The level index is RETAINED at runtime (no `{0}` erasure) so
+||| consumers can project the level number without losing the
+||| index-witness pairing.
+public export
+data SomeAttestationW : Type where
+  MkSomeAttW : {n : Nat}
+            -> (att : LevelAttestationW n)
+            -> SomeAttestationW
+
+||| Project the level index of a wrapped witness attestation.
+public export
+someAttLevel : SomeAttestationW -> Nat
+someAttLevel (MkSomeAttW {n} _) = n
+
+||| Project the wrapped attestation back down to the legacy unindexed
+||| `LevelAttestation` shape via `toLegacy`.
+public export
+someAttToLegacy : SomeAttestationW -> LevelAttestation
+someAttToLegacy (MkSomeAttW {n} att) = toLegacy att
+
+||| `WitnessCertificate` — `ProofCertificate` lifted to
+||| witness-carrying form.  Same three fields as `ProofCertificate`
+||| but `levels` carries `SomeAttestationW` (witness-retained) instead
+||| of `LevelAttestation` (witness-discarded).
+|||
+||| `witnessToLegacy` below projects a `WitnessCertificate` down to a
+||| `ProofCertificate` for back-compat with existing consumers
+||| (`LevelAchieved`, `composeAchievedL`/`R`, etc.).
+public export
+record WitnessCertificate where
+  constructor MkWitnessCert
+  witnessLevels       : List SomeAttestationW
+  witnessHighestProven : Nat
+  witnessMultiModule  : List CompatCertificate
+
+||| Project each `SomeAttestationW` to legacy `LevelAttestation`
+||| via explicit recursion (not `map`-eta, so it reduces on `Nil`
+||| definitionally — needed for the bridge round-trip `Refl`s below).
+public export
+witnessLevelsToLegacy :
+     List SomeAttestationW -> List LevelAttestation
+witnessLevelsToLegacy []        = []
+witnessLevelsToLegacy (x :: xs) = someAttToLegacy x :: witnessLevelsToLegacy xs
+
+||| Bridge: `WitnessCertificate -> ProofCertificate`.  Each
+||| `SomeAttestationW` in the levels list is downgraded to
+||| `LevelAttestation`; the other two fields pass through unchanged.
+||| Total, no `believe_me`, no `assert_total`.
+public export
+witnessToLegacy : WitnessCertificate -> ProofCertificate
+witnessToLegacy (MkWitnessCert ls hi mm) =
+  MkCertificate (witnessLevelsToLegacy ls) hi mm
+
+-- ----------------------------------------------------------------------------
+-- Composition of witness certificates
+-- ----------------------------------------------------------------------------
+--
+-- Mirrors `composeCertificates : ProofCertificate ->
+-- ProofCertificate -> ProofCertificate` but operates on the
+-- witness-carrying record.  Concatenates the witness-attestation
+-- lists, takes the minimum highest-proven, concatenates the
+-- multi-module compatibility lists.
+--
+-- Compatibility with the legacy composition is captured by the
+-- `composeWitnessLegacyAgree` lemma below: legacy composition of
+-- the projections equals projection of the witness composition.
+
+||| Compose two witness certificates by concatenation + minimum.
+public export
+composeWitness :
+     WitnessCertificate -> WitnessCertificate -> WitnessCertificate
+composeWitness (MkWitnessCert ls1 h1 mm1) (MkWitnessCert ls2 h2 mm2) =
+  MkWitnessCert (ls1 ++ ls2) (min h1 h2) (mm1 ++ mm2)
+
+-- ----------------------------------------------------------------------------
+-- Bridge / composition compatibility lemma
+-- ----------------------------------------------------------------------------
+
+||| Helper: `witnessLevelsToLegacy` distributes over `++`.  This is
+||| just `mapAppend` from the standard library (`map` over `++`),
+||| but we prove it inline so the next lemma can be a one-line
+||| rewrite without depending on the exact stdlib export name.
+public export
+witnessLevelsToLegacyAppend :
+     (xs, ys : List SomeAttestationW)
+  -> witnessLevelsToLegacy (xs ++ ys)
+   = witnessLevelsToLegacy xs ++ witnessLevelsToLegacy ys
+witnessLevelsToLegacyAppend []        ys = Refl
+witnessLevelsToLegacyAppend (x :: xs) ys =
+  rewrite witnessLevelsToLegacyAppend xs ys in Refl
+
+||| Composition compatibility: composing the projections equals
+||| projecting the composition.  Pin-down lemma ensuring the
+||| witness-side composition stays consistent with the legacy one
+||| under projection.
+|||
+||| `composeCertificates (witnessToLegacy c1) (witnessToLegacy c2) =
+||| witnessToLegacy (composeWitness c1 c2)`
+public export
+composeWitnessLegacyAgree :
+     (c1, c2 : WitnessCertificate)
+  -> composeCertificates (witnessToLegacy c1) (witnessToLegacy c2)
+   = witnessToLegacy (composeWitness c1 c2)
+composeWitnessLegacyAgree (MkWitnessCert ls1 _ _) (MkWitnessCert ls2 _ _) =
+  rewrite witnessLevelsToLegacyAppend ls1 ls2 in Refl
+
+-- ----------------------------------------------------------------------------
+-- WitnessAchieved — predicate lifted to the new certificate
+-- ----------------------------------------------------------------------------
+--
+-- The legacy `LevelAchieved n c` is `LevelAchievedIn n c.levels`,
+-- where `levels : List LevelAttestation`.  The witness-side analogue
+-- `WitnessAchieved n c` first projects to legacy via
+-- `witnessToLegacy` and then asks for the same predicate on the
+-- result.  This keeps the surface identical and makes the bridge
+-- proof a one-liner.
+
+||| `WitnessAchieved n c` — witness certificate `c` claims level `n`,
+||| under the back-compat projection to `ProofCertificate`.
+public export
+WitnessAchieved : (n : Nat) -> WitnessCertificate -> Type
+WitnessAchieved n c = LevelAchieved n (witnessToLegacy c)
+
+||| Identity bridge: `WitnessAchieved` is definitionally equal to
+||| `LevelAchieved` on the projection — there is no information loss
+||| in the bridge from the achievement-predicate's point of view.
+public export
+witnessAchievedIsLegacy :
+     {n : Nat} -> {c : WitnessCertificate}
+  -> WitnessAchieved n c = LevelAchieved n (witnessToLegacy c)
+witnessAchievedIsLegacy = Refl
+
+-- ----------------------------------------------------------------------------
+-- Smart constructors / inhabitants
+-- ----------------------------------------------------------------------------
+
+||| Empty witness certificate.  No attestations, `highestProven = 0`,
+||| no multi-module entries.  Concrete inhabitant proving the record
+||| is constructible without external trust.
+public export
+emptyWitnessCertificate : WitnessCertificate
+emptyWitnessCertificate = MkWitnessCert [] 0 []
+
+||| Smart constructor: wrap a single witness attestation as a
+||| `SomeAttestationW`.  Inferred level index.
+public export
+someAtt : {n : Nat} -> LevelAttestationW n -> SomeAttestationW
+someAtt {n} att = MkSomeAttW {n} att
+
+||| Singleton witness certificate: one attestation, `highestProven = n`,
+||| no multi-module entries.
+public export
+singletonWitnessCertificate :
+     {n : Nat} -> LevelAttestationW n -> WitnessCertificate
+singletonWitnessCertificate {n} att =
+  MkWitnessCert [MkSomeAttW {n} att] n []
+
+||| Empty bridge round-trip: the legacy projection of an empty
+||| witness certificate is the empty proof certificate.  Inlined LHS
+||| (no `emptyWitnessCertificate` indirection) to keep the equality
+||| at definitional depth — `let`-bound top-level values don't unfold
+||| through `Refl` in Idris2 0.8.0.
+public export
+emptyWitnessToLegacy :
+     witnessToLegacy (MkWitnessCert [] 0 [])
+   = MkCertificate [] 0 []
+emptyWitnessToLegacy = Refl
