@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+= ARG-PROFILE — typed-wasm
+:toc: left
+:toclevels: 2
+
+[cols="1,3"]
+|===
+| Field | Value
+
+| Artefact | typed-wasm (compilation target, language-shaped)
+| Repository | https://github.com/hyperpolymath/typed-wasm
+| Current ARG Grade | *D*  (X \| F \| E \| D \| C \| B \| A)
+| Assessed | 2026-05-28
+| Assessor | Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+| ARG Spec Version | 1.0
+| TRG Profile | spec/TRG-PROFILE.adoc
+| FRG Profile | spec/FRG-PROFILE.adoc
+| CRG Profile | spec/CRG-PROFILE.adoc
+|===
+
+== About this profile
+
+typed-wasm is not a user-facing language but a *language-shaped
+compilation target*: it has a defined grammar (binary + textual
+form per `spec/grammar.ebnf`), instruction AST, operational
+semantics (per `spec/type-safety-levels-for-wasm.adoc`), a layered
+type system (L1-L10 checked, L11-L12 draft, L13-L16 live in v1.4
+and v1.5 per `LEVEL-STATUS.md`, L17 reserved), and a runtime
+contract (WebAssembly executor + verifier crate). ARG applies to
+it the same way it applies to a language, with the understanding
+that *"adoption"* means *"downstream languages targeting it as a
+compilation backend"* rather than end-users writing it.
+
+ARG = *D*. The full chain of axes:
+
+* ARG: *D* (this profile)
+* TRG: *C* (per `spec/TRG-PROFILE.adoc`)
+* FRG: *C* (per `spec/FRG-PROFILE.adoc` — 22 Idris2 verifier files
+  with QTT linearity + dependent types; A10 closure landed PR #79
+  inhabiting `VerifierSpecAgreement` + `SourceVerifierAgreement`)
+* CRG: *D* (per `spec/CRG-PROFILE.adoc`; `typed-wasm-verify` v0.1.0
+  not yet on crates.io)
+* RSR: Compliant at TRG-C level
+
+Cross-axis rule: ARG ≤ TRG holds (TRG = C ≥ ARG = D). ARG can
+climb to C without TRG promotion because TRG is already C.
+
+== Grade rationale (evidence for D)
+
+[cols="2,1,4", options="header"]
+|===
+| Criterion | Met? | Evidence
+
+| *D1 — Landing page / README*
+| YES
+| `README.adoc` (sectioned: Specification and surface syntax / Proofs and implementation / Examples / Status and strategy) + `EXPLAINME.adoc` + `QUICKSTART.adoc`.
+
+| *D2 — Elevator pitch*
+| YES
+| README header pitches typed-wasm as a layered safety-bearing compilation target for hyperpolymath languages.
+
+| *D3 — Provenance*
+| YES
+| `LICENSE` (MPL-2.0), `CHANGELOG.md`, `LEVEL-STATUS.md` tracks active version (v1.5), `Cargo.toml` workspace shape.
+
+| *Required TRG grade (ARG-D ⇒ TRG ≥ D)*
+| YES
+| TRG-C — see spec/TRG-PROFILE.adoc.
+
+| *Onboarding O1 — 5-minute hello-world*
+| PARTIAL
+| `examples/01-single-module.twasm` + 5 more example modules; consumer-side QUICKSTART exists but not measured against a 5-minute floor.
+
+| *Onboarding O2 — Tutorial covering distinctive features*
+| YES
+| The 6 example `.twasm` files cover module structure, multi-module, ownership/linearity, ECS, tropical cost, epistemic sync — the load-bearing safety dimensions.
+
+| *Onboarding O3 — Playground*
+| PARTIAL
+| `examples/web-project-deno.json` ships a runnable Deno-based playground harness; no public web playground yet.
+
+| *Onboarding O4 — Cookbook in ≥ 2 substantive domains*
+| YES
+| `features/{boj-server,panic-attacker,ssg}/` — three substantive consumer surfaces; examples span 6 domains.
+
+| *Reference R1 — Reference manual*
+| YES
+| `spec/type-safety-levels-for-wasm.adoc` (load-bearing) + `spec/L13-L16-reserved-syntax.adoc` + `spec/async-convergence-abi.adoc` + `docs/proposals/`.
+
+| *Reference R2 — Stdlib reference*
+| YES
+| `src/abi/Layout/Stdlib.idr` — typed stdlib surface declared at Idris2 level.
+
+| *Reference R3 — Formal grammar*
+| YES
+| `spec/grammar.ebnf` (load-bearing) + parsing handled by `Parser.affine` in the AffineScript surface.
+
+| *Reference R4 — Operational/denotational semantics*
+| YES
+| `spec/type-safety-levels-for-wasm.adoc` covers the per-level operational semantics. Mechanised semantics in 22 Idris2 files at `src/abi/`.
+
+| *Reference R5 — Stable error-code index*
+| NO
+| Verifier errors are typed (`thiserror`-based) but no public error-code index.
+
+| *Community C1-C5*
+| PARTIAL
+| CONTRIBUTING + CoC + SECURITY present. Discussion venues + RFC list partial: `docs/proposals/0001-*.md`, `docs/proposals/0002-*.md` are the current RFC process.
+
+| *Distribution Δ1-Δ5*
+| PARTIAL
+| `Cargo.toml` ships `typed-wasm-verify` v0.1.0 (unpublished). SemVer policy implicit. No deprecation log. `SECURITY.md` present.
+
+| *Education E1-E4 (grade-dependent)*
+| NO
+| No curriculum / external educators.
+
+| *Ecosystem X1-X4 (grade B+)*
+| PARTIAL
+| 2 known consumer languages (ephapax via `ephapax-syntax` git-dep; AffineScript via Parser.affine integration). Below the B threshold.
+
+| *Diversity metrics (grade C+)*
+| NO
+| Single-maintainer; no diversity surface.
+
+| *VeriSimDB attestation (grade C+)*
+| NO
+| typed-wasm not yet `DECLARE`'d.
+
+| *Founder bus-factor test (grade A only)*
+| N/A
+| Not at grade A.
+|===
+
+== Language-specific tightening (this profile only)
+
+ARG §1.1 permits per-language tightening. For typed-wasm:
+
+* *Grade C tightening:* Every level L1-L17 MUST be either checked
+  (with a status entry in `LEVEL-STATUS.md`) or explicitly
+  reserved (not silently absent). Currently met: v1.5 ships
+  L1-L10 + L13-L16 checked, L11-L12 draft-only, L17 reserved.
+* *Grade B tightening:* At least one consumer language MUST run
+  its own CI as a typed-wasm consumer (i.e. typed-wasm release
+  changes are surfaced as CI failures in the consumer).
+* *Grade A tightening:* Registered VeriSimDB instance + third-
+  party language adopter not maintained by hyperpolymath.
+
+== What is NOT yet met (honest gaps)
+
+* No public error-code index (R5).
+* No public playground beyond the Deno harness.
+* No educator-facing curriculum.
+* Below the B-threshold for downstream consumer count (2 known).
+* No VeriSimDB attestation.
+
+== Path to next grade (*C*)
+
+* Publish error-code index. (~1 week)
+* Publish a web playground. (~3-4 weeks)
+* Land VeriSimDB attestation. (~1 week)
+* Document the implicit RFC process at `docs/proposals/` as a
+  discoverable contributor surface. (~1 week)
+
+*Realistic timeline estimate:* 6-8 weeks.
+
+== Path to grade beyond that (*B*)
+
+* Land ≥6 downstream language consumers (or document with rationale
+  why typed-wasm is a hyperpolymath-internal target and the
+  ≥6-target metric is interpreted as ≥6 downstream surfaces such
+  as `features/{boj-server,panic-attacker,ssg}/`).
+* Consumer-language CI integration.
+
+== Demotion risk
+
+* *Lowest:* `typed-wasm-verify` CI flips to red.
+* *Medium:* A verifier-level regression invalidates a closed proof
+  obligation (e.g. A10's `VerifierSpecAgreement` regresses).
+* *Catastrophic:* A consumer (ephapax or AffineScript) is broken
+  by a typed-wasm release and the breakage is not rolled back.
+
+== Iteration history
+
+[cols="1,1,4", options="header"]
+|===
+| Date | Grade | Notes
+
+| 2026-05-28 | D | Initial ARG assessment per ARG v1.0. Compilation target treated as language-shaped artefact.
+|===
+
+== Review cycle
+
+* *Routine:* Reassess on every release cycle (per ARG §6).
+* *Immediate:* Reassess within 7 days of any demotion trigger.
+* *VeriSimDB drift alert:* Reassess within 24 hours.
+
+== Footer
+
+Run `just arg-badge` in this repo to generate the shields.io badge.
