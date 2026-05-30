@@ -1,0 +1,503 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= Proposal 0003: Region Imports Carrier Section (`typedwasm.region-imports`)
+:toc: preamble
+:icons: font
+
+[cols="1,3"]
+|===
+| Status       | draft
+| Author       | hyperpolymath
+| Date         | 2026-05-30
+| Last-updated | 2026-05-30
+| Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/95[#95]
+| Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption (cross-module increment)
+| Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (regions section — single-module foundation)
+| Sibling      | link:0002-access-site-carrier.adoc[Proposal 0002] (cross-module access-sites — Open Question §3, same future-proposal slot)
+|              | link:0004-capability-grants-carrier.adoc[Proposal 0004] (cross-module grants — Open Question §4, same future-proposal slot)
+|===
+
+== Context
+
+link:0001-multi-producer-carrier-section.adoc[Proposal 0001]'s
+`typedwasm.regions` section describes **single-module** region schemas.
+The `region_id` foreign keys carried in field entries are **local
+indices** into the emitting module's region table — they have no
+meaning outside that module.
+
+Proposal 0001 §"Open questions" #5 declared cross-module region
+foreign-key handling **out of scope of v1** with two sketched options:
+
+[loweralpha]
+. A separate `typedwasm.region-imports` section that mirrors wasm's
+  standard `(import "module" "field")` syntax.
+. Extend the per-region record in `typedwasm.regions` with a
+  `(producer-name, region-name)` pair when cross-module.
+
+`MultiModule.idr` (lines 41-58, 152-166, 195-219) already models the
+cross-module side fully: `ExportedRegion`, `ImportedRegion`,
+`SchemaSub`, `ModuleCompat`, `LinkEdge`, `LinkGraph`, and the flagship
+`noSpoofing` theorem (line 374). What the wire side lacks is a way to
+carry **which region in the emitting module is an import**, **which
+producer module supplied it**, and **what schema the importer expects**
+— so that consumers can construct a `ModuleCompat from to imp exp`
+witness from emitted wasm without the source-language checker.
+
+Without this section, **L13 (`noSpoofing`) cannot fire on emitted
+bytes** in any module that imports a region from another module — even
+though the Idris2 spec covers the case completely.
+
+This is the **latent seam** flagged by [#95](https://github.com/hyperpolymath/typed-wasm/issues/95):
+the first time multi-module L13 is exercised on emitted wasm, the
+region_id foreign keys will dangle. This proposal closes the seam.
+
+== Proposal
+
+Add a third producer-neutral custom section to the typed-wasm ABI
+(slotting between 0001's regions/capabilities and 0002's access-sites):
+
+* `typedwasm.region-imports` — carries the per-module table of
+  imported regions: their source module, region name, and expected
+  schema (for cross-module schema-agreement verification).
+
+The section is independently optional from the verifier's perspective;
+absence means "no cross-module regions imported" (equivalently, "this
+module is single-module L2"). A module may emit `typedwasm.regions`
+without `typedwasm.region-imports` (single-module enforcement only).
+A module emitting `typedwasm.region-imports` MUST also emit
+`typedwasm.regions` (verifier rejects with `MissingDependentCarrier`).
+
+=== Cross-section foreign-key extension (typedwasm.regions v1.1)
+
+The `target_region` field in `typedwasm.regions`'s field entries
+currently uses the value space:
+
+* `0..0xFFFFFFFE` — local region index (max 2^32-2 regions)
+* `0xFFFFFFFF` — sentinel for `kind == Scalar`
+
+This proposal extends the value space **non-breakingly** (v1
+consumers see "out of bounds" and recover via lenient codec):
+
+* `0x00000000..0x7FFFFFFE` — local region index (max 2^31-2 regions —
+  ample for any realistic module)
+* `0x80000000..0xFFFFFFFE` — imported region: index = `value -
+  0x80000000` into `typedwasm.region-imports` table (max 2^31-2
+  imports)
+* `0xFFFFFFFF` — sentinel for `kind == Scalar` (unchanged)
+
+A v1 consumer that hits a `target_region >= 0x80000000` will report a
+recoverable "region_id out of range" error (current behaviour); a
+v1.1 consumer (this proposal) interprets the high bit as the
+import-table indicator and resolves the foreign key accordingly. The
+codec change is purely in `verify_regions_from_module`'s validation
+path, not in the wire format itself — existing modules continue to
+parse identically.
+
+=== Wire format — `typedwasm.region-imports`
+
+Little-endian for fixed-width fields; LEB128 (unsigned) for variable-
+width fields. Byte-aligned. Lenient on truncation (matches
+`section.rs::LenientReader`).
+
+----
+u16le         version                (= 1)
+u32le_leb128  import_count
+for each import (in import-table-index order, 0..import_count-1):
+    u32le_leb128  producer_module_name_len
+    u8[]          producer_module_name      (UTF-8, no NUL terminator;
+                                             matches wasm's standard
+                                             `(import "module" "field")`
+                                             module-name space)
+    u32le_leb128  region_name_len
+    u8[]          region_name               (UTF-8; the exported
+                                             region's name in the
+                                             producer module's
+                                             typedwasm.regions table)
+    u32le_leb128  expected_field_count
+    for each expected field (in declaration order):
+        u32le_leb128  field_name_len
+        u8[]          field_name             (UTF-8)
+        u8            kind                   (same enum as
+                                              typedwasm.regions:
+                                              0=Scalar / 1=PtrOwning /
+                                              2=PtrBorrow / 3=PtrExclusive)
+        u8            wasm_ty                (same enum as
+                                              typedwasm.regions:
+                                              0..10 = U8..WBool,
+                                              0xFF = N/A for ptr kinds)
+        u8            nullability            (0=NonNull, 1=Nullable)
+        u32le_leb128  cardinality            (1=single, n>1=fixed array,
+                                              0=unbounded — same
+                                              semantics as
+                                              typedwasm.regions)
+----
+
+Notes:
+
+* Importers carry the **EXPECTED** schema, not the producer's actual
+  schema. The verifier confirms agreement by parsing the producer
+  module's `typedwasm.regions` section at link time and constructing
+  the `SchemaSub expected actual` witness; mismatch raises
+  `SchemaImportMismatch`.
+* `target_region` foreign keys inside expected field entries (if any
+  pointer fields) are NOT permitted in v1 — an imported region may
+  not have pointer fields referencing yet-more-imported regions.
+  Producers that need transitive cross-module pointer chains must
+  flatten the import table to include intermediate regions. (Open
+  question §3 below revisits this.)
+* `producer_module_name` is the **wasm module name** (matches the
+  `(import "module" "field")` syntax of the standard wasm import
+  declaration), NOT an arbitrary producer-language module name.
+  Linkers map source-language module names to wasm module names; the
+  carrier uses the wasm-level name to remain producer-neutral.
+* Imports MAY share the same `producer_module_name` (one producer
+  exporting multiple regions). Imports MUST have unique
+  `(producer_module_name, region_name)` pairs — duplicate pairs are
+  a producer bug (`DuplicateImport`).
+
+=== Mapping to the spec types
+
+[cols="1,3"]
+|===
+| Wire field
+| Idris2 spec / verifier consumer
+
+| `import_count`
+| length of `List ImportedRegion` for this consumer module
+
+| Per-import `producer_module_name`
+| `ImportedRegion.source : ModuleId` (`MkModuleId producer_module_name`;
+  MultiModule.idr:54)
+
+| Per-import `region_name`
+| `ImportedRegion.regionName : String` (line 56)
+
+| Per-import `expected_field_count` + `expected fields[]`
+| `ImportedRegion.expectedSchema : Schema` (line 57); reconstructed
+  from the wire-carried field list via the same codec the
+  `typedwasm.regions` parser uses
+
+| Per-field `field_name`, `wasm_ty`, `nullability`, `cardinality`
+| `Field` constructor (Region.idr:127) and its `nullability` +
+  `cardinality` augmentations on the wire side; together form the
+  `Schema` of the expected import
+
+| Per-field `kind`
+| Identical to `typedwasm.regions`'s `kind` (FieldKind enum:
+  Scalar/PtrOwning/PtrBorrow/PtrExclusive); pointer cases are restricted
+  in v1 (see Notes above)
+|===
+
+The verifier resolves an import-table entry to a
+`ModuleCompat consumer producer expected actual` certificate by:
+
+. Looking up the expected schema in this module's
+  `typedwasm.region-imports` entry.
+. Locating the producer module's `typedwasm.regions` section (via
+  the wasm linker's module-table resolution).
+. Looking up the actual exported schema by `region_name` in the
+  producer's regions table.
+. Constructing the `SchemaSub expected actual` witness — checks every
+  expected field appears in the actual schema with matching name +
+  type (`noSpoofing` from MultiModule.idr:374).
+. On success: emit a `CompatCertificate` (line 142) for the
+  link-graph verifier. On failure: emit `SchemaMismatch` (line 185)
+  enumerating missing/mismatched fields.
+
+=== Versioning policy
+
+`typedwasm.region-imports` starts at `u16le version = 1`. The
+companion `typedwasm.regions` extension uses the high-bit
+`target_region` convention (described above) which is non-breaking
+on the wire. Future versions:
+
+* **Additive** changes ship at the same major version; lenient
+  reader silently ignores new trailing bytes.
+* **Breaking** changes bump the version; verifier rejects unknown
+  versions with `VerifyError::UnsupportedCarrierVersion`.
+* `typedwasm.regions` v1 wire format is unchanged; only the
+  `target_region` value-space interpretation is extended.
+
+=== Producer obligations
+
+A conforming producer that emits `typedwasm.region-imports` MUST:
+
+. Emit a `typedwasm.regions` section in the same module (the
+  import-table foreign keys from `typedwasm.regions`'s field entries
+  are dangling pointers otherwise). v1 verifier rejects with
+  `MissingDependentCarrier`.
+. Use the high-bit convention for `target_region` foreign keys
+  pointing to imports: `value = 0x80000000 + import_table_idx`.
+. Match `producer_module_name` to the wasm module name in the
+  standard wasm `(import "module" "field")` declarations the
+  consumer also emits. Producers MAY validate this at codegen time
+  by cross-checking against the wasm-module's import table.
+. NOT emit the import section if no imports are present — empty
+  sections (import_count = 0) are valid but wasteful. The verifier
+  treats absent and empty equivalently.
+. NOT use pointer-typed fields (`kind != Scalar`) in expected
+  imports for v1 (see wire-format notes). v2 lifts this restriction
+  with a follow-up proposal.
+. Emit `expected_field_count` entries that the producer module
+  actually exports — schema-agreement check is the verifier's job,
+  but emitting impossible imports is a producer-side bug.
+
+=== Consumer obligations (verifier)
+
+`crates/typed-wasm-verify/` will gain (gated behind
+`unstable-l13-imports` cargo feature):
+
+. `section.rs` — `parse_region_imports_section_payload`,
+  `build_region_imports_section_payload`. Helpers reuse the LEB128 +
+  `LenientReader` + UTF-8 infrastructure from 0001/0002/0004.
+. `verify.rs` — `verify_region_imports_from_module` pass:
++
+[loweralpha]
+.. Parse the import table.
+.. For each `target_region` foreign key in `typedwasm.regions`
+   field entries with the high bit set, resolve to the
+   corresponding import-table entry.
+.. Locate the producer module (link-graph traversal via wasm's
+   standard imports).
+.. Verify `SchemaSub expected actual` for each imported region.
+.. Emit a `CompatCertificate` per resolved import on success.
+. `lib.rs` — new `RegionImportsError` variants:
++
+[loweralpha]
+.. `MissingDependentRegions` — import section present but
+   `typedwasm.regions` absent.
+.. `DuplicateImport { producer_module_name, region_name }` —
+   producer obligation violation.
+.. `UnresolvedProducerModule { producer_module_name }` — the wasm
+   linker couldn't locate the named producer module.
+.. `UnresolvedExportedRegion { producer_module_name, region_name }`
+   — the producer module's `typedwasm.regions` doesn't have a
+   region with the named identifier.
+.. `SchemaImportMismatch { producer_module_name, region_name,
+   missing_fields, type_mismatches }` — the producer's actual
+   exported schema doesn't satisfy the importer's expected schema.
+   Pointer-typed-field-in-import is reported as
+   `UnsupportedPointerInImport` (v1 restriction).
+.. `ImportTargetOutOfRange { local_region_idx, field_idx,
+   import_idx, import_count }` — a `target_region` high-bit value
+   points past the import table.
+.. `PointerInImportNotSupportedInV1 { import_idx, field_name }` —
+   producer violated the v1 restriction on pointer fields.
+
+The pass is feature-gated until this proposal is `[accepted]`, so the
+v1.0 verifier surface (which ships only single-module L2–L6 + L7+L10
++ L15-A) is unchanged.
+
+=== Coordination with downstream producers
+
+Same review pattern as 0001/0002/0004:
+
+* https://github.com/hyperpolymath/affinescript[`affinescript`] —
+  `lib/tw_interface.ml` already has cross-module verification scaffolding
+  (the OCaml side reads `typedwasm.ownership` cross-module for L10/L13
+  boundary checks). Extending it to cross-module L2 requires producer
+  codegen for both `typedwasm.region-imports` AND the high-bit
+  convention in `typedwasm.regions`. Roadmap C3 (multi-module region
+  emission) is the prerequisite.
+* https://github.com/hyperpolymath/ephapax[`ephapax`] —
+  `src/ephapax-wasm/` currently emits single-module wasm; cross-module
+  region emission isn't on the roadmap yet. Producer codegen for
+  region-imports is a longer-term prerequisite.
+
+**Neither producer can emit `typedwasm.region-imports` today.** This
+proposal's acceptance should not block on producer-side codegen —
+same staging discipline as 0001/0002/0004. The verifier-side pass
+ships gated behind `unstable-l13-imports`; producers adopt when ready.
+
+== Alternatives considered
+
+=== B. Extend `typedwasm.regions` per-region record (Option B from #95)
+
+Add an optional `(producer_module_name, region_name)` pair to each
+region entry. A region is "imported" iff these fields are non-empty;
+otherwise local.
+
+*Rejected for v1.* Conflates module-local schema declaration with
+cross-module import declarations in a single section. Forces the
+version-bump cycles to move in lockstep and inflates the L2 section
+even when the consumer is single-module. Split sections, per proposal
+0001 §"Alternatives considered" §B.
+
+The single advantage (no high-bit convention in `target_region`) is
+offset by the cost: every consumer of `typedwasm.regions` now has to
+parse import metadata it may not need. The high-bit convention is
+local to the verifier code path; the wire format stays clean.
+
+=== C. Reuse wasm component-model linking
+
+Component-model imports + `wasm-tools component compose` already
+solve cross-module type agreement at component-link time. Skip the
+custom carrier entirely.
+
+*Rejected for v1.* Same reasoning as proposal 0001 §"Alternatives
+considered" C/F (component-model adoption is too early in the typed-
+wasm producer set). Component-model is the right long-term answer
+for typed-wasm; this proposal is the bridge while producers ship core
+wasm.
+
+=== D. Encode imports as wasm `(import …)` declarations directly
+
+Use wasm's standard `(import "module" "field")` to declare region
+imports; carry the expected schema in a per-import name-decoration.
+
+*Rejected.* Wasm's import section is for functions/memories/tables/
+globals; abusing it for region declarations confuses standard wasm
+tooling (linkers, debuggers, validators) that try to resolve the
+"function" or "memory" the import claims to be. The
+`typedwasm.region-imports` section is the type-safe declaration;
+standard wasm imports remain for runtime-resolvable artefacts.
+
+=== E. Per-import string table
+
+Add a shared string table for `producer_module_name` (which often
+repeats across multiple imports from the same producer).
+
+*Deferred to v2.* Same reasoning as proposal 0001 §"Open questions"
+#1 — measure module overhead first; ship v1 inline; add string table
+in v2 only if measurements justify it.
+
+== Open questions
+
+. **Pointer-typed expected fields.** v1 restricts imported regions
+  to scalar-only field schemas — an imported region cannot have a
+  field that's itself a pointer to another region. Two reasons:
++
+[loweralpha]
+.. **Transitive resolution.** A pointer field in an imported region
+   would reference a `target_region` that could be local, imported,
+   or doubly-imported. Resolving the foreign-key chain requires
+   walking the link graph, which the v1 verifier doesn't do.
+.. **Schema-agreement complexity.** `SchemaSub` (MultiModule.idr:249)
+   only compares scalar fields; pointer-field agreement requires a
+   higher-order match on the target schemas, which the spec doesn't
+   yet express.
++
+v2 lifts the restriction with a follow-up proposal that adds
+pointer-field cross-module agreement (likely requiring
+`SchemaSub` to recurse into pointer targets).
+
+. **Cross-module access sites.** Proposal 0002 §"Open questions" #3
+  flagged the same problem for access-site `region_id` foreign keys
+  (a call into an imported function reaches that function's typed
+  accesses, which carry the EXPORTING module's region IDs). This
+  proposal's high-bit `target_region` convention extends naturally
+  to access-sites: a `region_id >= 0x80000000` in a
+  `typedwasm.access-sites` entry resolves through the same import
+  table. Recommend folding cross-module access-site resolution into
+  this proposal's scope at `[review]` time, OR file a parallel
+  follow-up that uses the same convention.
+
+. **Cross-module capability grants.** Proposal 0004 §"Open questions"
+  #4 flagged the analogous problem for capability indices in cross-
+  module call-site grants. Capabilities are simpler than regions
+  (they're string-named, not index-keyed) — the cross-module case
+  may resolve naturally by capability-name matching at link time
+  without a wire format change. Confirm at proposal 0004 `[review]`
+  time.
+
+. **Link-time vs verify-time resolution.** The verifier needs the
+  producer module's `typedwasm.regions` section to construct
+  `SchemaSub` certificates. Two options:
++
+[loweralpha]
+.. **Per-module verification with separate link-graph pass.** Each
+   module is verified in isolation against its own carriers, then a
+   final `verify_link_graph` pass resolves cross-module agreements.
+   Pro: clean separation; each verify pass is module-local. Con:
+   two-phase verification.
+.. **Whole-program verification.** A single `verify_program(modules)`
+   entry point that takes the entire link graph and verifies
+   everything in one pass. Pro: single API surface. Con: requires
+   the verifier to take a `Vec<Module>` input — currently single-
+   module.
++
+Default: option (a) — file a separate `verify_link_graph` entry
+point alongside the existing per-module entry points. The
+`verify_region_imports_from_module` pass only checks the import
+section's internal consistency (no duplicate imports, no pointer
+fields in v1, etc.); cross-module schema agreement defers to the
+link-graph pass.
+
+. **Producer module name normalisation.** Wasm import declarations
+  are case-sensitive byte sequences with no normalisation rules.
+  Producers MUST agree byte-for-byte on the module name. v1 doesn't
+  specify normalisation; v2 may add a NFC normalisation step if
+  cross-producer interoperability hits issues.
+
+. **Empty import table semantics.** A module emitting
+  `typedwasm.region-imports` with `import_count = 0` is wasteful but
+  legal. The verifier treats this as equivalent to absent. Recommend
+  producers omit the section entirely when no imports are present.
+
+== Acceptance criteria
+
+. Reviewed and signed off by maintainers of `affinescript` and
+  `ephapax` (the only current producers of `typedwasm.ownership`
+  and the planned producers of `typedwasm.regions`). Producer
+  codegen for single-module regions (proposal 0001 §Criterion 5)
+  is a prerequisite for any cross-module work — this proposal's
+  review should explicitly note that.
+. Wire format reviewed against `MultiModule.idr`'s
+  `ImportedRegion` (line 53), `SchemaSub` (line 249),
+  `ModuleCompat` (line 318), `noSpoofing` (line 374) — every wire
+  field maps cleanly to a spec witness (same shape as 0001
+  §Criterion 2 / Appendix A).
+. A draft codec lands in `crates/typed-wasm-verify/src/section.rs`
+  behind the `unstable-l13-imports` cargo feature; round-trip tests
+  show `parse(build(x)) = x` for non-empty fixtures (target: 3 hand-
+  rolled stress fixtures + cross-module link-graph fixture mirroring
+  MultiModule.idr's `Example` namespace).
+. The `verify_region_imports_from_module` pass + a draft
+  `verify_link_graph(modules: &[Module])` pass land in
+  `crates/typed-wasm-verify/src/verify.rs` behind the same cargo
+  feature.
+. A draft section in `spec/type-safety-levels-for-wasm.adoc`
+  documents `typedwasm.region-imports` and the
+  `target_region` high-bit convention alongside the other
+  carriers. The `typedwasm.regions` documentation needs a note that
+  v1.1 readers interpret high-bit values as import-table indices.
+. Cross-repo issues are filed against `affinescript` and `ephapax`
+  for codegen of the new section + the high-bit `target_region`
+  convention.
+
+After acceptance, this file is promoted to an ADR under
+`docs/decisions/` (per `docs/proposals/README.adoc`'s status legend)
+and the level-table in `LEVEL-STATUS.md` gains "verifier (import-
+bound)" status for L13 cross-module alongside the existing
+"verifier (linearity-backed)" entry for L13 single-module from
+proposal 0001 / PR #37.
+
+== Related
+
+* Issue https://github.com/hyperpolymath/typed-wasm/issues/95[#95] —
+  this proposal addresses it directly.
+* Proposal link:0001-multi-producer-carrier-section.adoc[0001] —
+  defines `typedwasm.regions` (single-module L2–L6), which this
+  proposal extends to cross-module. Open Question #5 in 0001
+  flagged the cross-module gap that 0003 fills.
+* Proposal link:0002-access-site-carrier.adoc[0002] — Open Question
+  #3 flags the same cross-module gap for access-site `region_id`
+  foreign keys; 0003's high-bit convention extends naturally
+  (see Open Question §2 above).
+* Proposal link:0004-capability-grants-carrier.adoc[0004] — Open
+  Question #4 flags the analogous cross-module gap for capability
+  grants; resolution may differ (capabilities are name-keyed).
+* PR https://github.com/hyperpolymath/typed-wasm/pull/76[#76] —
+  proposal 0001 landing (source of the L13 cross-module deferral).
+* PR https://github.com/hyperpolymath/typed-wasm/pull/37[#37] —
+  L13 single-module isolation (verifier already enforces "module
+  owns its memory iff no foreign memory/table imports"). Cross-
+  module is the negative-form's positive companion.
+* `LEVEL-STATUS.md` — `[L13]` row currently marks single-module
+  as "verifier (linearity-backed)"; gains "verifier (import-bound)"
+  on acceptance.
+* `src/abi/TypedWasm/ABI/MultiModule.idr` — the spec types
+  (`ImportedRegion`, `SchemaSub`, `ModuleCompat`, `noSpoofing`,
+  `CompatCertificate`, `LinkGraph`, `FullyVerified`,
+  `SchemaMismatch`) this wire format realises.
