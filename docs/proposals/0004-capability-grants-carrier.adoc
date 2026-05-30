@@ -1,0 +1,429 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= Proposal 0004: Capability Grants Carrier Section (`typedwasm.capability-grants`)
+:toc: preamble
+:icons: font
+
+[cols="1,3"]
+|===
+| Status       | draft
+| Author       | hyperpolymath
+| Date         | 2026-05-30
+| Last-updated | 2026-05-30
+| Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/96[#96]
+| Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption (v1.4.x increment)
+| Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (capabilities section — L15-A)
+| Encoding precedent | link:0002-access-site-carrier.adoc[Proposal 0002] (per-instruction LEB128 encoding)
+|===
+
+== Context
+
+link:0001-multi-producer-carrier-section.adoc[Proposal 0001]'s
+`typedwasm.capabilities` section carries **L15-A** (per-function
+required capabilities) and supports **L15-B** (well-scoped containment
+in the module's declared capability set, enforced by
+`verify_capabilities_from_module` — landed in PR #109). What it does
+**not** carry is **L15-C** (call-graph monotonicity): the property that
+for every call from F to G, F's available capabilities include G's
+required capabilities.
+
+`ResourceCapabilities.idr` (lines 187-205) models L15-C as
+`CallCompatible caller callee`, witnessed by a `ContainedIn callee.required
+caller.required` proof. The Idris2 spec composes well — `callCompose`
+gives transitivity for free — but the **wire** side has no place to
+record per-call-site grant facts. The verifier on emitted bytes can do
+no better than a conservative transitive analysis (caller-superset over
+the entire call graph), which **cannot express capability attenuation
+at a specific call site**.
+
+Capability attenuation matters for any object-capability discipline: a
+caller that holds `{net, fs, clock}` may invoke G with only `{net}`
+granted — even if G's signature could accept all three. Without a
+per-call-site grant carrier, the verifier sees only the function-level
+requirements and either over-approximates (rejects the call as needing
+more than the caller advertises) or under-approximates (allows the call
+to silently inherit the caller's full capability set, defeating the
+attenuation).
+
+This proposal specifies the wire format for a fourth producer-neutral
+custom section: **`typedwasm.capability-grants`**.
+
+== Proposal
+
+Add a fourth producer-neutral custom section to the typed-wasm ABI:
+
+* `typedwasm.capability-grants` — per-call-site mapping
+  `(caller_func_idx, call_instruction_byte_offset) →
+  granted_capability_indices`
+
+The section is independently optional from the verifier's perspective;
+absence means "no per-call-site grant claim made — verifier falls back
+to transitive caller-superset analysis on `typedwasm.capabilities`."
+A module may emit `typedwasm.capabilities` without
+`typedwasm.capability-grants` (function-level L15-A + L15-B enforcement
+only, no attenuation) or both (full L15-C enforcement with attenuation).
+
+=== Encoding decision (B — LEB128 per field, parallel to 0002 v1)
+
+Per the prototype-measurement methodology from proposal 0002 §"Encoding
+decision," **encoding B is the v1 default for `typedwasm.capability-grants`**:
+
+[cols="1,2,1,1", options="header"]
+|===
+| Encoding | Shape | Bytes/grant | Status
+| A | Flat 4 × `u32le` per entry | 16+ B | rejected (same reason as 0002 §A)
+| B | LEB128 per field           | ~5+ B | **adopted (v1)**
+| C | Per-caller grouped + delta offsets | ~3.5+ B | deferred to v2
+|===
+
+Rationale: calls cluster per caller function (typical wasm bodies have
+multiple call sites per function), so encoding C might pay off more
+here than for access sites — but the codec complexity is identical to
+0002 §C and the same defer-to-v2 reasoning applies. v1 ships B for
+codec-pattern symmetry with 0002.
+
+=== Wire format — `typedwasm.capability-grants`
+
+Little-endian for fixed-width fields; LEB128 (unsigned) for variable-
+width fields. Byte-aligned. Lenient on truncation (matches
+`section.rs::LenientReader`).
+
+----
+u16le         version                (= 1)
+u32le_leb128  entry_count
+for each entry (in producer-emission order):
+    u32le_leb128  caller_func_idx              (index into wasm function section)
+    u32le_leb128  call_instruction_byte_offset (offset within caller's body bytecode
+                                                of the FIRST byte of the call opcode;
+                                                same offset-space rule as proposal
+                                                0002 access sites)
+    u32le_leb128  granted_count
+    u32le_leb128[granted_count]   granted_capability_indices
+                                                (indices into the capability table
+                                                 from typedwasm.capabilities;
+                                                 MUST be strictly increasing → encodes
+                                                 DistinctCaps for grants on the wire)
+----
+
+Notes:
+
+* `u32le_leb128` is *unsigned LEB128* (same convention as 0002).
+  Shortest encoding required; overlong rejected.
+* `version` is `u16le` fixed-width for symmetry with the three sibling
+  carriers; a malformed-version diagnostic doesn't depend on a working
+  varint decoder.
+* `call_instruction_byte_offset` is **per-function** (NOT per-module).
+  Primary key is `(caller_func_idx, call_instruction_byte_offset)`.
+* `granted_capability_indices` MUST be strictly increasing (DistinctCaps
+  on grants too). Parser sorts-and-dedups defensively, mirroring the
+  `typedwasm.capabilities` codec's recovery contract.
+* Entries are NOT required to be sorted in v1. A v2 MAY require sorted-
+  by-`(caller_func_idx, byte_offset)` for binary search; v1 consumers
+  build a `HashMap<(u32, u32), Vec<u32>>` at parse time.
+
+=== Mapping to the spec types
+
+[cols="1,3"]
+|===
+| Wire field                  | Idris2 spec / verifier consumer
+| `caller_func_idx`           | index into wasm `(func …)` section; identifies the calling function
+| `call_instruction_byte_offset` | byte offset within the caller's body (post-codegen)
+| `granted_capability_indices` | a `CapabilitySet` (sub-list of the caller's `FunctionCaps.required`)
+| (per-entry overall)         | a witness that `ContainedIn grant caller.required` AND `ContainedIn callee.required grant` — together yielding `ContainedIn callee.required caller.required` (= `CallCompatible caller callee`)
+|===
+
+The verifier resolves a call site at `(caller_func_idx,
+call_instruction_byte_offset)` by:
+
+. Looking up the entry in the `typedwasm.capability-grants` map.
+. Resolving `caller_func_idx`'s `required` from `typedwasm.capabilities`.
+. Resolving the call's target function (direct call's `func_idx` from
+  the opcode immediate, OR `call_indirect`'s table index — see Open
+  Questions for indirect-call resolution).
+. Resolving the target's `required` from `typedwasm.capabilities`.
+. Checking `grant ⊆ caller.required` (grant is a genuine subset).
+. Checking `callee.required ⊆ grant` (grant covers callee's needs).
+. Transitive composition (call chain F → G → H): per-call-site grants
+  compose by `callCompose` (ResourceCapabilities.idr:200) — no
+  carrier-side machinery needed.
+
+=== Versioning policy
+
+`typedwasm.capability-grants` starts at `u16le version = 1`. Future
+versions follow the same additive-vs-breaking rules as 0001/0002:
+
+* **Additive** changes ship at the same major version; lenient reader
+  silently ignores new trailing bytes.
+* **Breaking** changes bump the version; verifier rejects unknown
+  versions with `VerifyError::UnsupportedCarrierVersion`.
+* `typedwasm.ownership`, `typedwasm.regions`, `typedwasm.capabilities`,
+  and `typedwasm.access-sites` are unchanged by this proposal.
+
+=== Producer obligations
+
+A conforming producer that emits `typedwasm.capability-grants` MUST:
+
+. Emit it AFTER any post-codegen wasm rewrite (`wasm-opt`, `snip`,
+  `wasm-gc`, custom passes). The `call_instruction_byte_offset` field
+  is fragile in the same way as proposal 0002's
+  `instruction_byte_offset`; emitting before rewrite produces an
+  unverifiable module (`CallSiteMisalignment`).
+. Emit a `typedwasm.capabilities` section in the same module (the
+  capability indices are dangling pointers otherwise). v1 verifier
+  rejects `typedwasm.capability-grants` without
+  `typedwasm.capabilities` with `MissingDependentCarrier`.
+. Use the SAME capability indices it used in `typedwasm.capabilities`.
+  (Per proposal 0001 §"Producer obligations" producer-stability rules.)
+. Emit an entry for EVERY call instruction in EVERY function, OR for
+  NONE. Partial emission is interpreted as "no claim made about
+  unlisted call sites" and L15-C will flag every unlisted call as
+  `CallSiteUnbound`. (All-or-nothing rule matches 0001 + 0002.)
+. NOT emit entries for non-call instructions (the verifier interprets
+  an entry as a claim that the offset points to a `call` /
+  `call_indirect` / `return_call` / `return_call_indirect`).
+. Emit `granted_capability_indices` as a strict subset (or equal) of
+  the caller's `required` set. Over-granting (grant ⊃ caller.required)
+  is `CallSiteGrantOverreach` — a producer-side bug, not a
+  permissible attenuation.
+
+=== Consumer obligations (verifier)
+
+`crates/typed-wasm-verify/` will gain (gated behind
+`unstable-l15-grants` cargo feature):
+
+. `section.rs` — `parse_capability_grants_section_payload`,
+  `build_capability_grants_section_payload`. Helpers reuse the LEB128
+  + `LenientReader` infrastructure from 0002.
+. `verify.rs` — `verify_capability_grants_from_module` pass. For every
+  call instruction in every function:
++
+[loweralpha]
+.. Look up `(caller_func_idx, byte_offset)` in the grants map.
+.. If not found: `CallSiteUnbound` (the producer emitted a partial
+   section).
+.. If found: cross-check the grant against caller.required AND
+   callee.required.
+. `lib.rs` — new `CapabilityGrantsError` variants:
++
+[loweralpha]
+.. `CallSiteUnbound { caller_func_idx, byte_offset }` — partial carrier.
+.. `CallSiteGrantInsufficient { caller, byte_offset, callee, missing_caps }`
+   — L15-C violation: grant doesn't cover callee.
+.. `CallSiteGrantOverreach { caller, byte_offset, extra_caps }` —
+   grant exceeds caller's required set.
+.. `CallSiteMisalignment { caller }` — derived signal that the
+   producer likely emitted the carrier before wasm-opt (multiple
+   adjacent unbound entries on the same caller).
+.. `MissingDependentCapabilities` — the grants section was present
+   but `typedwasm.capabilities` was not.
+
+The pass is feature-gated until this proposal is `[accepted]`, so the
+v1.0 verifier surface (which ships only L15-A + L15-B) is unchanged.
+
+=== Coordination with downstream producers
+
+Same review pattern as 0001 and 0002:
+
+* https://github.com/hyperpolymath/affinescript[`affinescript`] —
+  Roadmap C2 (capability tracking) is currently not started
+  (`lib/borrow.ml:1725`); producer codegen for capability-grants
+  depends on C2 landing first AND on `typedwasm.capabilities`
+  emission (proposal 0001 codegen).
+* https://github.com/hyperpolymath/ephapax[`ephapax`] —
+  `ExprKind::Perform`/`Handle` codegen is currently
+  `Instruction::Unreachable` (`src/ephapax-wasm/src/lib.rs`); same
+  L15-A precondition.
+
+**Neither producer can emit `typedwasm.capability-grants` until they
+ship `typedwasm.capabilities` first.** This proposal's acceptance
+should not block on producer-side codegen — same staging discipline as
+0001's Criterion 5 / 0002's Gate 6.
+
+== Alternatives considered
+
+=== A. Flat fixed-width 4 × `u32le` per entry
+
+Each entry is 16+ bytes for the header plus 4 × granted_count.
+
+*Rejected for v1.* Same reasoning as proposal 0002 §"A. Flat fixed-
+width" — per-grant overhead dominates as call density grows. Encoding
+B is comfortably smaller without nested-structure complexity.
+
+=== C. Per-caller grouped + delta offsets
+
+Outer (count, group×(caller_func_idx, count_in_caller,
+entries×(delta_offset, granted_count, granted×u32le_leb128))). Entries
+use LEB128 deltas — calls cluster per function, so per-caller grouping
++ delta-offset may compress more aggressively here than for access
+sites.
+
+*Deferred to v2.* Same codec-complexity argument as 0002 §C. Re-
+evaluate once L15-A producers ship and there's real-world data on
+call-site density per function in production wasm.
+
+=== D. Skip the carrier; verifier walks the call graph
+
+The verifier could enumerate every call instruction in every function,
+resolve the callee, and check `callee.required ⊆ caller.required`
+without any per-call-site carrier.
+
+*Rejected.* This is what a conservative verifier WITHOUT this proposal
+already does (after PR #109). It enforces L15-C only at the function-
+level granularity ("F calls G, so F.required must ⊇ G.required") and
+**cannot express capability attenuation at a specific call site**. The
+object-capability discipline that L15-C is *for* requires per-call-
+site grants. Without the carrier, the wire-level enforcement is
+strictly weaker than the spec models.
+
+=== E. Encode grants in `typedwasm.capabilities` per-function entry
+
+Extend the per-function entry in `typedwasm.capabilities` with a per-
+call-site grant list nested inside.
+
+*Rejected.* Conflates per-function (L15-A) and per-call-site (L15-C)
+data, forcing the version-bump cycles to move in lockstep and inflating
+the L15-A section even when the verifier doesn't need grant data. Split
+sections, per proposal 0001 §"Alternatives considered" §B.
+
+=== F. Component-model imports as grant boundaries
+
+Use wasm component-model's named-imports as the grant boundary
+(grants are declared at component link time, not at call instruction
+time).
+
+*Rejected for v1.* Component-model adoption in the typed-wasm producer
+set is too early. Worth revisiting in Phase 4 (Tooling / DX) once
+`wasm-tools component new` is in the producer cookbook (mirrors 0001
+§C deferral reasoning).
+
+== Open questions
+
+. **Indirect calls (`call_indirect`).** The callee isn't statically
+  known at the call site — it's resolved at runtime via the table
+  index + type signature. Two options:
++
+[loweralpha]
+.. **Annotate the type signature with required caps.** The
+   `typedwasm.capabilities` section gains a `(type_idx, required)`
+   variant; `call_indirect` to that type carries the type's required
+   set as the implicit callee requirement. Grant carrier per indirect
+   call site enforces `grant ⊇ type.required`. Trade-off: a function
+   that mismatches the type's caps gets caught at module-validation
+   time (good) but the type-cap annotation inflates the L15-A section.
+.. **Defer indirect-call coverage to v2.** v1 grants section covers
+   only direct calls (`call`); indirect calls are unconstrained at
+   wire level (verifier downgrades to caller-superset analysis on
+   indirect targets). Trade-off: smaller v1 surface; per-call-site
+   attenuation is a partial-rollout property.
++
+Default recommendation: option (b) for v1, file v2 follow-up for (a).
+This proposal's wire format already accommodates indirect call sites
+(the `call_instruction_byte_offset` field doesn't care about opcode
+shape); the gap is purely on the verifier side.
+
+. **Higher-order arguments.** A function pointer passed as an
+  argument carries capabilities implicitly — the receiving function
+  can invoke it without a static call-site grant. Two options:
++
+[loweralpha]
+.. **Decorate function-typed parameters with their capability
+   signature.** Requires an L15-D extension (new wire field on
+   function-typed parameters in `typedwasm.regions`).
+.. **Trust the producer's source-language checker for higher-order
+   capabilities.** The wire side covers only first-order
+   call-graph; higher-order is a producer-side responsibility.
++
+Default: option (b) for v1.4.x; option (a) is an L15-D follow-up
+proposal in its own right.
+
+. **`return_call` / `return_call_indirect` (tail-call proposal).**
+  Tail calls are call sites too, with the same `byte_offset` rules.
+  v1 should cover them, but the tail-call proposal isn't yet enabled
+  by default in either producer's wasm output. Default: emit grant
+  entries for tail-call opcodes IF the producer enables the
+  tail-call proposal; the carrier doesn't need a separate opcode
+  flag.
+
+. **Cross-module grant resolution.** A call into an imported function
+  reaches a callee whose `required` set lives in the EXPORTING
+  module's `typedwasm.capabilities`. Same problem as 0001's
+  cross-module region foreign keys (open question #5) and 0002's
+  cross-module access-sites (open question #3). Defer to the same
+  future cross-module proposal that addresses those.
+
+. **Component-model grant inheritance.** When (eventually) component-
+  model linking composes modules, the component-level grant
+  inheritance is a separate concern from the per-call-site grants
+  this proposal covers. Out of scope.
+
+. **Defaulting policy when grants section absent.** Two interpretations:
++
+[loweralpha]
+.. **Permissive** (current default): no grants section ⇒ "no per-
+   call-site claim made" ⇒ verifier falls back to caller-superset
+   analysis on `typedwasm.capabilities`. No new errors raised.
+.. **Strict**: no grants section ⇒ verifier refuses to admit any L15
+   checks at all (since attenuation is impossible to verify).
++
+Default: (a) permissive — matches the all-or-nothing rule from 0001 +
+0002 ("absence is no claim made, not claim of compliance").
+
+== Acceptance criteria
+
+. Reviewed and signed off by maintainers of `affinescript` and
+  `ephapax` (the only current producers of `typedwasm.ownership`
+  and the planned producers of `typedwasm.capabilities`). Producer
+  codegen for capabilities themselves (proposal 0001 §Criterion 5)
+  is a prerequisite for any L15-C work — this proposal's review
+  should explicitly note that.
+. Wire format reviewed against `ResourceCapabilities.idr`
+  `CallCompatible` predicate — every wire field maps cleanly to a
+  spec witness (same shape as 0001 §Criterion 2 / Appendix A).
+. A draft codec lands in `crates/typed-wasm-verify/src/section.rs`
+  behind the `unstable-l15-grants` cargo feature; round-trip tests
+  show `parse(build(x)) = x` for non-empty fixtures (target: 3 hand-
+  rolled stress fixtures + 1 fixture per future producer once L15-A
+  codegen lands).
+. The `verify_capability_grants_from_module` pass lands in
+  `crates/typed-wasm-verify/src/verify.rs` behind the same cargo
+  feature.
+. A draft section in `spec/type-safety-levels-for-wasm.adoc`
+  documents `typedwasm.capability-grants` alongside the other
+  carriers.
+. Cross-repo issues are filed against `affinescript` and `ephapax`
+  for codegen of the new section (out of scope of *this* proposal
+  — this proposal only defines the wire format; producer codegen
+  is gated on L15-A codegen landing first).
+
+After acceptance, this file is promoted to an ADR under
+`docs/decisions/` (per `docs/proposals/README.adoc`'s status legend)
+and the level-table in `LEVEL-STATUS.md` gains "verifier (grant-
+bound)" status for L15-C alongside the existing "verifier (carrier-
+backed)" entry for L15-A from proposal 0001.
+
+== Related
+
+* Issue https://github.com/hyperpolymath/typed-wasm/issues/96[#96] —
+  this proposal addresses it directly.
+* Proposal link:0001-multi-producer-carrier-section.adoc[0001] —
+  defines `typedwasm.capabilities` (L15-A + L15-B), which this
+  proposal builds on. Open Question #4 in 0001 flagged the per-call-
+  site gap that 0004 fills.
+* Proposal link:0002-access-site-carrier.adoc[0002] — encoding-
+  precedent (LEB128 per field, per-function offset space, all-or-
+  nothing producer obligation). 0004 mirrors 0002's wire-format
+  conventions to keep the codec/parser idioms aligned.
+* PR https://github.com/hyperpolymath/typed-wasm/pull/76[#76] —
+  proposal 0001 landing (source of the L15-C deferral text).
+* PR https://github.com/hyperpolymath/typed-wasm/pull/109[#109] —
+  `verify_capabilities_from_module` (L15-A + L15-B verifier; this
+  proposal's `verify_capability_grants_from_module` extends it).
+* Issue https://github.com/hyperpolymath/typed-wasm/issues/95[#95] —
+  cross-module region foreign keys (open question #4 in this proposal
+  defers cross-module grant resolution to the same future proposal).
+* `LEVEL-STATUS.md` — `[L15-C]` row currently marked as deferred;
+  becomes "verifier (grant-bound)" on acceptance.
+* `src/abi/TypedWasm/ABI/ResourceCapabilities.idr` — `CallCompatible`
+  predicate (line 187) and `callCompose` lemma (line 200) the wire
+  format realises.
