@@ -51,9 +51,10 @@ checklist + canonical emit ordering).
   is open).
 
 **Producer-side codegen remains gated downstream:** AffineScript
-access-site emission at affinescript#462; Ephapax counterpart owner-
-action pending (auto-mode classifier blocked the cross-repo create
-on 2026-05-30).
+access-site emission at affinescript#462 (open); Ephapax counterpart
+at ephapax#251 (filed 2026-05-30 with full scoping). Ephapax
+proposal-0001 Appendix B dead-code item (`Codegen.region_stack` +
+`Codegen.bump_ptr` + `RegionInfo`) closed via ephapax#250.
 
 ### Proof-debt closure pass (2026-05-27)
 
