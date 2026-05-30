@@ -10,7 +10,7 @@
 | Status       | review
 | Author       | hyperpolymath
 | Date         | 2026-05-27
-| Last-updated | 2026-05-30
+| Last-updated | 2026-05-30 (+ Criterion 2 wire↔spec review appendix)
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/34[#34]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
 |===
@@ -352,7 +352,7 @@ verification, not debug info, and must not be optimised out.
   `ephapax` (the only current producers of `typedwasm.ownership`).
 . Wire format reviewed against the Idris2 spec types in `Region.idr`,
   `Pointer.idr`, `ResourceCapabilities.idr` — every wire field maps
-  cleanly to a spec witness.
+  cleanly to a spec witness. *(Satisfied — see Appendix A below.)*
 . A draft codec lands in `crates/typed-wasm-verify/src/section.rs`
   behind cargo features (`unstable-l2`, `unstable-l15`); round-trip
   tests show parse(build(x)) = x for non-empty fixtures.
@@ -389,3 +389,248 @@ backed)" status columns for L2–L6 and L15.
   `src/abi/TypedWasm/ABI/Pointer.idr`,
   `src/abi/TypedWasm/ABI/MultiModule.idr`,
   `src/abi/TypedWasm/ABI/ResourceCapabilities.idr` — spec types.
+
+== Appendix A — Wire-vs-Idris2-spec mapping (Criterion 2)
+
+This appendix satisfies acceptance Criterion 2 ("wire format reviewed
+against the Idris2 spec types — every wire field maps cleanly to a spec
+witness"). Each wire field below is paired with the Idris2 type / value
+that it encodes, and every cross-section invariant the wire carries is
+named against the spec lemma it corresponds to. The reference codec is
+`crates/typed-wasm-verify/src/section.rs` (landed in PR #107).
+
+=== A.1 `typedwasm.regions` ↔ `Region.idr` + `Pointer.idr`
+
+[cols="2,3,2", options="header"]
+|===
+| Wire field
+| Idris2 spec witness
+| Notes
+
+| `u16le version = 1`
+| (codec invariant — no spec mapping)
+| Future major bumps land in a separate proposal; v1 verifier rejects
+  unknown versions per `parse_regions_section_payload` (section.rs:418).
+
+| `u32le region_count`
+| `length : List Region -> Nat` applied to the per-module region list
+| The wire-side list is dense (region IDs are 0..region_count-1);
+  matches `Region.idr`'s record-of-list shape.
+
+| Per-region `utf8 name`
+| `Region.regionName : String` (Region.idr:253)
+| UTF-8 byte sequence with explicit length prefix; no NUL terminator.
+  String identity (not embedding) is what cross-module agreement
+  reasons over.
+
+| Per-region `u32le field_count`
+| `length : Schema -> Nat` where `Schema = List Field` (Region.idr:158)
+| Empty schema (`field_count = 0`) is admissible — corresponds to
+  `LayoutNil` and a region with `schemaSize = 0`.
+
+| Per-field `utf8 field_name`
+| `Field.MkField` name component (Region.idr:127); extracted by
+  `fieldName : Field -> String` (line 132)
+| Field-name injectivity (Region.idr:360 `fieldNameInj`) holds on the
+  Idris2 side; the wire format preserves the same identity because
+  identical bytes ↔ identical `String`.
+
+| Per-field `u8 kind` (0=Scalar, 1=PtrOwning, 2=PtrBorrow, 3=PtrExclusive)
+| `Pointer.idr::PtrKind` (line 39): Owning/Borrowing/Exclusive plus the
+  out-of-band "not a pointer" case
+| `Scalar` is a wire-side discriminant carrying the "this field stores
+  an inline value, not a pointer" case that `Pointer.idr` represents
+  implicitly by not using `Ptr` at all. The bijection on the
+  three pointer cases is exact.
+
+| Per-field `u8 wasm_ty` (0..10 = U8..WBool, 0xFF = NotApplicable)
+| `Region.idr::WasmType` (line 34): 11 variants
+| `NotApplicable` (0xFF) is emitted when `kind != Scalar` (the field
+  type semantics come from the target region). v1 has no `WBool`
+  store-width pin (see open question #94 / typed-wasm#94).
+
+| Per-field `u32le target_region`
+| Spec-side: `Ptr kind (lookupField target_region).schema life null`
+  parameterisation (Pointer.idr:74)
+| Foreign key into the same section's region table. `NO_TARGET_REGION`
+  (0xFFFFFFFF) sentinel when `kind == Scalar`. Verifier enforces
+  `target_region < region_count` when `kind != Scalar` — this is the
+  operational form of the spec-level `Schema` indexing on `Ptr`.
+
+| Per-field `u8 nullability` (0=NonNull, 1=Nullable)
+| `Pointer.idr::Nullability` (via Levels.idr) — used as the `null`
+  parameter of `Ptr kind schema life null`
+| The lenient decode (`Nullability::from_byte`) treats unknown bytes
+  as `NonNull`, which is the safer interpretation per the spec's
+  L4 (null safety) discipline.
+
+| Per-field `u32le cardinality`
+| `Region.count : Nat` (Region.idr:258)
+| Sentinel `0 = unbounded/dynamic`; matches the spec only when
+  cardinality > 0 (open question §"Cardinality `0 = unbounded`
+  sentinel" defers full coverage to L5 verifier downgrade).
+
+| Per-region `u32le region_byte_size`
+| `schemaSize : Schema -> Nat` (Region.idr:204)
+| Redundant w.r.t. the field list; verifier MAY recompute and compare
+  (proposal §"Producer obligations" ¶4). When the producer's value
+  diverges from the recomputed `schemaSize`, the verifier flags a
+  carrier-self-inconsistency error.
+|===
+
+=== A.2 `typedwasm.capabilities` ↔ `ResourceCapabilities.idr`
+
+[cols="2,3,2", options="header"]
+|===
+| Wire field
+| Idris2 spec witness
+| Notes
+
+| `u16le version = 1`
+| (codec invariant)
+| Same versioning policy as regions.
+
+| `u32le capability_count`
+| `length : CapabilitySet -> Nat` applied to `ModuleCaps.declared`
+  (ResourceCapabilities.idr:218)
+| The wire capability table IS the module's declared capability set —
+  one wire entry per `CapabilityName` in `declared`.
+
+| Per-capability `utf8 name`
+| `CapabilityName.capName : String` (ResourceCapabilities.idr:67)
+| The newtype wrapping discipline (`MkCapabilityName`) preserves
+  identity on the wire as raw UTF-8 — type system on the spec side
+  refuses to confuse capability names with arbitrary strings; wire
+  side simply names the bytes.
+
+| `u32le function_count`
+| Per-module count of `FunctionCaps owner` values
+| Not directly a spec witness; bridges wire to the per-function
+  records below.
+
+| Per-function `u32le func_idx`
+| (wasm function index — bridges spec to emitted wasm)
+| No direct spec mapping; the Idris2 side reasons in terms of
+  `FunctionCaps owner` records, not wasm function indices. The wire
+  side names the index because that is what the verifier needs to
+  attach the requirement to a concrete code-section function.
+
+| Per-function `u32le required_count`
+| `length : CapabilitySet -> Nat` applied to `FunctionCaps.required`
+  (line 241)
+| Producer MAY emit 0 — corresponds to `pureFunctionCaps`
+  (ResourceCapabilities.idr:248) and `FunctionCaps.required = []`.
+
+| Per-function `u32le[] required` (strictly increasing)
+| `FunctionCaps.required : CapabilitySet` (line 241), with the
+  strict-increasing invariant encoding `DistinctCaps` (line 104) AND
+  serving as the verifier's foreign-key check
+| The strict-increasing invariant is the *operational counterpart* of
+  three spec-side facts at once:
+
+   1. **`DistinctCaps required`** — no index appears twice. The
+      strict-increasing form trivially implies uniqueness.
+
+   2. **`ContainedIn required declared`** (L15-B soundness, line 312)
+      — each index < `capability_count`. The verifier's
+      `verify_capabilities_from_module` pass (PR #109) checks this
+      directly, raising `CapabilityIdxOutOfRange` on violation.
+
+   3. **Canonical-order producer obligation** — equal `required` sets
+      have equal wire byte sequences (encoding determinism).
+
+  Parser-side `sort_unstable` + `dedup` (section.rs:760) is a
+  defence-in-depth normalisation: a producer that regresses on the
+  strict-increasing obligation still yields a verifier result
+  consistent with the spec, but the wire-level guarantee is degraded.
+|===
+
+=== A.3 What is NOT carried on the wire (deliberate)
+
+The Idris2 spec types have several relations and proofs that v1 of the
+carriers deliberately does NOT encode:
+
+[cols="2,3", options="header"]
+|===
+| Spec construct
+| Why not on the wire / where it lives
+
+| `ContainedIn required declared`
+  (L15-B explicit proof witness)
+| The verifier RECONSTRUCTS the proof obligation by checking each
+  `required[i] < capability_count`. The reconstructed check is sound
+  because the verifier IS the trusted base for L15-B on emitted
+  wasm; carrying the explicit witness would duplicate the same
+  information.
+
+| `CallCompatible caller callee`
+  (L15-C call-graph monotonicity)
+| Deferred to a separate `typedwasm.capability-grants` section
+  (typed-wasm#96) in a v1.4.x follow-up proposal. v1 enforces L15-A
+  (DistinctCaps) and L15-B (ContainedIn) only; L15-C falls back to
+  the producer's source-level checker.
+
+| `LayoutValid schema`
+  (per-field offset fits within instance size; no field overlap)
+| The verifier RECOMPUTES `computeOffsets`/`schemaSize` from the
+  wire-carried field list and compares to the wire-carried
+  `region_byte_size`. The proof obligation is operational, not
+  carried.
+
+| `SchemaEq s1 s2`
+  (cross-module schema equivalence — Region.idr:306)
+| v1 is single-module. Cross-module schema agreement is the explicit
+  scope of a future `typedwasm.region-imports` follow-up (open
+  question #5 / typedwasm#95) — the comparison logic uses the
+  wire-carried region + field tables directly without an
+  intermediate witness.
+
+| `RegionDisjoint r1 r2`
+  (byte-disjoint regions — Region.idr:439)
+| Runtime / loader concern; the wire format intentionally does not
+  pin region base addresses (those are wasm-side `(memory ...)` init
+  data). Disjointness is enforced at allocation time by the host
+  runtime, not by the carrier verifier.
+
+| `ExclusiveWitness schema`
+  (Pointer.idr:163 — no-aliasing for exclusive pointers)
+| L7 (aliasing safety) is carried by the `typedwasm.ownership`
+  section (Linear/SharedBorrow/ExclBorrow tags per parameter), NOT
+  the regions carrier. The regions carrier only attests to schema
+  structure, not to per-handle aliasing facts.
+|===
+
+=== A.4 Soundness shape
+
+Combining the per-field mappings (A.1) with the operational
+reconstructions (A.3) gives the following claim, which proposal 0001
+asserts (and the verifier in PR #109 + the codec in PR #107 enforce):
+
+[NOTE]
+====
+For any module emitting `typedwasm.regions` and `typedwasm.capabilities`,
+**there exists a corresponding Idris2 spec-level
+`(Region[], ModuleCaps, FunctionCaps[])` value** whose constructor
+inhabitation requires exactly the proofs the verifier already checks at
+the wire level — namely:
+
+* `WasmType` decoder soundness (lenient by design — unknown ⇒ safer
+  default per A.1 nullability + WasmTy notes).
+* `FieldKind` ↔ `PtrKind` bijection on the three pointer cases.
+* `target_region` foreign-key check (when `kind != Scalar`).
+* `region_byte_size` self-consistency vs `schemaSize`.
+* `DistinctCaps` via strict-increasing `required[]` (degraded but
+  recoverable via parser-side `sort + dedup`).
+* `ContainedIn required declared` via `required[i] < capability_count`
+  (verifier pass — PR #109).
+
+L15-C (`CallCompatible`), `SchemaEq` (cross-module), `RegionDisjoint`,
+and `ExclusiveWitness` are explicitly out of scope of v1 and tracked
+under the open-questions section above.
+====
+
+This satisfies Criterion 2 *as a write-up*. A future task — not
+required for `[accepted]` — is to encode the same mapping as Idris2
+property tests (`src/abi/` would gain a `WireSchemaEquiv.idr` showing
+`encode/decode` round-trips preserve the spec witnesses listed in A.1
++ A.2). That work is filed as a follow-up after acceptance.
