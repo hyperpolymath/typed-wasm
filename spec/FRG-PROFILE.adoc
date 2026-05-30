@@ -121,7 +121,7 @@ Hygiene status (per `PROOF-NEEDS.md` audit 2026-04-13):
 
 | *C1 — Documented design rationale*
 | YES
-| `README.adoc` "Proofs and implementation" section + `spec/type-safety-levels-for-wasm.adoc` + `docs/proposals/0001-*.md` + `docs/proposals/0002-*.md`.
+| `README.adoc` "Proofs and implementation" section + `spec/type-safety-levels-for-wasm.adoc` + `docs/proposals/0001-*.adoc` + `docs/proposals/0002-*.adoc` (now `[accepted]` + promoted to `docs/decisions/0002-*.adoc` / `0003-*.adoc`).
 
 | *C2 — Documented proof-debt*
 | YES

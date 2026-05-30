@@ -50,7 +50,7 @@ or vendored artefact.
 | `typed-wasm-verify` (Rust crate) v0.1.0
 | *D*
 | Pre-alpha (workspace-internal, unpublished)
-| `crates/typed-wasm-verify/Cargo.toml`. Post-codegen verifier for L7 (aliasing) + L10 (linearity). 2221 lines (cross 535, lib 180, section 681, verify 825). Feature gate `unstable-l2` pre-stages the L2 region-binding carrier codec for proposal #76. Pinned to wasmparser =0.250.0 / wasm-encoder =0.250.0.
+| `crates/typed-wasm-verify/Cargo.toml`. Post-codegen verifier covering L7 (aliasing), L10 (linearity), L2/L3-L6 (regions + access-sites), and L15-A/B (capabilities). Feature gate `unstable-l2` enables the regions + access-sites carriers and their verifier passes (`verify_regions_from_module` / `verify_access_sites_from_module`); `unstable-l15` enables the capabilities carrier + `verify_capabilities_from_module`. Both gates retained while Phase 3 stabilisation is open. Carrier ABIs accepted 2026-05-30 (proposals 0001 + 0002 → ADR-0002 + ADR-0003). Pinned to wasmparser =0.251.0 / wasm-encoder =0.251.0.
 
 | Idris2 ABI surface at `src/abi/`
 | *C*
@@ -81,7 +81,7 @@ requirements (CRG §4.5+) are not yet met:
 * No `audits/audit-typed-wasm-verify.md` exists.
 * `crates/typed-wasm-verify/README.md` covers usage; no per-file
   CRG annotation.
-* CI runs the verifier against the proposal-0001 4-fixture corpus
+* CI runs the verifier against the proposal-0001 / -0002 fixture corpus
   (per the standards#130 long-tail tracker referenced in
   CHANGELOG.md).
 

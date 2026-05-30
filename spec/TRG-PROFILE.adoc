@@ -83,7 +83,7 @@ the compilation-target interpretation noted above.
 | M2 | Type checker            | *C*  | Per-level type judgements in `src/abi/TypedWasm/ABI/{Levels,Region,Lifetime,Effects,Layout,Linear,Pointer,Tropical,Epistemic,ModuleIsolation,SessionProtocol,ResourceCapabilities,Choreography}.idr` (14 typed-AST files).
 | M3 | Type-checker oracle     | *C*  | The Idris2 ABI files act as the oracle: the Rust verifier (`typed-wasm-verify`) checks emitted WASM against the Idris2-encoded properties; A10 closure (PR #79) inhabits `VerifierSpecAgreement` + `SourceVerifierAgreement`.
 | M4 | Proof dispatcher        | *D*  | Differential constructor at `VerifierAccepts` (per PROOF-NEEDS.md reconciliation block) packages structural witnesses inline via `TrustedFixture`. Not an automated dispatcher in the Coq/Lean sense; oracle-side encoding is the operational equivalent.
-| M5 | Semantics document      | *B*  | `spec/type-safety-levels-for-wasm.adoc` is the canonical operational + denotational doc; `spec/async-convergence-abi.adoc` covers async; `docs/proposals/0001-*.md` + `docs/proposals/0002-*.md` are the live RFC corpus. Strongest M5 in the audit cohort.
+| M5 | Semantics document      | *B*  | `spec/type-safety-levels-for-wasm.adoc` is the canonical operational + denotational doc; `spec/async-convergence-abi.adoc` covers async; `docs/proposals/0001-*.adoc` + `docs/proposals/0002-*.adoc` (`[accepted]` 2026-05-30 → ADR-0002 + ADR-0003) and `docs/proposals/0003-*.adoc` + `docs/proposals/0004-*.adoc` (`[draft]`) are the RFC corpus. Strongest M5 in the audit cohort.
 |===
 
 === Back-end (TRG §3.3)

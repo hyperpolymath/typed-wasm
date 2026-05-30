@@ -20,6 +20,60 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
+## RECONCILIATION 2026-05-30 (carrier-ABI proposals 0001 + 0002 accepted + ADR'd — read this FIRST)
+
+> **The "verifier L1-L6 + L13-L16 coverage on emitted wasm" long-tail
+> item shrinks substantially.** The 2026-05-27 banner below listed
+> this as "in progress on PRs #76 / #77 in a parallel session"; the
+> arc has now closed end-to-end:
+>
+> * **Proposal 0001** (`docs/proposals/0001-multi-producer-carrier-section.adoc`)
+>   — `typedwasm.regions` + `typedwasm.capabilities` carrier sections.
+>   `[accepted]` 2026-05-30 (PR #115) → promoted to
+>   `docs/decisions/0002-multi-producer-carrier-sections.adoc`
+>   (ADR-0002) in PR #116.
+> * **Proposal 0002** (`docs/proposals/0002-access-site-carrier.adoc`)
+>   — `typedwasm.access-sites` per-instruction carrier for L2
+>   enforcement. `[accepted]` 2026-05-30 (PR #115) → promoted to
+>   `docs/decisions/0003-access-site-carrier.adoc` (ADR-0003) in PR
+>   #116.
+> * Verifier passes shipped: `verify_regions_from_module` (PR #107),
+>   `verify_capabilities_from_module` and
+>   `verify_access_sites_from_module` (PR #109) — all behind
+>   `unstable-l2` / `unstable-l15` Cargo features in
+>   `crates/typed-wasm-verify/`.
+>
+> **What this closes.** L2-the-enforcement, L3, L4, L5, L6 (regions
+> half), and L15-A/B on emitted wasm now have carrier-backed verifier
+> passes. `LEVEL-STATUS.md` rows updated from "proposal-stage" to
+> "YES (carrier-backed)" in PR #115.
+>
+> **What is still open in the long-tail.**
+>
+> * **L13 cross-module schema agreement (positive form)** — proposal
+>   0003 (`docs/proposals/0003-region-imports-carrier.adoc`) is
+>   `[draft]`. Wire format defined; gated on producer-side
+>   multi-module emission (AffineScript Roadmap C3 / Ephapax not yet
+>   on roadmap).
+> * **L15-C (per-call-site capability monotonicity)** — proposal
+>   0004 (`docs/proposals/0004-capability-grants-carrier.adoc`) is
+>   `[draft]`. Wire format defined; gated on producer-side L15-A
+>   emission.
+> * **WasmCert-Isabelle tie-back** — unchanged (multi-week external
+>   dependency).
+> * **Emitted-wasm byte-equality (P3.1(a))** — unchanged (blocked
+>   on `.twasm → .wasm` emitter not yet existing).
+> * **Idris2 parser round-trip** — unchanged (blocked on AffineScript
+>   parser port to Idris2).
+> * **Producer-side codegen of access-sites** — AffineScript at
+>   affinescript#462; Ephapax counterpart owner-action pending
+>   (auto-mode classifier blocked the cross-repo create on 2026-05-30).
+>
+> **No `believe_me` / `assert_total` / `postulate` / `sorry` /
+> `assert_smaller` introduced; `%default total` preserved across the
+> arc. The acceptance work was design-doc + ADR + verifier-pass
+> codecs, not new proof obligations.**
+
 ## RECONCILIATION 2026-05-27 (post-A10 items 7 + 8 bodies closed — read this FIRST)
 
 > **The two agreement records introduced by PR #72 / A13 are now

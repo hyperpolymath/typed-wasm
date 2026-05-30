@@ -107,7 +107,7 @@ climb to C without TRG promotion because TRG is already C.
 
 | *Community C1-C5*
 | PARTIAL
-| CONTRIBUTING + CoC + SECURITY present. Discussion venues + RFC list partial: `docs/proposals/0001-*.md`, `docs/proposals/0002-*.md` are the current RFC process.
+| CONTRIBUTING + CoC + SECURITY present. Discussion venues + RFC list partial: `docs/proposals/0001-*.adoc` + `docs/proposals/0002-*.adoc` (`[accepted]` 2026-05-30 → ADR-0002 + ADR-0003); `docs/proposals/0003-*.adoc` + `docs/proposals/0004-*.adoc` are the current `[draft]` RFC corpus.
 
 | *Distribution Δ1-Δ5*
 | PARTIAL
