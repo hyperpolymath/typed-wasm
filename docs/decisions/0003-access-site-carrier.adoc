@@ -1,0 +1,120 @@
+= Architecture Decision Record: 0003-access-site-carrier
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
+# 3. Adopt Access-Site Carrier (`typedwasm.access-sites`) for L2 Enforcement
+
+Date: 2026-05-30
+
+## Status
+
+Accepted
+
+Promoted from link:../proposals/0002-access-site-carrier.adoc[Proposal
+0002] (`[accepted]` 2026-05-30). The proposal file remains canonical
+for wire-format detail, error variants, and producer obligations; this
+ADR records the decision and its consequences.
+
+Builds on link:0002-multi-producer-carrier-sections.adoc[ADR-0002].
+
+## Context
+
+link:0002-multi-producer-carrier-sections.adoc[ADR-0002] adopts
+`typedwasm.regions` as the schema carrier: it tells the verifier *which
+regions exist* and *which fields each region declares with what type,
+nullability, and cardinality*. It does **not** tell the verifier
+**which `(region_id, field_id)` any individual `i32.load` /
+`i32.store` is supposed to be against**.
+
+The source-level checker has no problem: it sees `region.get $r .f`
+directly in the AST and resolves `$r → region`, `.f → field` at
+compile time. After codegen, that statement is some sequence ending in
+`i32.load offset=N align=A` — and the `($r, .f)` annotation is gone.
+The verifier can re-derive *which region's offset window N falls into*
+only if the producer tells it which base pointer (region instance)
+was loaded, and a single function may touch several regions.
+
+This was Open Question §5 in proposal 0001, resolved on 2026-05-27 in
+favour of option A (per-instruction access-site carrier). The L2
+verifier pass `verify_region_binding` was deliberately omitted from PR
+#77 because the carrier did not yet exist; this ADR formalises the
+decision.
+
+Without this carrier, **L2-the-enforcement** (every typed access
+resolves to a declared region/field) could not fire on emitted bytes
+— even though **L2-the-spec** (regions/fields exist; cross-module
+schema agreement) was fully covered by `typedwasm.regions`.
+
+## Decision
+
+Adopt a third wasm custom section, `typedwasm.access-sites`, that
+carries, per typed load/store instruction, the resolved
+`(region_id, field_id)` pair the producer intended.
+
+Realised in PR #109 (`verify_access_sites_from_module`).
+
+Key adopted pins:
+
+* Wire format: per-entry `(function_index, instruction_byte_offset,
+  region_id, field_id)`, all LEB128 (encoding option B uniform with
+  ADR-0002).
+* Entries are **strictly ordered** by `(function_index,
+  instruction_byte_offset)` so the verifier can binary-search.
+* Each typed load/store **must** have exactly one access-site entry;
+  missing entries are an error (`UnboundAccess`), not a silent skip.
+* Cardinality-1 producer surface in v1; same opt-in feature gate as
+  ADR-0002 (`unstable-l2`).
+
+Error variants and acceptance criteria live in proposal 0002 §"Error
+variants" and §"Acceptance criteria".
+
+## Consequences
+
+### Positive
+
+- L2 enforcement (`verify_region_binding`) fires on emitted bytes.
+- Carrier is **independent** of `typedwasm.regions`: a producer that
+  emits regions but not access-sites still gets L3–L6 spec-level
+  checking; access-sites is what unlocks per-instruction L2.
+- Per-instruction granularity means the carrier composes with the
+  L15-C per-call-site grants design in proposal 0004 (both key off
+  `(function_index, instruction_byte_offset)`).
+- The decision unblocks AffineScript Roadmap C2 (access-site
+  emission) and the Ephapax counterpart (owner action — classifier
+  blocked the cross-repo issue; tracked in `#106` comment).
+
+### Negative
+
+- Producer codegen must thread `(region, field)` annotations through
+  to every typed load/store call-site and serialise them in
+  carrier-emit order. Both shipping producers have outstanding
+  codegen work for this.
+- Wire-format size: every typed memory access adds ~6–12 bytes of
+  carrier data (function_index + offset + region_id + field_id, all
+  LEB128). Acceptable for v1; benchmarked in proposal 0002 §"Wire
+  format" estimate.
+- Cardinality-1 means a producer cannot split access-sites across
+  multiple sections for incremental emission; reserved for a future
+  amendment.
+
+### Neutral
+
+- `typedwasm.access-sites` is **opt-in via `unstable-l2`** until
+  Phase 3, matching ADR-0002.
+- The access-site carrier is conceptually simpler than the regions
+  carrier — no schema, just a sorted lookup table — but it shares
+  the same feature-gate and the same producer-readiness checklist
+  entry as proposal 0001 Appendix B.
+
+## Cross-references
+
+* link:../proposals/0002-access-site-carrier.adoc[Proposal 0002] —
+  full wire-format spec (canonical reference)
+* link:0002-multi-producer-carrier-sections.adoc[ADR-0002] — the
+  schema-carrier decision this ADR builds on
+* link:../proposals/0001-multi-producer-carrier-section.adoc[Proposal
+  0001] — origin of Open Question §5 (resolved into this ADR)
+* https://github.com/hyperpolymath/typed-wasm/issues/78[issue #78] —
+  tracking issue
+* https://github.com/hyperpolymath/typed-wasm/pull/109[PR #109] —
+  realising pass `verify_access_sites_from_module`
