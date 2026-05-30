@@ -138,6 +138,71 @@ pub const OWNERSHIP_SECTION_NAME: &str = "typedwasm.ownership";
 #[cfg(feature = "unstable-l2")]
 pub const REGIONS_SECTION_NAME: &str = "typedwasm.regions";
 
+/// Custom-section name carrying L15 capability lattice (proposal 0001).
+/// UNSTABLE.
+#[cfg(feature = "unstable-l15")]
+pub const CAPABILITIES_SECTION_NAME: &str = "typedwasm.capabilities";
+
+/// Custom-section name carrying per-instruction `(region_id, field_id)`
+/// mapping (proposal 0002, typed-wasm#86). UNSTABLE.
+#[cfg(feature = "unstable-l2")]
+pub const ACCESS_SITES_SECTION_NAME: &str = "typedwasm.access-sites";
+
+/// L15 capability-section violation (parsing succeeded, content invalid).
+#[cfg(feature = "unstable-l15")]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum CapabilitiesError {
+    #[error("Level 15 violation: function index {func_idx} (entry {entry_idx}) is out of bounds for wasm function section (function_count = {function_count})")]
+    FuncIdxOutOfRange {
+        entry_idx: u32,
+        func_idx: u32,
+        function_count: u32,
+    },
+
+    #[error("Level 15 violation: capability index {cap_idx} in function entry {entry_idx} (func_idx = {func_idx}) is out of bounds for capability table (capability_count = {capability_count})")]
+    CapabilityIdxOutOfRange {
+        entry_idx: u32,
+        func_idx: u32,
+        cap_idx: u32,
+        capability_count: u32,
+    },
+}
+
+/// L2 access-site-section violation.
+#[cfg(feature = "unstable-l2")]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum AccessSiteError {
+    /// Hard error per proposal 0002 §"Producer obligations" #2: a module
+    /// with a `typedwasm.access-sites` section must also have a
+    /// `typedwasm.regions` section — the access-site entries reference
+    /// `region_id` + `field_id` keys with nothing to resolve them
+    /// against otherwise.
+    #[error("Level 2 violation: typedwasm.access-sites section emitted without companion typedwasm.regions section (MissingDependentCarrier)")]
+    MissingDependentRegions,
+
+    #[error("Level 2 violation: access-site entry {entry_idx}: func_idx {func_idx} is out of bounds for wasm function section (function_count = {function_count})")]
+    FuncIdxOutOfRange {
+        entry_idx: u32,
+        func_idx: u32,
+        function_count: u32,
+    },
+
+    #[error("Level 2 violation: access-site entry {entry_idx}: region_id {region_id} is out of bounds for typedwasm.regions table (region_count = {region_count})")]
+    RegionIdOutOfRange {
+        entry_idx: u32,
+        region_id: u32,
+        region_count: u32,
+    },
+
+    #[error("Level 2 violation: access-site entry {entry_idx}: field_id {field_id} is out of bounds for region {region_id}'s field table (field_count = {field_count})")]
+    FieldIdOutOfRange {
+        entry_idx: u32,
+        region_id: u32,
+        field_id: u32,
+        field_count: u32,
+    },
+}
+
 // ----------------------------------------------------------------------
 // Public entry points (stubbed in C1; implementations land in C2-C4).
 // ----------------------------------------------------------------------
@@ -149,6 +214,50 @@ pub const REGIONS_SECTION_NAME: &str = "typedwasm.regions";
 /// Rust port of OCaml `Tw_verify.verify_from_module`.
 pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
     verify::verify_from_module(wasm_bytes)
+}
+
+/// Verify the L15 capability constraints on a wasm module by reading
+/// its embedded `typedwasm.capabilities` custom section. Modules without
+/// the section verify trivially. Checks:
+///
+/// 1. Every per-function `func_idx` is within the module's function
+///    section bounds.
+/// 2. Every per-function `required` capability index is within the
+///    section's capability table bounds.
+///
+/// `DistinctCaps` (strictly-increasing per-function required list) is
+/// not re-checked here because the codec parser already normalises
+/// `required` to sorted+deduped form on read — verifying it would
+/// require parsing the raw wire bytes pre-normalisation.
+#[cfg(feature = "unstable-l15")]
+pub fn verify_capabilities_from_module(
+    wasm_bytes: &[u8],
+) -> Result<Vec<CapabilitiesError>, VerifyError> {
+    verify::verify_capabilities_from_module(wasm_bytes)
+}
+
+/// Verify the L2 access-site constraints on a wasm module by reading
+/// its embedded `typedwasm.access-sites` + `typedwasm.regions` custom
+/// sections. Returns `Ok(vec![])` when no violations are found; modules
+/// without the access-sites section verify trivially. Checks:
+///
+/// 1. `MissingDependentCarrier`: access-sites present without regions
+///    is a hard error (per proposal 0002 §"Producer obligations" #2).
+/// 2. Every entry's `func_idx` is within the module's function section
+///    bounds.
+/// 3. Every entry's `region_id` is within the regions table.
+/// 4. Every entry's `field_id` is within the target region's field
+///    table.
+///
+/// Does NOT check `instruction_byte_offset` validity (would require
+/// parsing function bodies to verify the offset lands on a typed
+/// access opcode — proposal 0002 calls this `AccessSiteMisalignment`
+/// and defers it to a follow-up).
+#[cfg(feature = "unstable-l2")]
+pub fn verify_access_sites_from_module(
+    wasm_bytes: &[u8],
+) -> Result<Vec<AccessSiteError>, VerifyError> {
+    verify::verify_access_sites_from_module(wasm_bytes)
 }
 
 /// Ownership-annotated signature for one exported function.
