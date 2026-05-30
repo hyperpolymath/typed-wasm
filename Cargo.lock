@@ -134,6 +134,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-wasm-codegen"
+version = "0.1.0"
+dependencies = [
+ "typed-wasm-verify",
+ "wasm-encoder",
+ "wasmparser",
+]
+
+[[package]]
 name = "typed-wasm-verify"
 version = "0.1.0"
 dependencies = [
