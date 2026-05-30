@@ -10,6 +10,12 @@
 #   * 15 differing files: 6 proof files (ALL upstream-ahead: 0 maa-only theorems/proofs, 0 sorry)
 #                         + 9 stale vendored-infra files
 #   * 2 files only upstream: proofs/coq/common/{PhysicsConstants,StatMechBasis}.v (refactor maa predates)
+#
+# DRY-RUN VERIFIED 2026-05-30: this script ran exit-0 against a fresh maa clone; result =
+#   232 files changed, 4 insertions(+), 36046 deletions(-); absolute-zero -> gitlink 160000 7da92b3.
+# A prebuilt, pre-tested artifact of that result lives alongside this script (see ARTIFACTS.md):
+#   issue-84-submodule.bundle  (683 B; git fetch + git merge --ff-only).
+# You can apply that directly instead of running this script; this remains the from-scratch path.
 #   => no maa-only proof work anywhere; the swap loses nothing but the inert CI file.
 set -euo pipefail
 

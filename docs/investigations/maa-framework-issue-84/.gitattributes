@@ -1,0 +1,2 @@
+# Conversion artifact must be stored byte-exact (no EOL/encoding normalization).
+*.bundle binary
