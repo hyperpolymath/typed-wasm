@@ -249,7 +249,7 @@ Design proposals for Phase 2+ features are tracked in link:docs/proposals/[`docs
 * **Proposal 0003** — link:docs/proposals/0003-region-imports-carrier.adoc[Region imports carrier section] (`typedwasm.region-imports`) for L13 cross-module schema agreement. Status: `[draft]`.
 * **Proposal 0004** — link:docs/proposals/0004-capability-grants-carrier.adoc[Capability grants carrier section] (`typedwasm.capability-grants`) for L15-C per-call-site enforcement. Status: `[draft]`.
 
-The post-codegen verifier's `verify_access_sites_from_module` pass shipped in PR #109 and reads `typedwasm.access-sites`; `verify_regions_from_module` and `verify_capabilities_from_module` (PRs #107 / #109) cover L3–L6 and L15-A/B. Producer-side codegen of access-sites is the remaining gate for L2-the-enforcement on emitted bytes (AffineScript: affinescript#462; Ephapax: owner action pending).
+The post-codegen verifier's `verify_access_sites_from_module` pass shipped in PR #109 and reads `typedwasm.access-sites`; `verify_regions_from_module` and `verify_capabilities_from_module` (PRs #107 / #109) cover L3–L6 and L15-A/B. Producer-side codegen of access-sites is the remaining gate for L2-the-enforcement on emitted bytes (AffineScript: affinescript#462; Ephapax: ephapax#251). Self-contained handoff brief for the producer-side work at link:docs/developer/handoff-typed-access-sites-codegen.adoc[`docs/developer/handoff-typed-access-sites-codegen.adoc`].
 
 == Related Projects
 

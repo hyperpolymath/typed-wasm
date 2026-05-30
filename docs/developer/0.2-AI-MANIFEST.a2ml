@@ -9,3 +9,17 @@ parent: "../0.1-AI-MANIFEST.a2ml"
 ### [AI_MANIFEST]
 description: |
   Sub-unit of the docs pillar focusing on developer.
+
+### [HANDOFFS]
+# Self-contained briefs for new Claude sessions picking up specific
+# in-progress work. Each handoff is scoped to a single task and lists
+# all the context needed to resume cold.
+handoffs:
+  - file: "handoff-typed-access-sites-codegen.adoc"
+    title: "Typed access-sites codegen for AffineScript + Ephapax"
+    status: "open"
+    filed: "2026-05-30"
+    trackers: ["affinescript#462", "ephapax#251"]
+    blocker: "typecheck → codegen threading of (region_id, field_id)"
+    related-adr: "../decisions/0003-access-site-carrier.adoc"
+    related-proposal: "../proposals/0002-access-site-carrier.adoc"

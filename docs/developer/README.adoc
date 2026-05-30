@@ -1,1 +1,30 @@
+// SPDX-License-Identifier: MPL-2.0
 = developer Unit
+
+Developer-facing documentation for typed-wasm: handoff briefs for
+new Claude / contributor sessions picking up in-progress work, plus
+unit-level AI manifest.
+
+== Handoffs
+
+Self-contained briefs for new Claude sessions picking up specific
+in-progress work. Each handoff is scoped to a single task and lists
+all the context needed to resume cold (relevant files, the blocker,
+the options on the table, sequencing recommendation).
+
+[cols="2,1,2,3"]
+|===
+| File | Status | Trackers | Blocker
+
+| link:handoff-typed-access-sites-codegen.adoc[`handoff-typed-access-sites-codegen.adoc`]
+| open
+| `affinescript#462`, `ephapax#251`
+| Typecheck → codegen threading of `(region_id, field_id)`
+|===
+
+== Related
+
+* link:../decisions/[`docs/decisions/`] — accepted decisions (ADRs)
+* link:../proposals/[`docs/proposals/`] — forward-looking proposals
+* link:../onboarding/[`docs/onboarding/`] — read-in-this-order for
+  new contributors
