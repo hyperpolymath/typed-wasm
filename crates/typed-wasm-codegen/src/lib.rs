@@ -44,8 +44,8 @@ use typed_wasm_verify::{
 };
 use wasm_encoder::{
     CodeSection, CustomSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
-    ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module as WasmModule,
-    TypeSection, ValType,
+    ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module as WasmModule, NameMap,
+    NameSection, TypeSection, ValType,
 };
 
 // ----------------------------------------------------------------------
@@ -439,6 +439,18 @@ pub fn emit(module: &Module) -> Vec<u8> {
     }
     wasm.section(&exports);
     wasm.section(&code);
+    // Debug symbols: the wasm `name` section gives debuggers readable
+    // function names (Phase 1 deliverable 5 / #129, first increment — the
+    // offset -> source-line map awaits source spans from the #127 seam).
+    if !module.funcs.is_empty() {
+        let mut names = NameSection::new();
+        let mut fnames = NameMap::new();
+        for (local_i, func) in module.funcs.iter().enumerate() {
+            fnames.append(import_count + local_i as u32, &func.name);
+        }
+        names.functions(&fnames);
+        wasm.section(&names);
+    }
     // Carriers — each only when non-empty (an access-sites section without
     // a companion regions section is a verifier hard error).
     if !ownership_entries.is_empty() {
@@ -675,6 +687,100 @@ pub fn multimodule_caller(call_count: u32) -> Module {
 /// single-call linear transfer.
 pub fn emit_multimodule() -> (Vec<u8>, Vec<u8>) {
     (emit(&multimodule_callee()), emit(&multimodule_caller(1)))
+}
+
+// ----------------------------------------------------------------------
+// example03: the IR for examples/03-ownership-linearity.twasm (#127)
+// ----------------------------------------------------------------------
+
+/// Build the IR for `examples/03-ownership-linearity.twasm` (L7–L10): a
+/// `Particle` region plus functions exercising **Linear** (`own`),
+/// **ExclBorrow** (`&mut`), and **SharedBorrow** (`&`) parameters, recorded
+/// in the `typedwasm.ownership` carrier. Bodies use each owned/borrowed
+/// parameter per the verifier's use-count discipline (Linear consumed
+/// exactly once; ExclBorrow referenced at most once), so the module passes
+/// `verify_from_module`.
+pub fn example03() -> Module {
+    let particle = Region {
+        name: "Particle".into(),
+        fields: vec![
+            Field::scalar("pos_x", Scalar::F32),     // 0  (bytes 0..4)
+            Field::scalar("pos_y", Scalar::F32),     // 1  (4..8)
+            Field::scalar("vel_x", Scalar::F32),     // 2  (8..12)
+            Field::scalar("vel_y", Scalar::F32),     // 3  (12..16)
+            Field::scalar("lifetime", Scalar::F32),  // 4  (16..20)
+            Field::scalar("colour", Scalar::U32),    // 5  (20..24)
+            Field::scalar("is_alive", Scalar::Bool), // 6  (24)
+        ],
+        byte_size: 28,
+    };
+
+    let funcs = vec![
+        // 0: despawn_particle(own Particle) — Linear, consumed exactly once.
+        Func {
+            name: "despawn_particle".into(),
+            params: vec![Wty::I32],
+            results: vec![],
+            body: vec![Op::LocalGet(0), Op::Drop],
+            accesses: vec![],
+            export: true,
+        },
+        // 1: update_particle(&mut Particle, dt) — ExclBorrow referenced once.
+        Func {
+            name: "update_particle".into(),
+            params: vec![Wty::I32, Wty::F32],
+            results: vec![],
+            body: vec![Op::LocalGet(0), Op::F32Load { offset: 16 }, Op::Drop], // read .lifetime
+            accesses: vec![AccessSite {
+                region: 0,
+                field: 4,
+                offset: 6,
+            }],
+            export: true,
+        },
+        // 2: read_particle_pos(&Particle) -> f32 — SharedBorrow (unconstrained).
+        Func {
+            name: "read_particle_pos".into(),
+            params: vec![Wty::I32],
+            results: vec![Wty::F32],
+            body: vec![Op::LocalGet(0), Op::F32Load { offset: 0 }], // read .pos_x
+            accesses: vec![AccessSite {
+                region: 0,
+                field: 0,
+                offset: 6,
+            }],
+            export: true,
+        },
+        // 3: spawn_particle(...) -> own handle — value params (Unrestricted).
+        Func {
+            name: "spawn_particle".into(),
+            params: vec![Wty::F32, Wty::F32, Wty::F32, Wty::F32, Wty::F32, Wty::I32],
+            results: vec![Wty::I32],
+            body: vec![Op::I32Const(0)], // representative: returns a handle
+            accesses: vec![],
+            export: true,
+        },
+    ];
+
+    Module {
+        regions: vec![particle],
+        memory: Some(Memory {
+            min_pages: 16,
+            max_pages: Some(64),
+        }),
+        imports: vec![],
+        funcs,
+        ownership: vec![
+            (0, vec![Ownership::Linear]), // despawn: own
+            (1, vec![Ownership::ExclBorrow, Ownership::Unrestricted]), // update: &mut, dt
+            (2, vec![Ownership::SharedBorrow]), // read: &
+        ],
+    }
+}
+
+/// Convenience: lower [`example03`] to wasm bytes.
+pub fn emit_example03() -> Vec<u8> {
+    emit(&example03())
 }
 
 // ----------------------------------------------------------------------
