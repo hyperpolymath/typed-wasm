@@ -67,7 +67,7 @@ milestones = [
   { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 100 },  # PR #76 filed 2026-05-27; [accepted] 2026-05-30 (PR #115) → ADR-0002 (PR #116)
   { name = "L2 region-binding codec + verifier pass", completion = 100 },  # PR #77 codec, PR #107 cross-checks, PR #109 verify_regions_from_module
   { name = "L15 capability carrier ABI + verifier pass", completion = 100 },  # bundled into proposal 0001; verify_capabilities_from_module shipped in PR #109
-  { name = "Access-site carrier (proposal 0002)", completion = 100 },  # PR #86 [draft] → [accepted] 2026-05-30 (PR #115) → ADR-0003 (PR #116). Codec + verify_access_sites_from_module shipped in PR #109. Producer-side access-site emission gated downstream (affinescript#462; ephapax owner-action).
+  { name = "Access-site carrier (proposal 0002)", completion = 100 },  # PR #86 [draft] → [accepted] 2026-05-30 (PR #115) → ADR-0003 (PR #116). Codec + verify_access_sites_from_module shipped in PR #109. Producer-side access-site emission gated downstream (affinescript#462 open; ephapax#251 filed 2026-05-30).
   { name = "C5.1 real-AffineScript fixture corpus", completion = 100 },  # PR #81, 2026-05-27 — 4 fixtures + regenerate workflow
 ]
 
@@ -87,8 +87,7 @@ issues = [
 
 [critical-next-actions]
 actions = [
-  "Phase 2: producer-side access-site emission — gated downstream (affinescript#462 open; ephapax counterpart owner-action pending, auto-mode classifier blocked the cross-repo create on 2026-05-30).",
-  "Phase 2: ephapax `Codegen.region_stack` dead-code removal (proposal 0001 Appendix B follow-up).",
+  "Phase 2: producer-side access-site emission — gated downstream (affinescript#462 open; ephapax#251 filed 2026-05-30).",
   "Phase 3: proposals 0003 (region-imports / L13 cross-module) and 0004 (capability-grants / L15-C) move from [draft] when producer-side multi-module + L15-A emission lands.",
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
@@ -198,8 +197,12 @@ proposal-0004-purpose = "L15-C per-call-site enforcement"
 # Producer-side codegen of access-sites is the remaining v1 gate:
 producer-gates = [
   "affinescript#462 — emit typedwasm.access-sites carrier (open)",
-  "ephapax access-sites codegen — owner action pending (classifier-blocked 2026-05-30)",
-  "ephapax Codegen.region_stack dead-code removal",
+  "ephapax#251 — emit typedwasm.access-sites carrier (filed 2026-05-30)",
+]
+# Closed producer-readiness items from proposal 0001 Appendix B:
+producer-gates-closed = [
+  "ephapax#250 — Codegen.region_stack + Codegen.bump_ptr + RegionInfo dead-code removal (merged 2026-05-30)",
+  "affinescript#444 — Tw_section dedup (merged earlier)",
 ]
 
 [c5-real-fixtures]
