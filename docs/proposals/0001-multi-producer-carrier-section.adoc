@@ -7,10 +7,10 @@
 
 [cols="1,3"]
 |===
-| Status       | draft
+| Status       | review
 | Author       | hyperpolymath
 | Date         | 2026-05-27
-| Last-updated | 2026-05-27
+| Last-updated | 2026-05-30
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/34[#34]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
 |===
