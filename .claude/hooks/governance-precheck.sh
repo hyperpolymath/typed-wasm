@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
-# governance-precheck.sh — local mirror of two CI governance gates, run at SessionStart so
+# governance-precheck.sh -- local mirror of two CI governance gates, run at SessionStart so
 # CI failures are caught at source before push. Advisory only: NEVER blocks, always exits 0.
 #   1. Empty-linter: invisible/zero-width Unicode in source files (dogfood-gate.yml).
 #   2. SPDX header presence on .md / .sh / .adoc CHANGED vs origin/main (licence-consistency).
@@ -22,7 +22,7 @@ INVIS=$(git ls-files -z -- \
         | xargs -0 grep -PlZ "$PATTERNS" 2>/dev/null | tr '\0' '\n' | grep -c .)
 
 # --- 2. SPDX header presence on docs/scripts CHANGED vs origin/main ---
-# Scoped to the push delta (not the whole tree) so it flags only what THIS branch adds/edits —
+# Scoped to the push delta (not the whole tree) so it flags only what THIS branch adds/edits --
 # accurate to "catch before push" and avoids the pre-existing unlicensed-doc backlog.
 BASE=$(git rev-parse --verify -q origin/main || git rev-parse --verify -q main)
 MISSING_SPDX=""
@@ -37,12 +37,12 @@ fi
 MISSING_COUNT=$(printf '%b' "$MISSING_SPDX" | grep -c .)
 
 if [ "${INVIS:-0}" -eq 0 ] && [ "${MISSING_COUNT:-0}" -eq 0 ]; then
-  echo "governance-precheck: OK — no invisible chars; SPDX headers present on tracked docs/scripts."
+  echo "governance-precheck: OK -- no invisible chars; SPDX headers present on tracked docs/scripts."
 else
-  echo "governance-precheck: ADVISORY (fix before pushing — these mirror CI gates):"
-  [ "${INVIS:-0}" -ne 0 ]        && echo "  • $INVIS file(s) contain invisible/zero-width Unicode (empty-linter gate)."
+  echo "governance-precheck: ADVISORY (fix before pushing -- these mirror CI gates):"
+  [ "${INVIS:-0}" -ne 0 ]        && echo "  * $INVIS file(s) contain invisible/zero-width Unicode (empty-linter gate)."
   if [ "${MISSING_COUNT:-0}" -ne 0 ]; then
-    echo "  • $MISSING_COUNT tracked doc/script(s) missing an SPDX-License-Identifier header:"
+    echo "  * $MISSING_COUNT tracked doc/script(s) missing an SPDX-License-Identifier header:"
     printf '%b' "$MISSING_SPDX" | grep . | sed 's/^/      /'
   fi
 fi
