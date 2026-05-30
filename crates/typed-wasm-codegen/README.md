@@ -22,6 +22,11 @@ cannot drift from the decoder the verifier runs. The output round-trips
 through `verify_from_module` + `verify_access_sites_from_module`
 in-process — see `tests/roundtrip.rs`.
 
+It also emits **multi-module** pairs — a Linear-exporting callee (with a
+`typedwasm.ownership` carrier) and an importing caller — that round-trip
+through `extract_exports` + `verify_cross_module` (#128); see
+`tests/multimodule.rs`.
+
 ## Usage
 
 ```sh
@@ -44,11 +49,12 @@ cargo test -p typed-wasm-codegen
 | Front-end (`.twasm`) → IR | **deferred** — v0 builds the IR for `example01` directly (seam tracked by #127) |
 | `typedwasm.regions` + `typedwasm.access-sites` | **emitted**, verifier-accepted |
 | WAT (text) emission | **emitted** via `--emit wat\|both` (#125) |
-| `typedwasm.ownership` (L7/L10) | not emitted for example 01 (no linear resources); lands with `examples/03` under #127 |
+| `typedwasm.ownership` (L7/L10) | **emitted** for Linear params (multi-module callee, #128); example 01 has no linear resources |
+| Multi-module (linear boundary) | **emitted** — callee export + caller import round-trip through `verify_cross_module` (#128) |
 | Function-body lowering | representative type-correct bodies, not full `region.scan`/indexing semantics |
 
 ## Where this goes next
 
 - **#127** — codegen coverage across all 10 levels × all 6 examples (and the front-end → IR JSON seam).
-- **#128** — multi-module codegen.
-- **#130** — promote the round-trip test into the ECHIDNA property corpus.
+- **#130** — promote the round-trip tests into the ECHIDNA property corpus.
+- **L13 positive-form / region-imports** — shared-region schema agreement (`examples/02`); rides the `typedwasm.region-imports` carrier (proposal 0003 `[draft]`, no verifier pass yet).

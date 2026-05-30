@@ -38,12 +38,14 @@ use typed_wasm_verify::section::{
     build_access_sites_section_payload, AccessSiteEntry, NO_TARGET_REGION,
 };
 use typed_wasm_verify::{
-    build_regions_section_payload, FieldEntry, FieldKind, Nullability, RegionEntry, WasmTy,
-    ACCESS_SITES_SECTION_NAME, REGIONS_SECTION_NAME,
+    build_ownership_section_payload, build_regions_section_payload, FieldEntry, FieldKind,
+    Nullability, OwnershipEntry, OwnershipKind, RegionEntry, WasmTy, ACCESS_SITES_SECTION_NAME,
+    OWNERSHIP_SECTION_NAME, REGIONS_SECTION_NAME,
 };
 use wasm_encoder::{
-    CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection, Instruction,
-    MemArg, MemorySection, MemoryType, Module as WasmModule, TypeSection, ValType,
+    CodeSection, CustomSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
+    ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module as WasmModule,
+    TypeSection, ValType,
 };
 
 // ----------------------------------------------------------------------
@@ -177,10 +179,54 @@ impl Wty {
 pub enum Op {
     LocalGet(u32),
     I32Const(i32),
-    I32Load { offset: u64 },
-    I32Store { offset: u64 },
-    F32Load { offset: u64 },
-    F32Store { offset: u64 },
+    I32Load {
+        offset: u64,
+    },
+    I32Store {
+        offset: u64,
+    },
+    F32Load {
+        offset: u64,
+    },
+    F32Store {
+        offset: u64,
+    },
+    /// Call the function at the given global index (imports occupy the
+    /// low indices). Used by the multi-module caller to invoke an import.
+    Call(u32),
+    /// Drop the top stack value — consumes a value exactly once.
+    Drop,
+}
+
+/// Ownership discipline for a function parameter, emitted into the
+/// `typedwasm.ownership` carrier (L7 aliasing / L10 linearity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ownership {
+    Unrestricted,
+    Linear,
+    SharedBorrow,
+    ExclBorrow,
+}
+
+impl Ownership {
+    fn to_kind(self) -> OwnershipKind {
+        match self {
+            Ownership::Unrestricted => OwnershipKind::Unrestricted,
+            Ownership::Linear => OwnershipKind::Linear,
+            Ownership::SharedBorrow => OwnershipKind::SharedBorrow,
+            Ownership::ExclBorrow => OwnershipKind::ExclBorrow,
+        }
+    }
+}
+
+/// A function import (the cross-module boundary). Occupies a slot in the
+/// module's function index space ahead of the local functions.
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub module: String,
+    pub field: String,
+    pub params: Vec<Wty>,
+    pub results: Vec<Wty>,
 }
 
 /// A typed access site: the load/store at `offset` (bytes into the function
@@ -220,8 +266,17 @@ pub struct Memory {
 #[derive(Debug, Clone)]
 pub struct Module {
     pub regions: Vec<Region>,
-    pub memory: Memory,
+    /// Linear memory, if the module declares one. Region-bearing modules
+    /// have memory; pure cross-module boundary modules need none.
+    pub memory: Option<Memory>,
+    /// Function imports (the cross-module boundary), ahead of `funcs` in
+    /// the function index space.
+    pub imports: Vec<Import>,
     pub funcs: Vec<Func>,
+    /// Per-local-function ownership annotations: `(local_func_index,
+    /// param_kinds)`. Emitted as the `typedwasm.ownership` carrier;
+    /// empty = no L7/L10 carrier.
+    pub ownership: Vec<(usize, Vec<Ownership>)>,
 }
 
 // ----------------------------------------------------------------------
@@ -276,39 +331,51 @@ fn op_to_instruction(op: Op) -> Instruction<'static> {
         Op::I32Store { offset } => Instruction::I32Store(memarg(offset, 2)),
         Op::F32Load { offset } => Instruction::F32Load(memarg(offset, 2)),
         Op::F32Store { offset } => Instruction::F32Store(memarg(offset, 2)),
+        Op::Call(i) => Instruction::Call(i),
+        Op::Drop => Instruction::Drop,
     }
 }
 
 /// Lower a typed-wasm [`Module`] IR to a wasm binary with embedded
-/// `typedwasm.regions` and `typedwasm.access-sites` carrier sections.
+/// `typedwasm.*` carrier sections (`ownership`, `regions`,
+/// `access-sites`), each emitted only when it has content.
 ///
-/// Section order is the canonical wasm ordering
-/// (Type, Function, Memory, Export, Code, then custom sections) so the
-/// output passes a full wasm validator, not just a lenient parser.
+/// Section order is the canonical wasm ordering (Type, Import, Function,
+/// Memory, Export, Code, then custom sections) so the output passes a full
+/// wasm validator, not just a lenient parser. Imports occupy the low
+/// function indices, so a local function's global index is
+/// `imports.len() + local_index`.
 pub fn emit(module: &Module) -> Vec<u8> {
+    let import_count = module.imports.len() as u32;
+
+    // Types: one per import (low type indices), then one per local function.
     let mut types = TypeSection::new();
-    let mut funcs = FunctionSection::new();
-    let mut code = CodeSection::new();
-    let mut exports = ExportSection::new();
-    let mut mems = MemorySection::new();
-
-    mems.memory(MemoryType {
-        minimum: module.memory.min_pages,
-        maximum: module.memory.max_pages,
-        memory64: false,
-        shared: false,
-        page_size_log2: None,
-    });
-
-    let mut access_entries: Vec<AccessSiteEntry> = Vec::new();
-
-    for (func_idx, func) in module.funcs.iter().enumerate() {
-        // One type per function (duplicate types are legal wasm); type
-        // index lines up with function index since there are no imports.
+    for im in &module.imports {
+        let params: Vec<ValType> = im.params.iter().map(|w| w.to_val_type()).collect();
+        let results: Vec<ValType> = im.results.iter().map(|w| w.to_val_type()).collect();
+        types.ty().function(params, results);
+    }
+    for func in &module.funcs {
         let params: Vec<ValType> = func.params.iter().map(|w| w.to_val_type()).collect();
         let results: Vec<ValType> = func.results.iter().map(|w| w.to_val_type()).collect();
         types.ty().function(params, results);
-        funcs.function(func_idx as u32);
+    }
+
+    let mut imports = ImportSection::new();
+    for (i, im) in module.imports.iter().enumerate() {
+        imports.import(&im.module, &im.field, EntityType::Function(i as u32));
+    }
+
+    let mut funcs = FunctionSection::new();
+    let mut code = CodeSection::new();
+    let mut exports = ExportSection::new();
+    let mut access_entries: Vec<AccessSiteEntry> = Vec::new();
+
+    for (local_i, func) in module.funcs.iter().enumerate() {
+        // Type index and global function index both account for the
+        // imports that precede the local functions.
+        let global_idx = import_count + local_i as u32;
+        funcs.function(global_idx);
 
         let mut f = Function::new([]);
         for op in &func.body {
@@ -318,18 +385,29 @@ pub fn emit(module: &Module) -> Vec<u8> {
         code.function(&f);
 
         if func.export {
-            exports.export(&func.name, ExportKind::Func, func_idx as u32);
+            exports.export(&func.name, ExportKind::Func, global_idx);
         }
 
         for site in &func.accesses {
             access_entries.push(AccessSiteEntry {
-                func_idx: func_idx as u32,
+                func_idx: global_idx,
                 instruction_byte_offset: site.offset,
                 region_id: site.region as u32,
                 field_id: site.field as u32,
             });
         }
     }
+
+    // typedwasm.ownership carrier (L7/L10), keyed by GLOBAL function index.
+    let ownership_entries: Vec<OwnershipEntry> = module
+        .ownership
+        .iter()
+        .map(|(local_i, kinds)| OwnershipEntry {
+            func_idx: import_count + *local_i as u32,
+            param_kinds: kinds.iter().map(|o| o.to_kind()).collect(),
+            ret_kind: OwnershipKind::Unrestricted,
+        })
+        .collect();
 
     // L2–L6 region schema carrier.
     let region_entries: Vec<RegionEntry> = module
@@ -341,23 +419,49 @@ pub fn emit(module: &Module) -> Vec<u8> {
             region_byte_size: r.byte_size,
         })
         .collect();
-    let regions_payload = build_regions_section_payload(&region_entries);
-    let access_payload = build_access_sites_section_payload(&access_entries);
 
     let mut wasm = WasmModule::new();
     wasm.section(&types);
+    if import_count > 0 {
+        wasm.section(&imports);
+    }
     wasm.section(&funcs);
-    wasm.section(&mems);
+    if let Some(mem) = &module.memory {
+        let mut mems = MemorySection::new();
+        mems.memory(MemoryType {
+            minimum: mem.min_pages,
+            maximum: mem.max_pages,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        wasm.section(&mems);
+    }
     wasm.section(&exports);
     wasm.section(&code);
-    wasm.section(&CustomSection {
-        name: REGIONS_SECTION_NAME.into(),
-        data: regions_payload.as_slice().into(),
-    });
-    wasm.section(&CustomSection {
-        name: ACCESS_SITES_SECTION_NAME.into(),
-        data: access_payload.as_slice().into(),
-    });
+    // Carriers — each only when non-empty (an access-sites section without
+    // a companion regions section is a verifier hard error).
+    if !ownership_entries.is_empty() {
+        let payload = build_ownership_section_payload(&ownership_entries);
+        wasm.section(&CustomSection {
+            name: OWNERSHIP_SECTION_NAME.into(),
+            data: payload.as_slice().into(),
+        });
+    }
+    if !region_entries.is_empty() {
+        let payload = build_regions_section_payload(&region_entries);
+        wasm.section(&CustomSection {
+            name: REGIONS_SECTION_NAME.into(),
+            data: payload.as_slice().into(),
+        });
+    }
+    if !access_entries.is_empty() {
+        let payload = build_access_sites_section_payload(&access_entries);
+        wasm.section(&CustomSection {
+            name: ACCESS_SITES_SECTION_NAME.into(),
+            data: payload.as_slice().into(),
+        });
+    }
     wasm.finish()
 }
 
@@ -485,17 +589,92 @@ pub fn example01() -> Module {
 
     Module {
         regions: vec![vec2, players, enemies],
-        memory: Memory {
+        memory: Some(Memory {
             min_pages: 64,
             max_pages: Some(256),
-        },
+        }),
+        imports: vec![],
         funcs,
+        ownership: vec![],
     }
 }
 
 /// Convenience: lower [`example01`] to wasm bytes.
 pub fn emit_example01() -> Vec<u8> {
     emit(&example01())
+}
+
+// ----------------------------------------------------------------------
+// Multi-module codegen — Phase 1 deliverable 7 (#128)
+//
+// Producer-side emission at parity with the verifier's *existing*
+// cross-module coverage: the L10 linear-ownership import boundary
+// (`typed_wasm_verify::verify_cross_module`). A callee module exports a
+// Linear-consuming function (recorded in `typedwasm.ownership`); a caller
+// module imports it and must call it exactly once per path.
+//
+// The L13 *positive-form* shared-region schema agreement that
+// `examples/02-multi-module.twasm` illustrates (`export region` /
+// `import region ... from`) rides the `typedwasm.region-imports` carrier —
+// proposal 0003 `[draft]`, with no verifier pass yet — so it is out of
+// scope here and tracked separately.
+// ----------------------------------------------------------------------
+
+/// The callee module: exports `consume` — one Linear param, consumed
+/// exactly once — with a `typedwasm.ownership` carrier so a consumer's
+/// verifier can read the boundary contract via `extract_exports`.
+pub fn multimodule_callee() -> Module {
+    Module {
+        regions: vec![],
+        memory: None,
+        imports: vec![],
+        funcs: vec![Func {
+            name: "consume".into(),
+            params: vec![Wty::I32],
+            results: vec![],
+            body: vec![Op::LocalGet(0), Op::Drop], // uses the Linear param once
+            accesses: vec![],
+            export: true,
+        }],
+        ownership: vec![(0, vec![Ownership::Linear])],
+    }
+}
+
+/// A caller module importing the callee's `consume` and calling it
+/// `call_count` times in its single function. `call_count == 1` is the
+/// clean linear transfer; `>= 2` duplicates the resource and must be
+/// rejected by `verify_cross_module`.
+pub fn multimodule_caller(call_count: u32) -> Module {
+    let mut body = Vec::new();
+    for _ in 0..call_count {
+        body.push(Op::LocalGet(0));
+        body.push(Op::Call(0)); // the import occupies global function index 0
+    }
+    Module {
+        regions: vec![],
+        memory: None,
+        imports: vec![Import {
+            module: "callee".into(),
+            field: "consume".into(), // must match the callee's export name
+            params: vec![Wty::I32],
+            results: vec![],
+        }],
+        funcs: vec![Func {
+            name: "use_resource".into(),
+            params: vec![Wty::I32],
+            results: vec![],
+            body,
+            accesses: vec![],
+            export: false,
+        }],
+        ownership: vec![],
+    }
+}
+
+/// Convenience: emit the `(callee, caller)` pair for the clean
+/// single-call linear transfer.
+pub fn emit_multimodule() -> (Vec<u8>, Vec<u8>) {
+    (emit(&multimodule_callee()), emit(&multimodule_caller(1)))
 }
 
 // ----------------------------------------------------------------------
