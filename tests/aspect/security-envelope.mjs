@@ -166,6 +166,10 @@ if (!badgeClaimsZero) {
     let src = readFileSync(path, "utf8");
     // Strip block comments {- ... -} (non-nested, conservative)
     src = src.replace(/\{-[\s\S]*?-\}/g, "");
+    // Strip Idris2 docstrings ||| ... to end of line (badge claims like
+    // "Total, no `believe_me`, no `assert_total`" live in docstrings and
+    // describe what's *absent* — not actual code uses).
+    src = src.replace(/\|\|\|[^\n]*/g, "");
     // Strip line comments -- ... to end of line
     src = src.replace(/--[^\n]*/g, "");
     for (const tok of Object.keys(offenders)) {
