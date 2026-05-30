@@ -27,4 +27,4 @@ wasmparser = "=0.251.0"
 thiserror = "2"
 
 [dev-dependencies]
-wasm-encoder = "=0.250.0"
+wasm-encoder = "=0.251.0"
