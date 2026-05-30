@@ -143,28 +143,29 @@ pins affinescript SHA for drift detection).
 | L7 (aliasing) | **YES** | `verify_function` per-path use-range |
 | L10 (linearity) | **YES** | `verify_function` per-path use-range |
 | L13 (module isolation, negative form) | **YES** | `verify_from_module`, gated on ownership-section presence (PR #37, 2026-05-19) |
-| L2–L6 (region binding, type-compat, null, bounds, result-type) | **proposal-stage** | Carrier-section ABI draft at PR #76 (`docs/proposals/0001`); codec pre-staged behind `cargo feature = "unstable-l2"` at PR #77 |
-| L15 (resource capabilities, L15-A/B) | **proposal-stage** | Same proposal 0001 (separate `typedwasm.capabilities` section) |
+| L13 (cross-module schema agreement, positive form) | **proposal-stage** | `typedwasm.region-imports` carrier — proposal 0003 `[draft]` (`docs/proposals/0003`); blocked on producer-side multi-module emission |
+| L2 (region binding) | **YES** (carrier-backed) | `verify_access_sites_from_module` PR #109; reads `typedwasm.regions` + `typedwasm.access-sites` (proposals 0001 + 0002 `[accepted]` 2026-05-30; codec PR #107; gated `cargo feature = "unstable-l2"`) |
+| L3–L6 (type-compat, null, bounds, result-type) | **YES** (carrier-backed, schema half) | `typedwasm.regions` codec PR #107; cross-checks against `Region.idr::WasmType`, `Pointer.idr::Nullability`, cardinality. Per-access enforcement gated on producer codegen of access-sites (`affinescript#462`, ephapax pending). |
+| L15 (resource capabilities, L15-A/B) | **YES** (carrier-backed) | `verify_capabilities_from_module` PR #109; reads `typedwasm.capabilities` (proposal 0001 `[accepted]`; codec PR #107; gated `cargo feature = "unstable-l15"`). L15-C deferred to proposal 0004 `[draft]`. |
 | L14, L16 | **out of scope** | Gated on AffineScript surface work (no `session`/`choreography` producer emission yet) |
 
-**Open gating items** (post proposal 0001 acceptance):
+**Open gating items** (post proposals 0001 + 0002 acceptance, 2026-05-30):
 
-1. **Access-site carrier** — issue #78. Proposal 0001's region/schema
-   carrier says *which regions exist*; it does not say which
-   `(region_id, field_id)` any individual wasm `i32.load offset=N`
-   targets. Owner-resolved 2026-05-27 as **option A**
-   (per-instruction `typedwasm.access-sites` carrier mapping
-   `(func_idx, instruction_byte_offset) → (region_id, field_id)`).
-   Wire-format design lands as `docs/proposals/0002-access-site-carrier.adoc`
-   (future session). Encoding-B size measurement recorded on issue #78
-   (~5 B/access, ~1.1% module overhead vs ~3.5 B raw access).
-2. **Cross-repo wire-format review** — affinescript#402, ephapax#165.
-   Both producers must sign off on the `typedwasm.regions` and
-   `typedwasm.capabilities` formats before proposal 0001 moves from
-   `[draft]` → `[review]` → `[accepted]`.
-3. **`verify_region_binding` Rust pass** — explicitly omitted from
-   PR #77; gated on proposal 0002's acceptance (needs the access-site
-   carrier to bind individual loads/stores back to regions).
+1. **Producer codegen** — verifier passes ship; producer-side emission
+   lags. See proposal 0001 §"Appendix B — Producer-readiness checklist"
+   for IR prerequisites of each carrier. Tracking:
+   `affinescript#444` (Tw_section dedup, ✅ merged), `affinescript#462`
+   (access-sites codegen), `ephapax#221` (Ty::Borrow surfacing) +
+   ephapax access-sites issue (owner action pending).
+2. **L13 cross-module (positive form)** — proposal 0003 `[draft]`
+   (`docs/proposals/0003`). Gated on producer-side multi-module
+   emission (AffineScript Roadmap C3 / Ephapax not yet on roadmap).
+3. **L15-C (call-graph monotonicity)** — proposal 0004 `[draft]`
+   (`docs/proposals/0004`). Gated on producer-side L15-A emission
+   (Roadmap C2 not started in either producer).
+4. **ADR promotion** — proposals 0001 + 0002 remain in
+   `docs/proposals/` post-acceptance; promotion to
+   `docs/decisions/` is a follow-up file-restructure.
 
 **Spec-of-record alignment (2026-05-27, PR #79).**  The
 `TypedWasm.ABI.VerifierSpec` Idris2 module now states the

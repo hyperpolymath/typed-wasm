@@ -7,10 +7,11 @@
 
 [cols="1,3"]
 |===
-| Status       | review
+| Status       | accepted
 | Author       | hyperpolymath
 | Date         | 2026-05-28
-| Last-updated | 2026-05-30
+| Last-updated | 2026-05-30 (review → accepted; owner-decision after all 6 gates ✅)
+| Accepted-by  | hyperpolymath (owner), 2026-05-30
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/78[#78]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
 | Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (multi-producer carrier sections)

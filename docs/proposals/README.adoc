@@ -22,11 +22,11 @@ Status legend:
 
 | link:0001-multi-producer-carrier-section.adoc[0001]
 | Multi-producer carrier sections for L2–L6 and L15
-| `[review]`
+| `[accepted]` (2026-05-30)
 
 | link:0002-access-site-carrier.adoc[0002]
 | Access-site carrier section (`typedwasm.access-sites`) for L2 enforcement
-| `[review]`
+| `[accepted]` (2026-05-30)
 
 | link:0003-region-imports-carrier.adoc[0003]
 | Region imports carrier section (`typedwasm.region-imports`) for L13 cross-module schema agreement
@@ -36,6 +36,10 @@ Status legend:
 | Capability grants carrier section (`typedwasm.capability-grants`) for L15-C per-call-site enforcement
 | `[draft]`
 |===
+
+NOTE: Proposals 0001 and 0002 are `[accepted]` as of 2026-05-30. They
+remain in `docs/proposals/` for now; ADR promotion to
+`docs/decisions/` is a separate file-restructure follow-up.
 
 The strategic decisions (D1–D6) from
 link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] §"Load-bearing
