@@ -14,9 +14,19 @@ default = []
 # 0001 (typed-wasm#76, refs #34). UNSTABLE: wire format may change before
 # the proposal is [accepted]. Enables `parse_regions_section_payload` /
 # `build_regions_section_payload` and the `RegionEntry` / `FieldEntry`
-# types. Does NOT enable a `verify_region_binding` pass — that needs an
-# access-site carrier still under design (see proposal §Open Questions).
+# types. Also enables `parse_access_sites_section_payload` /
+# `build_access_sites_section_payload` and `AccessSiteEntry` from
+# proposal 0002 (#78) — access-sites is an L2 enforcement carrier and
+# travels with the L2 feature gate. Does NOT enable a
+# `verify_region_binding` pass — that's a separate plumb step.
 unstable-l2 = []
+# Pre-stages the L15 capability-lattice carrier codec for typed-wasm
+# proposal 0001. UNSTABLE: wire format may change before [accepted].
+# Enables `parse_capabilities_section_payload` /
+# `build_capabilities_section_payload` and the `CapabilityEntry` /
+# `FunctionCapabilities` types. L15-C (per-call-site grants) is deferred
+# to a separate proposal (tracked by #96).
+unstable-l15 = []
 
 [dependencies]
 # Exact pins: wasmparser's 0.x line ships API breaks on every minor bump

@@ -483,14 +483,14 @@ pub fn build_regions_section_payload(regions: &[RegionEntry]) -> Vec<u8> {
     out
 }
 
-#[cfg(feature = "unstable-l2")]
+#[cfg(any(feature = "unstable-l2", feature = "unstable-l15"))]
 fn read_u16_le(r: &mut LenientReader<'_>) -> u16 {
     let lo = r.read_u8();
     let hi = r.read_u8();
     u16::from_le_bytes([lo, hi])
 }
 
-#[cfg(feature = "unstable-l2")]
+#[cfg(any(feature = "unstable-l2", feature = "unstable-l15"))]
 fn read_utf8(r: &mut LenientReader<'_>) -> String {
     let len = r.read_u32_le() as usize;
     let mut bytes = Vec::with_capacity(len);
@@ -503,7 +503,7 @@ fn read_utf8(r: &mut LenientReader<'_>) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-#[cfg(feature = "unstable-l2")]
+#[cfg(any(feature = "unstable-l2", feature = "unstable-l15"))]
 fn write_utf8(out: &mut Vec<u8>, s: &str) {
     let bytes = s.as_bytes();
     let len: u32 = bytes.len().try_into().expect("name length must fit in u32");
@@ -677,5 +677,457 @@ mod regions_tests {
         assert_eq!(Nullability::from_byte(0), Nullability::NonNull);
         assert_eq!(Nullability::from_byte(1), Nullability::Nullable);
         assert_eq!(Nullability::from_byte(42), Nullability::NonNull);
+    }
+}
+
+// ----------------------------------------------------------------------
+// L15 capabilities carrier — `typedwasm.capabilities` custom section
+//
+// Pre-staged against typed-wasm proposal 0001 (typed-wasm#76, refs #34).
+// UNSTABLE: the wire format here may change before the proposal moves
+// to [accepted].
+//
+// Wire format (little-endian, byte-aligned, lenient on truncation):
+//
+//   u16le   version              (= CAPABILITIES_SECTION_VERSION = 1)
+//   u32le   capability_count
+//   for each capability (in index order, 0..capability_count-1):
+//       u32le  name_len
+//       u8[]   name              (UTF-8, no NUL terminator)
+//   u32le   function_count
+//   for each function:
+//       u32le  func_idx          (index into wasm function section)
+//       u32le  required_count
+//       u32le[required_count]    required_capability_indices
+//                                (indices into capability table above;
+//                                 MUST be strictly increasing → trivially
+//                                 encodes ResourceCapabilities.DistinctCaps.
+//                                 Parser sorts-and-dedups defensively in
+//                                 case a future producer regresses.)
+//
+// L15-C (call-graph monotonicity / per-call-site grants / CallCompatible)
+// is deferred to a v1.4.x follow-up proposal — see #96.
+// ----------------------------------------------------------------------
+
+#[cfg(feature = "unstable-l15")]
+pub const CAPABILITIES_SECTION_VERSION: u16 = 1;
+
+#[cfg(feature = "unstable-l15")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityEntry {
+    pub name: String,
+}
+
+#[cfg(feature = "unstable-l15")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionCapabilities {
+    pub func_idx: u32,
+    /// Indices into the section's capability table. Producer MUST emit
+    /// strictly-increasing. Parser sorts-and-dedups defensively.
+    pub required: Vec<u32>,
+}
+
+/// Parse the `typedwasm.capabilities` custom-section payload.
+/// `parse(build(x)) == Some(x_normalised)` where `x_normalised` has
+/// each function's `required` sorted and deduped.
+#[cfg(feature = "unstable-l15")]
+pub fn parse_capabilities_section_payload(
+    payload: &[u8],
+) -> Option<(Vec<CapabilityEntry>, Vec<FunctionCapabilities>)> {
+    let mut r = LenientReader::new(payload);
+    let version = read_u16_le(&mut r);
+    if version != CAPABILITIES_SECTION_VERSION {
+        return None;
+    }
+    let capability_count = r.read_u32_le();
+    let mut capabilities = Vec::with_capacity(capability_count as usize);
+    for _ in 0..capability_count {
+        let name = read_utf8(&mut r);
+        capabilities.push(CapabilityEntry { name });
+    }
+    let function_count = r.read_u32_le();
+    let mut functions = Vec::with_capacity(function_count as usize);
+    for _ in 0..function_count {
+        let func_idx = r.read_u32_le();
+        let required_count = r.read_u32_le();
+        let mut required = Vec::with_capacity(required_count as usize);
+        for _ in 0..required_count {
+            required.push(r.read_u32_le());
+        }
+        // Defensive: normalise to strictly-increasing form so callers
+        // can rely on the DistinctCaps property even if a future
+        // producer regresses on the producer obligation.
+        required.sort_unstable();
+        required.dedup();
+        functions.push(FunctionCapabilities { func_idx, required });
+    }
+    Some((capabilities, functions))
+}
+
+/// Encode capabilities + per-function requirements. Producer must
+/// pre-sort the `required` arrays; this encoder writes them verbatim
+/// (no defensive sort) so a malformed producer is observable in the
+/// wire bytes for debugging.
+#[cfg(feature = "unstable-l15")]
+pub fn build_capabilities_section_payload(
+    capabilities: &[CapabilityEntry],
+    functions: &[FunctionCapabilities],
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 + 4 + capabilities.len() * 16 + 4 + functions.len() * 16);
+    out.extend_from_slice(&CAPABILITIES_SECTION_VERSION.to_le_bytes());
+    let cap_count: u32 = capabilities
+        .len()
+        .try_into()
+        .expect("capability count must fit in u32");
+    out.extend_from_slice(&cap_count.to_le_bytes());
+    for cap in capabilities {
+        write_utf8(&mut out, &cap.name);
+    }
+    let fn_count: u32 = functions
+        .len()
+        .try_into()
+        .expect("function count must fit in u32");
+    out.extend_from_slice(&fn_count.to_le_bytes());
+    for f in functions {
+        out.extend_from_slice(&f.func_idx.to_le_bytes());
+        let req_count: u32 = f
+            .required
+            .len()
+            .try_into()
+            .expect("required-capability count must fit in u32");
+        out.extend_from_slice(&req_count.to_le_bytes());
+        for idx in &f.required {
+            out.extend_from_slice(&idx.to_le_bytes());
+        }
+    }
+    out
+}
+
+#[cfg(all(test, feature = "unstable-l15"))]
+mod capabilities_tests {
+    use super::*;
+
+    #[test]
+    fn empty_payload_returns_none() {
+        assert_eq!(parse_capabilities_section_payload(&[]), None);
+    }
+
+    #[test]
+    fn version_only_yields_empty_tables() {
+        let mut payload = CAPABILITIES_SECTION_VERSION.to_le_bytes().to_vec();
+        payload.extend_from_slice(&0u32.to_le_bytes()); // capability_count
+        payload.extend_from_slice(&0u32.to_le_bytes()); // function_count
+        assert_eq!(
+            parse_capabilities_section_payload(&payload),
+            Some((vec![], vec![]))
+        );
+    }
+
+    #[test]
+    fn wrong_version_returns_none() {
+        let payload = [99u8, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        assert_eq!(parse_capabilities_section_payload(&payload), None);
+    }
+
+    #[test]
+    fn roundtrip_single_capability_no_functions() {
+        let caps = vec![CapabilityEntry {
+            name: "net".to_string(),
+        }];
+        let funs: Vec<FunctionCapabilities> = vec![];
+        let bytes = build_capabilities_section_payload(&caps, &funs);
+        assert_eq!(
+            parse_capabilities_section_payload(&bytes),
+            Some((caps, funs))
+        );
+    }
+
+    #[test]
+    fn roundtrip_function_with_two_capabilities() {
+        let caps = vec![
+            CapabilityEntry {
+                name: "net".to_string(),
+            },
+            CapabilityEntry {
+                name: "fs".to_string(),
+            },
+            CapabilityEntry {
+                name: "clock".to_string(),
+            },
+        ];
+        let funs = vec![FunctionCapabilities {
+            func_idx: 7,
+            required: vec![0, 2], // net + clock; already sorted
+        }];
+        let bytes = build_capabilities_section_payload(&caps, &funs);
+        let (pcaps, pfuns) = parse_capabilities_section_payload(&bytes).expect("parses");
+        assert_eq!(pcaps, caps);
+        assert_eq!(pfuns, funs);
+    }
+
+    #[test]
+    fn parser_normalises_unsorted_required() {
+        // Forge a payload with an unsorted required list — parser must
+        // sort-and-dedup. Tests the DistinctCaps-recovery contract.
+        let caps = vec![CapabilityEntry {
+            name: "x".to_string(),
+        }];
+        let mut payload = CAPABILITIES_SECTION_VERSION.to_le_bytes().to_vec();
+        payload.extend_from_slice(&1u32.to_le_bytes()); // capability_count
+        // capability 0 = "x"
+        payload.extend_from_slice(&1u32.to_le_bytes());
+        payload.push(b'x');
+        // 1 function with required = [2, 0, 1, 0] (unsorted + duplicate)
+        payload.extend_from_slice(&1u32.to_le_bytes()); // function_count
+        payload.extend_from_slice(&42u32.to_le_bytes()); // func_idx
+        payload.extend_from_slice(&4u32.to_le_bytes()); // required_count
+        for v in [2u32, 0, 1, 0] {
+            payload.extend_from_slice(&v.to_le_bytes());
+        }
+        let (pcaps, pfuns) = parse_capabilities_section_payload(&payload).expect("parses");
+        assert_eq!(pcaps, caps);
+        assert_eq!(pfuns.len(), 1);
+        assert_eq!(pfuns[0].func_idx, 42);
+        assert_eq!(pfuns[0].required, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn truncated_payload_zero_fills() {
+        let caps = vec![CapabilityEntry {
+            name: "io".to_string(),
+        }];
+        let funs = vec![FunctionCapabilities {
+            func_idx: 3,
+            required: vec![0],
+        }];
+        let bytes = build_capabilities_section_payload(&caps, &funs);
+        // Chop the last required index byte
+        let truncated = &bytes[..bytes.len() - 4];
+        let (pcaps, pfuns) =
+            parse_capabilities_section_payload(truncated).expect("parses leniently");
+        assert_eq!(pcaps, caps);
+        // required reads as [0] (zero-filled u32_le) instead of [0]
+        // — same value by coincidence; the real verification is no panic.
+        assert_eq!(pfuns[0].func_idx, 3);
+    }
+}
+
+// ----------------------------------------------------------------------
+// L2 access-site carrier — `typedwasm.access-sites` custom section
+//
+// Pre-staged against typed-wasm proposal 0002 (typed-wasm#86, refs #78).
+// UNSTABLE: the wire format here may change before the proposal moves
+// to [accepted].
+//
+// Wire format:
+//
+//   u16le         version                    (= ACCESS_SITES_SECTION_VERSION = 1)
+//   u32_leb128    entry_count
+//   for each entry (in producer-emission order):
+//       u32_leb128  func_idx
+//       u32_leb128  instruction_byte_offset  (within function body, post-codegen,
+//                                              post any wasm-opt rewrite)
+//       u32_leb128  region_id                (index into typedwasm.regions table)
+//       u32_leb128  field_id                 (index into target region's field table)
+//
+// Entries are NOT required to be sorted in v1. Parser preserves the
+// producer-emission order; consumers building a (func_idx, offset) ->
+// (region, field) map can sort/index downstream.
+//
+// MissingDependentCarrier semantics (per proposal §"Producer
+// obligations" #2): if access-sites is present without regions, the
+// verifier is expected to hard-error — this codec does not encode that
+// dependency itself; that's a verifier-level cross-section check.
+// ----------------------------------------------------------------------
+
+#[cfg(feature = "unstable-l2")]
+pub const ACCESS_SITES_SECTION_VERSION: u16 = 1;
+
+#[cfg(feature = "unstable-l2")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AccessSiteEntry {
+    pub func_idx: u32,
+    pub instruction_byte_offset: u32,
+    pub region_id: u32,
+    pub field_id: u32,
+}
+
+#[cfg(feature = "unstable-l2")]
+fn read_u32_leb128(r: &mut LenientReader<'_>) -> u32 {
+    // Unsigned LEB128 over u32 value space. Producers MUST emit shortest
+    // encoding; consumers MAY accept overlong (we do, for laziness — at
+    // worst we waste a couple bytes per access site decoding). Cap at
+    // 5 bytes (ceil(32/7)) and saturate on overflow.
+    let mut result: u32 = 0;
+    let mut shift: u32 = 0;
+    for _ in 0..5 {
+        let byte = r.read_u8();
+        let payload = (byte & 0x7F) as u32;
+        result |= payload.wrapping_shl(shift);
+        if (byte & 0x80) == 0 {
+            return result;
+        }
+        shift = shift.wrapping_add(7);
+    }
+    // Overlong / malformed — return whatever was accumulated.
+    result
+}
+
+#[cfg(feature = "unstable-l2")]
+fn write_u32_leb128(out: &mut Vec<u8>, mut value: u32) {
+    loop {
+        let mut byte = (value & 0x7F) as u8;
+        value >>= 7;
+        if value != 0 {
+            byte |= 0x80;
+            out.push(byte);
+        } else {
+            out.push(byte);
+            return;
+        }
+    }
+}
+
+/// Parse the `typedwasm.access-sites` custom-section payload.
+/// `parse(build(x)) == Some(x)` for any valid input.
+#[cfg(feature = "unstable-l2")]
+pub fn parse_access_sites_section_payload(payload: &[u8]) -> Option<Vec<AccessSiteEntry>> {
+    let mut r = LenientReader::new(payload);
+    let version = read_u16_le(&mut r);
+    if version != ACCESS_SITES_SECTION_VERSION {
+        return None;
+    }
+    let entry_count = read_u32_leb128(&mut r);
+    let mut entries = Vec::with_capacity(entry_count.min(1_048_576) as usize);
+    for _ in 0..entry_count {
+        let func_idx = read_u32_leb128(&mut r);
+        let instruction_byte_offset = read_u32_leb128(&mut r);
+        let region_id = read_u32_leb128(&mut r);
+        let field_id = read_u32_leb128(&mut r);
+        entries.push(AccessSiteEntry {
+            func_idx,
+            instruction_byte_offset,
+            region_id,
+            field_id,
+        });
+    }
+    Some(entries)
+}
+
+/// Encode access-site entries.
+#[cfg(feature = "unstable-l2")]
+pub fn build_access_sites_section_payload(entries: &[AccessSiteEntry]) -> Vec<u8> {
+    // ~5 bytes/entry per proposal 0002 measurement (LEB128 avg, ~1.1%
+    // module overhead at fixture scale).
+    let mut out = Vec::with_capacity(2 + 5 + entries.len() * 5);
+    out.extend_from_slice(&ACCESS_SITES_SECTION_VERSION.to_le_bytes());
+    let entry_count: u32 = entries
+        .len()
+        .try_into()
+        .expect("entry count must fit in u32");
+    write_u32_leb128(&mut out, entry_count);
+    for e in entries {
+        write_u32_leb128(&mut out, e.func_idx);
+        write_u32_leb128(&mut out, e.instruction_byte_offset);
+        write_u32_leb128(&mut out, e.region_id);
+        write_u32_leb128(&mut out, e.field_id);
+    }
+    out
+}
+
+#[cfg(all(test, feature = "unstable-l2"))]
+mod access_sites_tests {
+    use super::*;
+
+    #[test]
+    fn empty_payload_returns_none() {
+        assert_eq!(parse_access_sites_section_payload(&[]), None);
+    }
+
+    #[test]
+    fn version_only_yields_zero_entries() {
+        let mut payload = ACCESS_SITES_SECTION_VERSION.to_le_bytes().to_vec();
+        payload.push(0); // LEB128 0 = entry_count
+        assert_eq!(parse_access_sites_section_payload(&payload), Some(vec![]));
+    }
+
+    #[test]
+    fn wrong_version_returns_none() {
+        let payload = [99u8, 0, 0];
+        assert_eq!(parse_access_sites_section_payload(&payload), None);
+    }
+
+    #[test]
+    fn roundtrip_single_entry_small_values() {
+        let entries = vec![AccessSiteEntry {
+            func_idx: 3,
+            instruction_byte_offset: 17,
+            region_id: 0,
+            field_id: 2,
+        }];
+        let bytes = build_access_sites_section_payload(&entries);
+        assert_eq!(parse_access_sites_section_payload(&bytes), Some(entries));
+        // Small-value sanity: 2 (version) + 1 (entry_count=1) + 4×1 (each LEB128) = 7 bytes
+        assert_eq!(bytes.len(), 7);
+    }
+
+    #[test]
+    fn roundtrip_many_entries_large_values() {
+        let entries: Vec<_> = (0..100u32)
+            .map(|i| AccessSiteEntry {
+                func_idx: i,
+                instruction_byte_offset: i * 1_000_000,
+                region_id: i / 10,
+                field_id: i % 7,
+            })
+            .collect();
+        let bytes = build_access_sites_section_payload(&entries);
+        assert_eq!(
+            parse_access_sites_section_payload(&bytes),
+            Some(entries.clone())
+        );
+        // Average ~5 B/entry sanity (proposal 0002 measurement) — well
+        // under 16 B/entry an encoding A would have used.
+        let overhead = bytes.len() - 2 - 1; // sub version + entry_count
+        let avg = overhead as f64 / entries.len() as f64;
+        assert!(avg < 16.0, "avg bytes/entry too high: {avg}");
+    }
+
+    #[test]
+    fn leb128_handles_boundary_values() {
+        // Each boundary: 127, 128, 16383, 16384, ... up to u32::MAX.
+        let boundaries: Vec<u32> = vec![
+            0,
+            127,
+            128,
+            16_383,
+            16_384,
+            2_097_151,
+            2_097_152,
+            268_435_455,
+            268_435_456,
+            u32::MAX,
+        ];
+        let entries: Vec<_> = boundaries
+            .iter()
+            .map(|&v| AccessSiteEntry {
+                func_idx: v,
+                instruction_byte_offset: v,
+                region_id: v,
+                field_id: v,
+            })
+            .collect();
+        let bytes = build_access_sites_section_payload(&entries);
+        assert_eq!(parse_access_sites_section_payload(&bytes), Some(entries));
+    }
+
+    #[test]
+    fn leb128_roundtrip_individual_values() {
+        for v in [0u32, 1, 127, 128, 255, 1_000, u32::MAX] {
+            let mut buf = Vec::new();
+            write_u32_leb128(&mut buf, v);
+            let mut r = LenientReader::new(&buf);
+            assert_eq!(read_u32_leb128(&mut r), v, "value {v} did not round-trip");
+        }
     }
 }
