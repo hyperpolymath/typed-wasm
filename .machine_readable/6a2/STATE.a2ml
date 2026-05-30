@@ -204,6 +204,9 @@ producer-gates-closed = [
   "ephapax#250 — Codegen.region_stack + Codegen.bump_ptr + RegionInfo dead-code removal (merged 2026-05-30)",
   "affinescript#444 — Tw_section dedup (merged earlier)",
 ]
+# Self-contained handoff brief for new Claude/contributor sessions:
+producer-gates-handoff = "docs/developer/handoff-typed-access-sites-codegen.adoc"
+producer-gates-handoff-blocker = "typecheck → codegen threading of (region_id, field_id); same blocker in both producers; 3 options surfaced (IR annotation / side-table / re-resolve at codegen)"
 
 [c5-real-fixtures]
 # Real-AffineScript-emitted .wasm corpus, PR #81 landed 2026-05-27.

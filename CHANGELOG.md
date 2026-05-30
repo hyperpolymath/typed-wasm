@@ -56,6 +56,14 @@ at ephapax#251 (filed 2026-05-30 with full scoping). Ephapax
 proposal-0001 Appendix B dead-code item (`Codegen.region_stack` +
 `Codegen.bump_ptr` + `RegionInfo`) closed via ephapax#250.
 
+**Handoff brief for new sessions** at
+`docs/developer/handoff-typed-access-sites-codegen.adoc` —
+self-contained brief covering both producers, the shared
+typecheck → codegen threading blocker, three resolution options
+(IR annotation / side-table / re-resolve at codegen), and the
+sequencing recommendation. Cross-linked from affinescript#462 and
+ephapax#251.
+
 ### Proof-debt closure pass (2026-05-27)
 
 Post-Phase-0 sweep of the long-tail items the 2026-05-18 PROOF-NEEDS

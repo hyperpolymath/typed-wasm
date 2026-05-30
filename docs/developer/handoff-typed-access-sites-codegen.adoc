@@ -1,0 +1,262 @@
+// SPDX-License-Identifier: MPL-2.0
+= Handoff: Typed Access-Sites Codegen for AffineScript + Ephapax
+
+:status: open
+:filed: 2026-05-30
+:trackers: affinescript#462, ephapax#251
+:wire-spec: docs/proposals/0002-access-site-carrier.adoc
+:adr: docs/decisions/0003-access-site-carrier.adoc
+
+This is a self-contained brief for a new Claude session picking up
+producer-side typed `typedwasm.access-sites` emission. The task spans
+**two repositories** (AffineScript + Ephapax); both producers share
+the same wire format and the same blocker, so the work parallelises.
+
+== Context (what already shipped)
+
+* typed-wasm proposal 0001 (`docs/proposals/0001-multi-producer-carrier-section.adoc`)
+  reached `[accepted]` 2026-05-30 → promoted to ADR-0002
+  (`docs/decisions/0002-multi-producer-carrier-sections.adoc`).
+  Carriers: `typedwasm.regions` + `typedwasm.capabilities`.
+* typed-wasm proposal 0002 (`docs/proposals/0002-access-site-carrier.adoc`)
+  reached `[accepted]` 2026-05-30 → promoted to ADR-0003
+  (`docs/decisions/0003-access-site-carrier.adoc`). Carrier:
+  `typedwasm.access-sites`.
+* Verifier passes shipped in typed-wasm:
+  `verify_regions_from_module` (PR #107),
+  `verify_capabilities_from_module` and
+  `verify_access_sites_from_module` (PR #109), all behind Cargo
+  feature gates `unstable-l2` / `unstable-l15` in
+  `crates/typed-wasm-verify/`.
+* `typedwasm.ownership` carrier emission is already wired in BOTH
+  producers (the precedent to follow):
+** AffineScript: `lib/tw_section.ml` (`Tw_section.Encode.ownership`),
+   custom-section assembly in `lib/codegen.ml` ~2765-2771.
+** Ephapax: `src/ephapax-wasm/src/lib.rs` (inline encoder + custom-
+   section assembly ~lines 1277 + 4577).
+
+== What this handoff is about
+
+Both producers need to start emitting `typedwasm.access-sites`. The
+verifier already consumes the carrier; without producer emission the
+L2-per-instruction enforcement cannot fire on emitted bytes (only the
+L2-spec / L3-L6 / L15-A/B halves are carrier-backed today).
+
+== The blocker (same in both repos)
+
+Today the IR / codegen pipeline has typed access at the **type**
+level — both typecheckers (`lib/borrow.ml` in AffineScript;
+`src/ephapax-typing/` in Ephapax) resolve `(region, field)` at
+typecheck. By the time codegen emits `i32.load offset=N` /
+`i32.store offset=N`, the semantic `(region_id, field_id)`
+annotation is gone — codegen recomputes offsets from a local layout
+table and the binding is lost between the two passes.
+
+Without `(region_id, field_id)` available at each emit site, there is
+nothing to put in the carrier entries.
+
+=== Three resolution options (same shape in both repos)
+
+. **IR annotation** — add resolved `(region_id, field_id)` to the
+  typed-access AST/IR variant. Populated by the typechecker, consumed
+  by codegen. Cleanest; minimal coupling between the two passes.
+. **Side-table** — typechecker produces `Map<expr_id, (region_id,
+  field_id)>`, codegen consults during emission. Less invasive to
+  AST/IR shape; adds a parameter to the codegen entry function.
+. **Re-resolve at codegen** — duplicate typechecker resolution
+  logic in codegen. Code smell; avoid unless 1 + 2 are both blocked
+  (e.g. by AST stability constraints).
+
+The owner has not selected between 1 / 2 / 3. Both producers should
+adopt the **same** option for parity, so propose one and confirm
+before implementing.
+
+== The encoder (~25 LOC, mechanical)
+
+Wire format per typed-wasm proposal 0002 §"Wire format":
+
+[source]
+----
+u16le   version              (= ACCESS_SITES_VERSION = 1)
+u32le   entry_count
+for each entry (strictly ordered by (func_idx, byte_offset)):
+    u32le  func_idx
+    u32le  instruction_byte_offset
+    u32le  region_id
+    u32le  field_id
+----
+
+Encoding option B (LEB128 per field) per proposal 0002 §"Wire format"
+measurement (~5B/access, ~1.1% module overhead).
+
+The encoder is straightforward — pattern-match on the precedents:
+
+* AffineScript: extend `lib/tw_section.ml` / `lib/tw_section.mli`
+  with `Encode.access_sites : (int * int * int * int) list -> bytes`.
+  The forward-compat slot is already declared in the `.mli` header
+  (refreshed in affinescript#468).
+* Ephapax: add an `encode_access_sites_section` helper alongside the
+  inline `typedwasm.ownership` encoder in `src/ephapax-wasm/src/lib.rs`.
+
+== Custom-section assembly (~5 LOC)
+
+Append the new section to each producer's custom-sections emit list,
+gated by "any typed access emitted in this module":
+
+* AffineScript: `lib/codegen.ml` ~lines 2765-2771 (where
+  `typedwasm.ownership` is currently appended).
+* Ephapax: `src/ephapax-wasm/src/lib.rs` ~line 4577.
+
+== Tests
+
+Mirror the `typedwasm.ownership` round-trip pattern in each repo:
+
+* AffineScript: `test/test_tw_isolation.ml` is the precedent (95 LOC,
+  construct module → emit → verify parse+lookup against
+  `Tw_verify.parse_*_section_payload`).
+* Ephapax: `src/ephapax-wasm/tests/` has the corresponding isolation
+  tests; new `test_access_sites_*` files mirroring the ownership
+  ones.
+
+Differential corpus: typed-wasm has `crates/typed-wasm-verify/tests/
+fixtures/c5_real/` for producer-emitted .wasm. New AffineScript
+fixtures emitting access-sites should land there too, gated on the
+producer-side emission first.
+
+== Coordination notes
+
+* **Both producers must adopt the SAME threading option** (1 / 2 / 3
+  above). Do not let one repo ship IR-annotation while the other
+  ships side-table; the carrier wire format is shared so the
+  producer-internal mechanism should be too where reasonable.
+* **The encoder is the easy half.** Don't be tempted to land
+  `Encode.access_sites` first as a "minimal slice" — without the
+  threading, it has no feeder. The dead-code lint will catch it
+  in Rust; OCaml is more forgiving but it still wastes a PR.
+* **Field IDs must be stable across producers consuming the same
+  shared schema** (cross-module case). When a region is imported
+  from another module, the importer's `field_id` numbering must
+  match the exporter's — this is what the typed-wasm verifier's
+  `verify_access_sites_from_module` checks via the
+  `typedwasm.regions` cross-reference. If the typechecker assigns
+  field IDs from a per-module counter, the cross-module case will
+  fail. Confirm the ID scheme is shared-schema-aware before relying
+  on it.
+* **No new wire-format proposals.** This is implementation of
+  already-accepted proposal 0002 / ADR-0003. If the threading work
+  surfaces a wire-format gap, file a proposal-0002 amendment issue
+  rather than improvising.
+
+== Verification
+
+Once both producers emit access-sites:
+
+* `cargo test -p typed-wasm-verify --features unstable-l2` exercises
+  the differential corpus.
+* The typed-wasm `verify_access_sites_from_module` pass should
+  accept producer-emitted `.wasm` and reject hand-malformed
+  fixtures (see proposal 0002 §"Error variants" for the variant
+  set: `MissingDependentRegions`, `UnboundAccess`,
+  `AccessSiteRegionMismatch`, `AccessSiteFieldMismatch`,
+  `AccessSiteOutOfOrder`, ...).
+
+== Carry-forward items (NOT in scope for this handoff)
+
+* L13 cross-module schema agreement (positive form) — typed-wasm
+  proposal 0003 `[draft]` (`docs/proposals/0003-region-imports-carrier.adoc`).
+  Gated on producer multi-module emission.
+* L15-C per-call-site capability grants — typed-wasm proposal 0004
+  `[draft]` (`docs/proposals/0004-capability-grants-carrier.adoc`).
+  Gated on producer L15-A emission.
+
+These are tracked at typed-wasm issues #95 + #96 (both CLOSED 2026-05-30
+when the proposals were filed; status is now "[draft] proposals open
+on disk"). Do not work on these until access-sites + the L15-A
+producer surfaces land.
+
+== File index for the new Claude session
+
+|===
+| Repo | File | What it is
+
+| typed-wasm
+| `docs/proposals/0002-access-site-carrier.adoc`
+| Canonical wire format spec (proposal-stage version; the ADR records
+the decision)
+
+| typed-wasm
+| `docs/decisions/0003-access-site-carrier.adoc`
+| ADR: the decision + consequences (short)
+
+| typed-wasm
+| `crates/typed-wasm-verify/src/section.rs`
+| Verifier-side decode + `verify_access_sites_from_module` pass
+(read-only reference)
+
+| typed-wasm
+| `crates/typed-wasm-verify/tests/fixtures/c5_real/`
+| Producer-emitted .wasm differential corpus (new fixtures land here)
+
+| affinescript
+| `lib/tw_section.ml` + `.mli`
+| Encoder home (ownership precedent; access-sites slot reserved by
+affinescript#468)
+
+| affinescript
+| `lib/codegen.ml` ~lines 1297-1475 (typed access emit), ~2765-2771
+(custom-section assembly)
+| Threading + assembly sites
+
+| affinescript
+| `lib/borrow.ml`
+| Typechecker — where `(region, field)` is resolved (search for
+typed-access resolution to find the right hook for threading)
+
+| affinescript
+| `test/test_tw_isolation.ml`
+| Test pattern to mirror
+
+| ephapax
+| `src/ephapax-wasm/src/lib.rs` ~line 1277 + ~line 4577
+| Encoder + custom-section assembly sites
+
+| ephapax
+| `src/ephapax-typing/`
+| Typechecker — where `(region, field)` is resolved
+
+| ephapax
+| `src/ephapax-wasm/tests/`
+| Test pattern to mirror
+|===
+
+== Sequencing recommendation
+
+. **Decide the threading option (1/2/3) with the owner first.** Do
+  not start coding before this is settled.
+. Pick **one repo** to prototype in. Ephapax (Rust) is probably
+  faster to iterate because the lint catches unused threading
+  early; AffineScript (OCaml) is more forgiving but requires
+  reading more code.
+. Land the threading + encoder + assembly + tests as a single PR
+  in the chosen repo.
+. Mirror the same approach in the other repo as a second PR.
+. Land at least one cross-repo differential-corpus fixture in
+  typed-wasm (`crates/typed-wasm-verify/tests/fixtures/c5_real/`).
+. Update `LEVEL-STATUS.md` L3-L6 row + Open-gating item 1 to mark
+  producer-side access-sites emission ✅.
+
+== Standing rules (estate-wide; recap)
+
+* GPG-sign every commit (key
+  `4A03639C1EB1F86C7F0C97A91835A14A2867091E`, email
+  `6759885+hyperpolymath@users.noreply.github.com`).
+* Auto-merge every PR: `gh pr merge <n> --auto --squash --delete-branch`.
+* Do not `--admin` merge code PRs without owner direction.
+* For proof PRs in `formal/*.v` (Ephapax) the local Coq toolchain
+  is the merge oracle (CI doesn't run Coq there); none of this
+  handoff is in `formal/`, but if a typecheck change touches
+  Coq-mechanised territory in Ephapax, flag it.
+* For Ephapax: do NOT touch `formal/` legacy preservation patching
+  — owner directive 2026-05-27. The four-layer redesign is the
+  active path. This handoff touches NEITHER, but be aware in case
+  of adjacent work.
