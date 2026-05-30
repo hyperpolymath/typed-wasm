@@ -244,10 +244,12 @@ against that plan.
 
 Design proposals for Phase 2+ features are tracked in link:docs/proposals/[`docs/proposals/`]:
 
-* **Proposal 0001** — link:docs/proposals/0001-multi-producer-carrier-section.adoc[Multi-producer carrier sections] for L2–L6 (`typedwasm.regions`) and L15 (`typedwasm.capabilities`). Status: `[draft]`, cross-repo review under way (affinescript#402, ephapax#165).
-* **Proposal 0002** — link:docs/proposals/0002-access-site-carrier.adoc[Access-site carrier section] (`typedwasm.access-sites`) closing the "L2-the-enforcement" gap via per-instruction `(func_idx, byte_offset) → (region_id, field_id)` mapping. Encoding B (LEB128 per field, ~5B/access) per issue #78 size measurement. Status: `[draft]`, gated on proposal 0001 acceptance.
+* **Proposal 0001** — link:docs/proposals/0001-multi-producer-carrier-section.adoc[Multi-producer carrier sections] for L2–L6 (`typedwasm.regions`) and L15 (`typedwasm.capabilities`). Status: `[accepted]` 2026-05-30 → promoted to link:docs/decisions/0002-multi-producer-carrier-sections.adoc[ADR-0002].
+* **Proposal 0002** — link:docs/proposals/0002-access-site-carrier.adoc[Access-site carrier section] (`typedwasm.access-sites`) closing the "L2-the-enforcement" gap via per-instruction `(func_idx, byte_offset) → (region_id, field_id)` mapping. Encoding B (LEB128 per field, ~5B/access). Status: `[accepted]` 2026-05-30 → promoted to link:docs/decisions/0003-access-site-carrier.adoc[ADR-0003].
+* **Proposal 0003** — link:docs/proposals/0003-region-imports-carrier.adoc[Region imports carrier section] (`typedwasm.region-imports`) for L13 cross-module schema agreement. Status: `[draft]`.
+* **Proposal 0004** — link:docs/proposals/0004-capability-grants-carrier.adoc[Capability grants carrier section] (`typedwasm.capability-grants`) for L15-C per-call-site enforcement. Status: `[draft]`.
 
-The post-codegen verifier's `verify_region_binding` pass is gated on proposal 0002's acceptance; until then, L2-the-enforcement on emitted wasm bytes is producer-side only.
+The post-codegen verifier's `verify_access_sites_from_module` pass shipped in PR #109 and reads `typedwasm.access-sites`; `verify_regions_from_module` and `verify_capabilities_from_module` (PRs #107 / #109) cover L3–L6 and L15-A/B. Producer-side codegen of access-sites is the remaining gate for L2-the-enforcement on emitted bytes (AffineScript: affinescript#462; Ephapax: owner action pending).
 
 == Related Projects
 

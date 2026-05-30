@@ -10,6 +10,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Multi-producer carrier ABI: proposals 0001 + 0002 accepted, promoted to ADRs (2026-05-30)
+
+Closes typed-wasm#34 (proposal 0001), typed-wasm#78 (proposal 0002),
+typed-wasm#106 (roadmap from `[review]` to `[accepted]`), typed-wasm#94
+(WBool wire width), typed-wasm#95 (proposal 0003 tracking), typed-wasm#96
+(proposal 0004 tracking), and typed-wasm#97 (producer-readiness
+checklist + canonical emit ordering).
+
+**Acceptance arc (PRs #110–#116):**
+
+- **#110** — pre-acceptance gates: cross-reference between proposals.
+- **#111** — proposal 0004 `[draft]` (`typedwasm.capability-grants` /
+  L15-C per-call-site enforcement, wire format defined).
+- **#112** — proposal 0003 `[draft]` (`typedwasm.region-imports` /
+  L13 cross-module schema agreement, wire format defined).
+- **#113** — pinned WBool wire width at 4 bytes in `Region.idr`
+  (`sizeOf WBool = 4`) matching both shipping producers; reserves
+  `WBoolPacked` as a separate `WasmType` for a future 1-byte variant.
+- **#114** — added Appendix B "Producer-readiness checklist" to
+  proposal 0001 + cross-reference subsection in proposal 0002 +
+  canonical emit ordering in proposal 0001 §"Producer obligations".
+- **#115** — flipped proposals 0001 + 0002 from `[review]` to
+  `[accepted]` (owner decision 2026-05-30); rewrote `LEVEL-STATUS.md`
+  L2 / L3-L6 / L13 single-module / L15 rows from "proposal-stage" to
+  **YES (carrier-backed)** via the PR #107 / #109 verifier passes.
+- **#116** — promoted proposals 0001 + 0002 to ADR-0002 / ADR-0003:
+  - `docs/decisions/0002-multi-producer-carrier-sections.adoc`
+  - `docs/decisions/0003-access-site-carrier.adoc`
+  - Proposal files retained as canonical wire-format references with
+    cross-links in both directions (`Promoted to` / `Promoted from`).
+
+**Status of carrier-format Cargo features:**
+
+- `unstable-l2` — codec + `verify_regions_from_module` +
+  `verify_access_sites_from_module` (post-acceptance; feature gate
+  retained while Phase 3 stabilisation is open).
+- `unstable-l15` — codec + `verify_capabilities_from_module`
+  (post-acceptance; feature gate retained while Phase 3 stabilisation
+  is open).
+
+**Producer-side codegen remains gated downstream:** AffineScript
+access-site emission at affinescript#462; Ephapax counterpart owner-
+action pending (auto-mode classifier blocked the cross-repo create
+on 2026-05-30).
+
 ### Proof-debt closure pass (2026-05-27)
 
 Post-Phase-0 sweep of the long-tail items the 2026-05-18 PROOF-NEEDS
