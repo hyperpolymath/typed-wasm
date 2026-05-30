@@ -34,7 +34,9 @@
 //! * Full function-body semantics (indexing, `region.scan`, null checks):
 //!   v0 emits type-correct representative bodies, not the full lowering.
 
-use typed_wasm_verify::section::{build_access_sites_section_payload, AccessSiteEntry, NO_TARGET_REGION};
+use typed_wasm_verify::section::{
+    build_access_sites_section_payload, AccessSiteEntry, NO_TARGET_REGION,
+};
 use typed_wasm_verify::{
     build_regions_section_payload, FieldEntry, FieldKind, Nullability, RegionEntry, WasmTy,
     ACCESS_SITES_SECTION_NAME, REGIONS_SECTION_NAME,
@@ -114,13 +116,29 @@ pub struct Field {
 
 impl Field {
     pub fn scalar(name: &str, ty: Scalar) -> Self {
-        Field { name: name.into(), ty: FieldTy::Scalar(ty), cardinality: 1 }
+        Field {
+            name: name.into(),
+            ty: FieldTy::Scalar(ty),
+            cardinality: 1,
+        }
     }
     pub fn array(name: &str, ty: Scalar, len: u32) -> Self {
-        Field { name: name.into(), ty: FieldTy::Scalar(ty), cardinality: len }
+        Field {
+            name: name.into(),
+            ty: FieldTy::Scalar(ty),
+            cardinality: len,
+        }
     }
     pub fn ptr(name: &str, kind: PtrKind, target: usize, nullable: bool) -> Self {
-        Field { name: name.into(), ty: FieldTy::Ptr { kind, target, nullable }, cardinality: 1 }
+        Field {
+            name: name.into(),
+            ty: FieldTy::Ptr {
+                kind,
+                target,
+                nullable,
+            },
+            cardinality: 1,
+        }
     }
 }
 
@@ -220,7 +238,11 @@ fn field_to_entry(f: &Field) -> FieldEntry {
             nullability: Nullability::NonNull,
             cardinality: f.cardinality,
         },
-        FieldTy::Ptr { kind, target, nullable } => FieldEntry {
+        FieldTy::Ptr {
+            kind,
+            target,
+            nullable,
+        } => FieldEntry {
             name: f.name.clone(),
             kind: match kind {
                 PtrKind::Owning => FieldKind::PtrOwning,
@@ -229,7 +251,11 @@ fn field_to_entry(f: &Field) -> FieldEntry {
             },
             wasm_ty: WasmTy::NotApplicable,
             target_region: target as u32,
-            nullability: if nullable { Nullability::Nullable } else { Nullability::NonNull },
+            nullability: if nullable {
+                Nullability::Nullable
+            } else {
+                Nullability::NonNull
+            },
             cardinality: f.cardinality,
         },
     }
@@ -238,7 +264,11 @@ fn field_to_entry(f: &Field) -> FieldEntry {
 fn op_to_instruction(op: Op) -> Instruction<'static> {
     // Natural alignment for the scalar widths v0 emits; align is the
     // log2 of the byte alignment.
-    let memarg = |offset: u64, align: u32| MemArg { offset, align, memory_index: 0 };
+    let memarg = |offset: u64, align: u32| MemArg {
+        offset,
+        align,
+        memory_index: 0,
+    };
     match op {
         Op::LocalGet(i) => Instruction::LocalGet(i),
         Op::I32Const(c) => Instruction::I32Const(c),
@@ -345,27 +375,30 @@ pub fn example01() -> Module {
     // Region indices: Vec2 = 0, Players = 1, Enemies = 2.
     let vec2 = Region {
         name: "Vec2".into(),
-        fields: vec![Field::scalar("x", Scalar::F32), Field::scalar("y", Scalar::F32)],
+        fields: vec![
+            Field::scalar("x", Scalar::F32),
+            Field::scalar("y", Scalar::F32),
+        ],
         byte_size: 8,
     };
     let players = Region {
         name: "Players".into(),
         fields: vec![
-            Field::scalar("hp", Scalar::I32),                 // field 0
-            Field::scalar("speed", Scalar::F64),              // field 1
-            Field::ptr("pos", PtrKind::Owning, 0, false),     // field 2 -> Vec2
-            Field::array("name", Scalar::U8, 24),             // field 3
+            Field::scalar("hp", Scalar::I32),             // field 0
+            Field::scalar("speed", Scalar::F64),          // field 1
+            Field::ptr("pos", PtrKind::Owning, 0, false), // field 2 -> Vec2
+            Field::array("name", Scalar::U8, 24),         // field 3
         ],
         byte_size: 48,
     };
     let enemies = Region {
         name: "Enemies".into(),
         fields: vec![
-            Field::scalar("hp", Scalar::I32),                 // field 0
-            Field::scalar("damage", Scalar::I32),             // field 1
-            Field::ptr("target", PtrKind::Borrow, 1, true),   // field 2 -> opt<@Players>
-            Field::ptr("pos", PtrKind::Owning, 0, false),     // field 3 -> Vec2
-            Field::scalar("is_active", Scalar::Bool),         // field 4
+            Field::scalar("hp", Scalar::I32),               // field 0
+            Field::scalar("damage", Scalar::I32),           // field 1
+            Field::ptr("target", PtrKind::Borrow, 1, true), // field 2 -> opt<@Players>
+            Field::ptr("pos", PtrKind::Owning, 0, false),   // field 3 -> Vec2
+            Field::scalar("is_active", Scalar::Bool),       // field 4
         ],
         byte_size: 24,
     };
@@ -377,7 +410,11 @@ pub fn example01() -> Module {
             params: vec![Wty::I32, Wty::I32],
             results: vec![Wty::I32],
             body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
-            accesses: vec![AccessSite { region: 1, field: 0, offset: 6 }],
+            accesses: vec![AccessSite {
+                region: 1,
+                field: 0,
+                offset: 6,
+            }],
             export: true,
         },
         // 1: damage_player(players, idx, amount)  (L3/L8: write Players.hp)
@@ -386,7 +423,11 @@ pub fn example01() -> Module {
             params: vec![Wty::I32, Wty::I32, Wty::I32],
             results: vec![],
             body: vec![Op::LocalGet(0), Op::LocalGet(2), Op::I32Store { offset: 0 }],
-            accesses: vec![AccessSite { region: 1, field: 0, offset: 6 }],
+            accesses: vec![AccessSite {
+                region: 1,
+                field: 0,
+                offset: 6,
+            }],
             export: true,
         },
         // 2: get_enemy_target_hp(enemies, players, enemy_idx) -> i32
@@ -397,8 +438,16 @@ pub fn example01() -> Module {
             results: vec![Wty::I32],
             body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
             accesses: vec![
-                AccessSite { region: 2, field: 2, offset: 6 }, // Enemies.target
-                AccessSite { region: 1, field: 0, offset: 9 }, // Players.hp
+                AccessSite {
+                    region: 2,
+                    field: 2,
+                    offset: 6,
+                }, // Enemies.target
+                AccessSite {
+                    region: 1,
+                    field: 0,
+                    offset: 9,
+                }, // Players.hp
             ],
             export: true,
         },
@@ -408,7 +457,11 @@ pub fn example01() -> Module {
             params: vec![Wty::I32],
             results: vec![Wty::I32],
             body: vec![Op::I32Const(0)],
-            accesses: vec![AccessSite { region: 2, field: 4, offset: 2 }],
+            accesses: vec![AccessSite {
+                region: 2,
+                field: 4,
+                offset: 2,
+            }],
             export: true,
         },
         // 4: move_player(players, idx, dx, dy)     (nested: Players.pos)
@@ -416,15 +469,26 @@ pub fn example01() -> Module {
             name: "move_player".into(),
             params: vec![Wty::I32, Wty::I32, Wty::F32, Wty::F32],
             results: vec![],
-            body: vec![Op::LocalGet(0), Op::LocalGet(2), Op::F32Store { offset: 16 }],
-            accesses: vec![AccessSite { region: 1, field: 2, offset: 6 }],
+            body: vec![
+                Op::LocalGet(0),
+                Op::LocalGet(2),
+                Op::F32Store { offset: 16 },
+            ],
+            accesses: vec![AccessSite {
+                region: 1,
+                field: 2,
+                offset: 6,
+            }],
             export: true,
         },
     ];
 
     Module {
         regions: vec![vec2, players, enemies],
-        memory: Memory { min_pages: 64, max_pages: Some(256) },
+        memory: Memory {
+            min_pages: 64,
+            max_pages: Some(256),
+        },
         funcs,
     }
 }
@@ -450,8 +514,7 @@ pub fn emit_example01() -> Vec<u8> {
 /// produces well-formed wasm (see `tests/roundtrip.rs`), so this never
 /// panics on emitter output; pass emitter output, not arbitrary bytes.
 pub fn wat(wasm_bytes: &[u8]) -> String {
-    wasmprinter::print_bytes(wasm_bytes)
-        .expect("emitted wasm is well-formed and prints to WAT")
+    wasmprinter::print_bytes(wasm_bytes).expect("emitted wasm is well-formed and prints to WAT")
 }
 
 /// Lower a [`Module`] to WAT (text wasm) — the textual companion of [`emit`].

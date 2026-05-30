@@ -13,11 +13,20 @@ use typed_wasm_codegen::{emit_example01, emit_example01_wat, wat};
 fn wat_renders_module_memory_and_exports() {
     let text = emit_example01_wat();
     assert!(text.contains("(module"), "WAT must open a module");
-    assert!(text.contains("(memory"), "WAT must declare the linear memory");
+    assert!(
+        text.contains("(memory"),
+        "WAT must declare the linear memory"
+    );
     assert!(text.contains("(func"), "WAT must contain functions");
     // Export names survive into the text form.
-    assert!(text.contains("get_player_hp"), "export name should appear in WAT");
-    assert!(text.contains("move_player"), "export name should appear in WAT");
+    assert!(
+        text.contains("get_player_hp"),
+        "export name should appear in WAT"
+    );
+    assert!(
+        text.contains("move_player"),
+        "export name should appear in WAT"
+    );
 }
 
 #[test]

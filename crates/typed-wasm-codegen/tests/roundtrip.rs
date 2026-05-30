@@ -67,8 +67,14 @@ fn example01_embeds_both_l2_carriers() {
         }
     }
 
-    assert!(saw_regions, "expected a {REGIONS_SECTION_NAME} custom section");
-    assert!(saw_access, "expected a {ACCESS_SITES_SECTION_NAME} custom section");
+    assert!(
+        saw_regions,
+        "expected a {REGIONS_SECTION_NAME} custom section"
+    );
+    assert!(
+        saw_access,
+        "expected a {ACCESS_SITES_SECTION_NAME} custom section"
+    );
 
     // The regions carrier must decode to the three example-01 regions.
     let regions =

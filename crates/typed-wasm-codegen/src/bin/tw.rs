@@ -172,5 +172,8 @@ fn build(rest: &[String]) -> ExitCode {
 /// `base` with its extension replaced by `ext`
 /// (e.g. `with_extension("foo.twasm", "wasm")` -> `"foo.wasm"`).
 fn with_extension(base: &str, ext: &str) -> String {
-    Path::new(base).with_extension(ext).to_string_lossy().into_owned()
+    Path::new(base)
+        .with_extension(ext)
+        .to_string_lossy()
+        .into_owned()
 }
