@@ -823,3 +823,520 @@ mod tests {
         assert!(verify_from_module(&module.finish()).is_ok());
     }
 }
+
+// ----------------------------------------------------------------------
+// L15 capabilities verifier pass (proposal 0001)
+// ----------------------------------------------------------------------
+
+#[cfg(feature = "unstable-l15")]
+use crate::section::parse_capabilities_section_payload;
+#[cfg(feature = "unstable-l15")]
+use crate::{CapabilitiesError, CAPABILITIES_SECTION_NAME};
+
+/// Pre-scan the module to discover `(import_count, locally_defined_count)`
+/// pairs so cross-section verifiers can compute the total wasm function
+/// count without re-parsing the whole module per check.
+fn function_count(wasm_bytes: &[u8]) -> Result<u32, VerifyError> {
+    let parser = Parser::new(0);
+    let mut import_count: u32 = 0;
+    let mut local_count: u32 = 0;
+    for payload in parser.parse_all(wasm_bytes) {
+        match payload? {
+            Payload::ImportSection(reader) => {
+                for import in reader.into_imports() {
+                    let import = import?;
+                    if matches!(import.ty, wasmparser::TypeRef::Func(_)) {
+                        import_count += 1;
+                    }
+                }
+            }
+            Payload::FunctionSection(reader) => {
+                local_count = reader.count();
+            }
+            _ => {}
+        }
+    }
+    Ok(import_count + local_count)
+}
+
+#[cfg(feature = "unstable-l15")]
+pub fn verify_capabilities_from_module(
+    wasm_bytes: &[u8],
+) -> Result<Vec<CapabilitiesError>, VerifyError> {
+    // Locate the capabilities custom section.
+    let parser = Parser::new(0);
+    let mut payload_bytes: Option<Vec<u8>> = None;
+    for payload in parser.parse_all(wasm_bytes) {
+        if let Payload::CustomSection(reader) = payload? {
+            if reader.name() == CAPABILITIES_SECTION_NAME {
+                payload_bytes = Some(reader.data().to_vec());
+                break;
+            }
+        }
+    }
+    let Some(payload) = payload_bytes else {
+        // No capabilities section: nothing constrained, verify trivially.
+        return Ok(vec![]);
+    };
+    let Some((capabilities, functions)) = parse_capabilities_section_payload(&payload) else {
+        // Unsupported version: lenient — return no errors. Producers
+        // emitting a version we don't know are not our problem; they
+        // should bump the verifier first.
+        return Ok(vec![]);
+    };
+
+    let fn_count = function_count(wasm_bytes)?;
+    let cap_count = capabilities.len() as u32;
+    let mut errors = Vec::new();
+
+    for (entry_idx, fc) in functions.iter().enumerate() {
+        let entry_idx = entry_idx as u32;
+        if fc.func_idx >= fn_count {
+            errors.push(CapabilitiesError::FuncIdxOutOfRange {
+                entry_idx,
+                func_idx: fc.func_idx,
+                function_count: fn_count,
+            });
+        }
+        for &cap_idx in &fc.required {
+            if cap_idx >= cap_count {
+                errors.push(CapabilitiesError::CapabilityIdxOutOfRange {
+                    entry_idx,
+                    func_idx: fc.func_idx,
+                    cap_idx,
+                    capability_count: cap_count,
+                });
+            }
+        }
+    }
+    Ok(errors)
+}
+
+// ----------------------------------------------------------------------
+// L2 access-sites verifier pass (proposal 0002)
+// ----------------------------------------------------------------------
+
+#[cfg(feature = "unstable-l2")]
+use crate::section::{parse_access_sites_section_payload, parse_regions_section_payload};
+#[cfg(feature = "unstable-l2")]
+use crate::{AccessSiteError, ACCESS_SITES_SECTION_NAME, REGIONS_SECTION_NAME};
+
+#[cfg(feature = "unstable-l2")]
+pub fn verify_access_sites_from_module(
+    wasm_bytes: &[u8],
+) -> Result<Vec<AccessSiteError>, VerifyError> {
+    // Collect both companion sections in a single pass.
+    let parser = Parser::new(0);
+    let mut access_sites_payload: Option<Vec<u8>> = None;
+    let mut regions_payload: Option<Vec<u8>> = None;
+    for payload in parser.parse_all(wasm_bytes) {
+        if let Payload::CustomSection(reader) = payload? {
+            match reader.name() {
+                ACCESS_SITES_SECTION_NAME => {
+                    access_sites_payload = Some(reader.data().to_vec());
+                }
+                REGIONS_SECTION_NAME => {
+                    regions_payload = Some(reader.data().to_vec());
+                }
+                _ => {}
+            }
+        }
+    }
+    let Some(access_payload) = access_sites_payload else {
+        // No access-sites section: trivially verified. Note that absence
+        // of the section means "no claim made about L2 enforcement,"
+        // not "claim of compliance" — separate concern.
+        return Ok(vec![]);
+    };
+    // MissingDependentCarrier check (proposal 0002 §"Producer obligations" #2):
+    // access-sites without regions is a hard error.
+    let Some(regions_bytes) = regions_payload else {
+        return Ok(vec![AccessSiteError::MissingDependentRegions]);
+    };
+    let Some(regions) = parse_regions_section_payload(&regions_bytes) else {
+        // Regions section present but unparseable (version mismatch).
+        // Treat as missing for MissingDependentCarrier purposes —
+        // we can't validate against a table we can't read.
+        return Ok(vec![AccessSiteError::MissingDependentRegions]);
+    };
+    let Some(entries) = parse_access_sites_section_payload(&access_payload) else {
+        // Unsupported access-sites version: lenient, no errors.
+        return Ok(vec![]);
+    };
+
+    let fn_count = function_count(wasm_bytes)?;
+    let region_count = regions.len() as u32;
+    let mut errors = Vec::new();
+
+    for (entry_idx, e) in entries.iter().enumerate() {
+        let entry_idx = entry_idx as u32;
+        if e.func_idx >= fn_count {
+            errors.push(AccessSiteError::FuncIdxOutOfRange {
+                entry_idx,
+                func_idx: e.func_idx,
+                function_count: fn_count,
+            });
+        }
+        if e.region_id >= region_count {
+            errors.push(AccessSiteError::RegionIdOutOfRange {
+                entry_idx,
+                region_id: e.region_id,
+                region_count,
+            });
+            // If region_id is out of bounds we cannot meaningfully
+            // check field_id — skip to next entry.
+            continue;
+        }
+        let field_count = regions[e.region_id as usize].fields.len() as u32;
+        if e.field_id >= field_count {
+            errors.push(AccessSiteError::FieldIdOutOfRange {
+                entry_idx,
+                region_id: e.region_id,
+                field_id: e.field_id,
+                field_count,
+            });
+        }
+    }
+    Ok(errors)
+}
+
+// ----------------------------------------------------------------------
+// Tests — capabilities + access-sites verifier passes
+// ----------------------------------------------------------------------
+
+#[cfg(all(test, feature = "unstable-l15"))]
+mod capabilities_verifier_tests {
+    use super::*;
+    use crate::section::{
+        build_capabilities_section_payload, CapabilityEntry, FunctionCapabilities,
+    };
+    use wasm_encoder::{
+        CodeSection, CustomSection, Function, FunctionSection, Instruction, Module, TypeSection,
+        ValType,
+    };
+
+    /// Build a valid wasm module with `n_locals` empty `() -> ()`
+    /// functions. wasm validation requires that FunctionSection and
+    /// CodeSection have matching counts; this helper enforces that
+    /// invariant so tests can focus on the section we're verifying.
+    fn module_with_n_funcs(n_locals: u32) -> Module {
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types
+            .ty()
+            .function(Vec::<ValType>::new(), Vec::<ValType>::new());
+        module.section(&types);
+        let mut funcs = FunctionSection::new();
+        for _ in 0..n_locals {
+            funcs.function(0);
+        }
+        module.section(&funcs);
+        let mut code = CodeSection::new();
+        for _ in 0..n_locals {
+            let mut f = Function::new([]);
+            f.instruction(&Instruction::End);
+            code.function(&f);
+        }
+        module.section(&code);
+        module
+    }
+
+    fn empty_module_with_function_section(n_locals: u32) -> Vec<u8> {
+        module_with_n_funcs(n_locals).finish()
+    }
+
+    fn module_with_capabilities(
+        n_locals: u32,
+        caps: Vec<CapabilityEntry>,
+        funs: Vec<FunctionCapabilities>,
+    ) -> Vec<u8> {
+        let mut module = module_with_n_funcs(n_locals);
+        let payload = build_capabilities_section_payload(&caps, &funs);
+        module.section(&CustomSection {
+            name: CAPABILITIES_SECTION_NAME.into(),
+            data: (&payload[..]).into(),
+        });
+        module.finish()
+    }
+
+    #[test]
+    fn module_without_section_verifies_trivially() {
+        let bytes = empty_module_with_function_section(2);
+        assert_eq!(verify_capabilities_from_module(&bytes).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn well_formed_capabilities_verifies_clean() {
+        let bytes = module_with_capabilities(
+            3,
+            vec![
+                CapabilityEntry { name: "net".into() },
+                CapabilityEntry { name: "fs".into() },
+            ],
+            vec![FunctionCapabilities {
+                func_idx: 1,
+                required: vec![0],
+            }],
+        );
+        assert_eq!(verify_capabilities_from_module(&bytes).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn out_of_bounds_func_idx_is_flagged() {
+        let bytes = module_with_capabilities(
+            2,
+            vec![CapabilityEntry { name: "net".into() }],
+            vec![FunctionCapabilities {
+                func_idx: 99, // module has only 2 functions
+                required: vec![0],
+            }],
+        );
+        let errors = verify_capabilities_from_module(&bytes).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            errors[0],
+            CapabilitiesError::FuncIdxOutOfRange {
+                entry_idx: 0,
+                func_idx: 99,
+                function_count: 2,
+            }
+        ));
+    }
+
+    #[test]
+    fn out_of_bounds_capability_index_is_flagged() {
+        let bytes = module_with_capabilities(
+            2,
+            vec![CapabilityEntry { name: "net".into() }], // 1 capability
+            vec![FunctionCapabilities {
+                func_idx: 0,
+                required: vec![0, 5], // 5 is out of bounds
+            }],
+        );
+        let errors = verify_capabilities_from_module(&bytes).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            errors[0],
+            CapabilitiesError::CapabilityIdxOutOfRange {
+                entry_idx: 0,
+                func_idx: 0,
+                cap_idx: 5,
+                capability_count: 1,
+            }
+        ));
+    }
+
+    #[test]
+    fn imports_count_toward_function_count() {
+        use wasm_encoder::{EntityType, ImportSection};
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types
+            .ty()
+            .function(Vec::<ValType>::new(), Vec::<ValType>::new());
+        module.section(&types);
+        let mut imports = ImportSection::new();
+        imports.import("env", "host", EntityType::Function(0));
+        module.section(&imports);
+        let mut funcs = FunctionSection::new();
+        funcs.function(0); // local func at index 1 (after the 1 import)
+        module.section(&funcs);
+        let mut code = CodeSection::new();
+        let mut f = Function::new([]);
+        f.instruction(&Instruction::End);
+        code.function(&f);
+        module.section(&code);
+        let caps = vec![CapabilityEntry { name: "x".into() }];
+        let funs = vec![FunctionCapabilities {
+            func_idx: 1, // valid: imported = 1, local = 1, total = 2
+            required: vec![0],
+        }];
+        let payload = build_capabilities_section_payload(&caps, &funs);
+        module.section(&CustomSection {
+            name: CAPABILITIES_SECTION_NAME.into(),
+            data: (&payload[..]).into(),
+        });
+        assert_eq!(
+            verify_capabilities_from_module(&module.finish()).unwrap(),
+            vec![]
+        );
+    }
+}
+
+#[cfg(all(test, feature = "unstable-l2"))]
+mod access_sites_verifier_tests {
+    use super::*;
+    use crate::section::{
+        build_access_sites_section_payload, build_regions_section_payload, AccessSiteEntry,
+        FieldEntry, FieldKind, Nullability, RegionEntry, WasmTy, NO_TARGET_REGION,
+    };
+    use wasm_encoder::{
+        CodeSection, CustomSection, Function, FunctionSection, Instruction, Module, TypeSection,
+        ValType,
+    };
+
+    fn scalar_field(name: &str, ty: WasmTy) -> FieldEntry {
+        FieldEntry {
+            name: name.into(),
+            kind: FieldKind::Scalar,
+            wasm_ty: ty,
+            target_region: NO_TARGET_REGION,
+            nullability: Nullability::NonNull,
+            cardinality: 1,
+        }
+    }
+
+    fn module_with_sections(
+        n_locals: u32,
+        regions: Option<Vec<RegionEntry>>,
+        entries: Option<Vec<AccessSiteEntry>>,
+    ) -> Vec<u8> {
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types
+            .ty()
+            .function(Vec::<ValType>::new(), Vec::<ValType>::new());
+        module.section(&types);
+        let mut funcs = FunctionSection::new();
+        for _ in 0..n_locals {
+            funcs.function(0);
+        }
+        module.section(&funcs);
+        let mut code = CodeSection::new();
+        for _ in 0..n_locals {
+            let mut f = Function::new([]);
+            f.instruction(&Instruction::End);
+            code.function(&f);
+        }
+        module.section(&code);
+        if let Some(regions) = regions {
+            let bytes = build_regions_section_payload(&regions);
+            module.section(&CustomSection {
+                name: REGIONS_SECTION_NAME.into(),
+                data: (&bytes[..]).into(),
+            });
+        }
+        if let Some(entries) = entries {
+            let bytes = build_access_sites_section_payload(&entries);
+            module.section(&CustomSection {
+                name: ACCESS_SITES_SECTION_NAME.into(),
+                data: (&bytes[..]).into(),
+            });
+        }
+        module.finish()
+    }
+
+    #[test]
+    fn module_without_access_sites_section_verifies_trivially() {
+        let bytes = module_with_sections(2, None, None);
+        assert_eq!(verify_access_sites_from_module(&bytes).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn access_sites_without_regions_is_missing_dependent_carrier() {
+        let entries = vec![AccessSiteEntry {
+            func_idx: 0,
+            instruction_byte_offset: 7,
+            region_id: 0,
+            field_id: 0,
+        }];
+        let bytes = module_with_sections(2, None, Some(entries));
+        let errors = verify_access_sites_from_module(&bytes).unwrap();
+        assert_eq!(errors, vec![AccessSiteError::MissingDependentRegions]);
+    }
+
+    #[test]
+    fn well_formed_access_sites_verifies_clean() {
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32), scalar_field("g", WasmTy::F64)],
+            region_byte_size: 12,
+        }];
+        let entries = vec![AccessSiteEntry {
+            func_idx: 0,
+            instruction_byte_offset: 7,
+            region_id: 0,
+            field_id: 1,
+        }];
+        let bytes = module_with_sections(2, Some(regions), Some(entries));
+        assert_eq!(verify_access_sites_from_module(&bytes).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn out_of_bounds_func_idx_is_flagged() {
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let entries = vec![AccessSiteEntry {
+            func_idx: 42, // module has 2 funcs
+            instruction_byte_offset: 0,
+            region_id: 0,
+            field_id: 0,
+        }];
+        let bytes = module_with_sections(2, Some(regions), Some(entries));
+        let errors = verify_access_sites_from_module(&bytes).unwrap();
+        assert!(matches!(
+            errors.as_slice(),
+            [AccessSiteError::FuncIdxOutOfRange {
+                func_idx: 42,
+                function_count: 2,
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn out_of_bounds_region_id_is_flagged_and_skips_field_check() {
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let entries = vec![AccessSiteEntry {
+            func_idx: 0,
+            instruction_byte_offset: 0,
+            region_id: 99, // module has 1 region
+            field_id: 99,  // would-be out of bounds, but skipped
+        }];
+        let bytes = module_with_sections(2, Some(regions), Some(entries));
+        let errors = verify_access_sites_from_module(&bytes).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            errors[0],
+            AccessSiteError::RegionIdOutOfRange {
+                region_id: 99,
+                region_count: 1,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn out_of_bounds_field_id_is_flagged() {
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let entries = vec![AccessSiteEntry {
+            func_idx: 0,
+            instruction_byte_offset: 0,
+            region_id: 0,
+            field_id: 7, // region R has 1 field
+        }];
+        let bytes = module_with_sections(2, Some(regions), Some(entries));
+        let errors = verify_access_sites_from_module(&bytes).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            errors[0],
+            AccessSiteError::FieldIdOutOfRange {
+                region_id: 0,
+                field_id: 7,
+                field_count: 1,
+                ..
+            }
+        ));
+    }
+}
