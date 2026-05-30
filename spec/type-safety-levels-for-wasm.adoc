@@ -686,3 +686,190 @@ does NOT address:
 | Rust
 | Makes typed-wasm a TypedQLiser target language
 |===
+
+== Wire-Level Carrier Sections
+
+The post-codegen verifier (`crates/typed-wasm-verify/`) re-enforces a
+subset of these levels on emitted wasm bytes. To do that without
+re-parsing source, producers emit small custom sections — wasm's
+extension mechanism — that carry just enough of the source-level type
+information for the verifier to reconstruct the relevant judgments.
+
+All carrier sections are independently optional from the verifier's
+perspective: absence is "no claim made," not "claim of compliance." A
+producer that emits only `typedwasm.ownership` is conforming with
+respect to L7 / L10 but makes no L2-L6 / L15 claims that the verifier
+can re-check.
+
+[cols="1,1,1,2"]
+|===
+| Section | Covers | Status (2026-05) | Codec entry point
+
+| `typedwasm.ownership`
+| L7 aliasing, L10 linearity
+| Shipped; canonical wire format
+| `parse_ownership_section_payload` / `build_ownership_section_payload`
+
+| `typedwasm.regions`
+| L2 region-binding, L3 type-compatible access, L4 null-safety, L5 bounds-proof, L6 result-type
+| Proposal 0001 `[review]`; codec behind `unstable-l2`
+| `parse_regions_section_payload` / `build_regions_section_payload`
+
+| `typedwasm.capabilities`
+| L15 resource capabilities (lattice + per-function requirements; excluding L15-C per-call-site grants)
+| Proposal 0001 `[review]`; codec behind `unstable-l15`
+| `parse_capabilities_section_payload` / `build_capabilities_section_payload`
+
+| `typedwasm.access-sites`
+| L2 enforcement on emitted bytes (per-instruction `(func_idx, byte_offset) -> (region_id, field_id)` mapping)
+| Proposal 0002 `[review]`; codec behind `unstable-l2`
+| `parse_access_sites_section_payload` / `build_access_sites_section_payload`
+|===
+
+=== `typedwasm.ownership` (L7 / L10)
+
+Wire format (little-endian, byte-aligned):
+
+----
+u32le  count
+for each entry:
+    u32le  func_idx
+    u8     n_params
+    u8[]   param_kinds  (0=Unrestricted, 1=Linear, 2=SharedBorrow, 3=ExclBorrow)
+    u8     ret_kind
+----
+
+The verifier reconstructs each function's ownership-annotated signature
+and checks the body against it for L7 (no aliasing of `ExclBorrow`) and
+L10 (`Linear` consumed exactly once on every code path). The 4-kind
+enum (`OwnershipKind`) is fixed at v1.
+
+Lenient on truncation: a short read yields zeros for the missing
+bytes (interpreted as `Unrestricted` kinds and `func_idx = 0`). This
+defence-in-depth choice preserves cross-implementation parity with
+the OCaml reference parser in AffineScript's `lib/tw_verify.ml`.
+
+=== `typedwasm.regions` (L2-L6)
+
+Wire format (little-endian, byte-aligned, lenient on truncation):
+
+----
+u16le   version              (= REGIONS_SECTION_VERSION = 1)
+u32le   region_count
+for each region (in index order, 0..region_count-1):
+    u32le  name_len
+    u8[]   name              (UTF-8, no NUL terminator)
+    u32le  field_count
+    for each field (in declaration order):
+        u32le  field_name_len
+        u8[]   field_name    (UTF-8)
+        u8     kind          (0=Scalar, 1=PtrOwning, 2=PtrBorrow, 3=PtrExclusive)
+        u8     wasm_ty       (0..10 = U8..WBool, 0xFF = N/A for ptr kinds)
+        u32le  target_region (0xFFFFFFFF if Scalar; else index into region table)
+        u8     nullability   (0=NonNull, 1=Nullable)
+        u32le  cardinality   (1=single, n>1=fixed array, 0=unbounded/dynamic)
+    u32le  region_byte_size  (sum-check; verifier may cross-check)
+----
+
+Maps to Idris2 spec types: `region_count` + region table → `List Region`
+(lookup-by-index); `field_count` + field table → `Schema` per region;
+`wasm_ty` → `WasmType` (11 variants); `kind` → `PtrKind` extended with
+`Scalar`; `nullability` → `Nullability`; `cardinality` feeds
+`InBounds idx count` for L5; `target_region` is the foreign-key for L2.
+
+v0 producer surface narrowness — across AffineScript + ephapax, no
+producer emits v128/SIMD / 128-bit ints / reference types /
+variable-cardinality fields. See proposal 0001 §"v0 producer surface"
+for the full reserved-codepoint enumeration.
+
+=== `typedwasm.capabilities` (L15)
+
+Wire format (little-endian, byte-aligned):
+
+----
+u16le   version              (= CAPABILITIES_SECTION_VERSION = 1)
+u32le   capability_count
+for each capability (in index order, 0..capability_count-1):
+    u32le  name_len
+    u8[]   name              (UTF-8)
+u32le   function_count
+for each function:
+    u32le  func_idx          (index into wasm function section)
+    u32le  required_count
+    u32le[required_count]    required_capability_indices
+                             (indices into capability table above;
+                              MUST be strictly increasing → trivially
+                              encodes ResourceCapabilities.DistinctCaps)
+----
+
+Maps to `ResourceCapabilities.idr`: the flat capability table is
+`CapabilitySet`; strictly-increasing `required_capability_indices`
+structurally encodes `DistinctCaps`; per-function indices are the raw
+data the verifier feeds to `ContainedIn`.
+
+L15-C (call-graph monotonicity / `CallCompatible`) is deferred to a
+v1.4.x follow-up section `typedwasm.capability-grants` — see
+typed-wasm#96.
+
+The codec's parser defensively sorts and dedups `required` indices on
+read, so a future producer that regresses on the producer obligation
+still yields a `DistinctCaps`-conforming structure to downstream
+verification.
+
+=== `typedwasm.access-sites` (L2 enforcement)
+
+Wire format (little-endian fixed-width header, LEB128 per entry):
+
+----
+u16le         version                  (= ACCESS_SITES_SECTION_VERSION = 1)
+u32_leb128    entry_count
+for each entry (in producer-emission order):
+    u32_leb128  func_idx
+    u32_leb128  instruction_byte_offset  (within function body, post-codegen,
+                                           post any wasm-opt rewrite)
+    u32_leb128  region_id                (index into typedwasm.regions table)
+    u32_leb128  field_id                 (index into target region's field table)
+----
+
+Encoding B (LEB128 per field) per proposal 0002 measurement: ~5
+B/entry on average, ~1.1% module overhead at the 6-fixture spec scale.
+Encoding A (flat 4× `u32le`, 16 B/entry, ~2.9% overhead) was rejected;
+encoding C (per-function batched delta offsets, ~3.5 B/entry,
+substantially more complex codec) is deferred to a possible v2.
+
+Entries are NOT required to be sorted in v1; a future v2 MAY require
+sorted-by-`(func_idx, offset)` to enable binary search. v1 consumers
+build a `HashMap<(u32, u32), (u32, u32)>` at parse time.
+
+The verifier resolves a typed access by looking up the entry in the
+access-sites map, then cross-referencing `region_id` + `field_id`
+against `typedwasm.regions`. Without this section, L2-the-enforcement
+(every typed access resolves to a declared region/field) cannot fire
+on emitted bytes even though L2-the-spec (regions/fields exist;
+cross-module schema agreement) is fully covered by
+`typedwasm.regions`.
+
+`MissingDependentCarrier` semantics: emitting `typedwasm.access-sites`
+without `typedwasm.regions` is a hard error — the access-sites entries
+reference region/field indices that no companion table resolves.
+
+=== Versioning policy
+
+`typedwasm.ownership` is unversioned (the original carrier; renamed
+from `affinescript.ownership` in PR #65). The three carriers added by
+proposals 0001 + 0002 all begin with `u16le version`. Forward-compat
+contract:
+
+* *Additive* changes (new trailing fields per record) ship as the same
+  major version; the lenient reader silently ignores the new bytes on a
+  v1 consumer.
+* *Breaking* changes bump the version and the verifier rejects unknown
+  versions with a fresh `*SectionError`-style variant (per-section).
+
+=== Cross-references
+
+* Codec: `crates/typed-wasm-verify/src/section.rs`
+* Proposal 0001 (regions + capabilities): `docs/proposals/0001-multi-producer-carrier-section.adoc`
+* Proposal 0002 (access-sites): `docs/proposals/0002-access-site-carrier.adoc`
+* Pre-stage roadmap: typed-wasm#106 (`[review]` → `[accepted]` tracker)
+* Open questions: typed-wasm#94 (WBool wire width), #95 (region-imports v0.3), #96 (capability-grants L15-C), #97 (producer-readiness checklist)
