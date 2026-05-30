@@ -1,0 +1,155 @@
+= Architecture Decision Record: 0004-codegen-host-language
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
+# 4. Codegen host language, integration point & IR threading
+
+Date: 2026-05-30
+
+## Status
+
+Proposed
+
+This ADR is the decision gate for Phase 1 codegen
+(https://github.com/hyperpolymath/typed-wasm/issues/123[issue #123]).
+It is **Proposed** pending owner ratification at PR review: committing
+to Rust for the in-tree producer is a load-bearing choice and the
+front-end → IR seam is deferred, so the decision is not yet Accepted.
+
+## Context
+
+Phase 1 (https://github.com/hyperpolymath/typed-wasm/issues/49[issue
+#49]) needs an in-tree `.twasm → .wasm` producer. None exists today:
+the pipeline stops at `source → Lexer → Parser → Checker → diagnostics`
+(`tests/e2e/e2e-driver.mjs`). The only wasm-aware code in-tree is the
+*verifier* `crates/typed-wasm-verify` (lib-only; public
+`verify_from_module(&[u8])`, plus — behind `unstable-l2` —
+`verify_regions_from_module` and `verify_access_sites_from_module`).
+The real producers historically live in sibling repos (affinescript
+OCaml `lib/codegen.ml`, ephapax Rust), outside this repository.
+
+This is the decision gate
+(https://github.com/hyperpolymath/typed-wasm/issues/123[issue #123])
+that unblocks all Phase 1 codegen. It mirrors the owner-gated
+threading decision in
+link:../developer/handoff-typed-access-sites-codegen.adoc[the
+typed-access-sites codegen handoff] (options 1/2/3: in-AST annotation
+vs side-table/serialised-IR vs re-resolve).
+
+The surface front-end (`src/parser/*.affine`) is AffineScript,
+compiled to `.mjs` via the `affinescript` toolchain.
+
+## Decision
+
+Adopt three pins for the v0 producer: its host language and location,
+the front-end → codegen seam, and the carrier set it emits.
+
+### 1. Host language / location
+
+The in-tree producer is a new Rust crate `crates/typed-wasm-codegen`,
+a workspace sibling of `typed-wasm-verify`. It emits wasm via the
+`wasm-encoder` crate (already a pinned dependency at `=0.251.0`,
+version-aligned with the verifier's `wasmparser`).
+
+Rationale:
+
+* Same toolchain as the verifier, so codegen can call
+  `verify_from_module` **in-process** for a closed-loop round-trip
+  test — the tightest possible soundness net.
+* `wasm-encoder` / `wasmparser` are already vendored/pinned and
+  build + test cleanly here.
+* The verifier already contains the carrier *encoders*
+  (`build_regions_section_payload`,
+  `build_access_sites_section_payload`, behind `unstable-l2`), so the
+  producer can emit byte-identical carriers the verifier provably
+  accepts.
+
+The alternative — extend the AffineScript/JS front-end to emit wasm —
+was rejected for v0 because the `affinescript` toolchain is not
+available in the reference build/CI environment used to validate this
+work, so it could be neither built nor verified end-to-end. Revisit
+if/when the front-end gains a wasm backend.
+
+### 2. Integration point (front-end → codegen seam)
+
+For v0 the codegen consumes a typed Rust IR
+(regions/fields/memory/functions) populated directly for the example
+under test; the seam to the AffineScript checker's AST is **deferred**.
+
+When wired, the chosen seam is a serialised JSON IR emitted by the
+front-end checker and consumed by the Rust codegen. This corresponds
+to handoff option 2 (side-table / serialised-IR), chosen over option 1
+(in-AST annotation) because it does not couple the JS AST shape to the
+Rust crate, and over option 3 (re-resolve / duplicate parser) which
+the handoff flags as a code smell. Explicitly: typed-wasm will **not**
+grow a second `.twasm` parser in Rust.
+
+### 3. Carrier emission set for v0
+
+The producer emits:
+
+* `typedwasm.regions` (proposal 0001 /
+  link:0002-multi-producer-carrier-sections.adoc[ADR-0002]) and
+  `typedwasm.access-sites` (proposal 0002 /
+  link:0003-access-site-carrier.adoc[ADR-0003]), using the verifier
+  crate's own encoders (enabling its `unstable-l2` feature).
+* `typedwasm.ownership` (L7/L10) when linear/borrow ownership is
+  present; for the read/write example 01 it may be omitted (the
+  L7/L10 pass then verifies trivially).
+
+Field IDs must be **shared-schema-stable** for the future
+multi-module case
+(https://github.com/hyperpolymath/typed-wasm/issues/128[issue #128]) —
+recorded here as a forward constraint on the IR contract.
+
+## Consequences
+
+### Positive
+
+- Closed-loop, in-process round-trip test (codegen → verify) in one
+  language/crate.
+- Reuses the verifier's encoders, so carrier bytes cannot drift from
+  the decoder.
+- Unblocks https://github.com/hyperpolymath/typed-wasm/issues/124[issue
+  #124] (codegen v0) and thus issues
+  https://github.com/hyperpolymath/typed-wasm/issues/127[#127],
+  https://github.com/hyperpolymath/typed-wasm/issues/128[#128] and
+  https://github.com/hyperpolymath/typed-wasm/issues/130[#130].
+- Lands the Phase 0
+  https://github.com/hyperpolymath/typed-wasm/issues/48[issue #48]
+  gate-2 prerequisite.
+
+### Negative
+
+- The front-end → IR seam is unbuilt, so v0 is back-end-only: the IR
+  is hand-populated per example, not parsed from `.twasm` in-process.
+- A JSON IR contract must be specified before D1
+  (https://github.com/hyperpolymath/typed-wasm/issues/127[issue #127])
+  can claim "for every valid `.twasm` source".
+- Committing to Rust for the producer is a load-bearing choice the
+  owner should ratify (hence Status: Proposed).
+
+### Neutral
+
+- The carrier emission reuses the existing `unstable-l2` feature gate;
+  no new wire format or carrier section is introduced by this ADR.
+- The deferred seam keeps the JS front-end and the Rust producer
+  decoupled until the JSON IR contract is pinned.
+
+## Cross-references
+
+* link:0002-multi-producer-carrier-sections.adoc[ADR-0002] — schema /
+  access-site carrier decisions whose encoders this producer reuses
+* link:0003-access-site-carrier.adoc[ADR-0003] — access-site carrier
+* link:../developer/handoff-typed-access-sites-codegen.adoc[Typed
+  access-sites codegen handoff] — the IR-threading options (1/2/3)
+* link:../PRODUCTION-PATH.adoc[PRODUCTION-PATH] — load-bearing
+  decision D1
+* https://github.com/hyperpolymath/typed-wasm/issues/49[issue #49] —
+  Phase 1 producer
+* https://github.com/hyperpolymath/typed-wasm/issues/123[issue #123] —
+  this decision gate
+* https://github.com/hyperpolymath/typed-wasm/issues/124[issue #124] —
+  codegen v0
+* https://github.com/hyperpolymath/typed-wasm/issues/48[issue #48] —
+  Phase 0 gate 2

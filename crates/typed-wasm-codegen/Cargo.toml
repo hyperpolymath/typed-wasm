@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MPL-2.0
+[package]
+name = "typed-wasm-codegen"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "typed-wasm producer (codegen v0): emits verifier-accepted wasm plus typedwasm.* carrier sections from a typed region IR"
+repository = "https://github.com/hyperpolymath/typed-wasm"
+readme = "README.md"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "tw"
+path = "src/bin/tw.rs"
+
+[dependencies]
+# Pinned to match typed-wasm-verify's wasmparser line exactly; the wasm
+# tooling 0.x series ships API breaks on minor bumps, so keep producer
+# and verifier on the same locked version.
+wasm-encoder = "=0.251.0"
+# WAT (text wasm) rendering for `tw build --emit wat` (Phase 1 deliverable 4, #125).
+wasmprinter = "=0.251.0"
+# The producer reuses the verifier's own carrier encoders so the emitted
+# typedwasm.regions / typedwasm.access-sites bytes cannot drift from the
+# decoder the verifier runs. `unstable-l2` gates those encoders.
+typed-wasm-verify = { path = "../typed-wasm-verify", features = ["unstable-l2"] }
+
+[dev-dependencies]
+# Round-trip test validates the emitted module is well-formed wasm before
+# handing it to the verifier.
+wasmparser = "=0.251.0"
