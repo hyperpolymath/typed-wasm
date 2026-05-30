@@ -27,7 +27,15 @@ Status legend:
 | link:0002-access-site-carrier.adoc[0002]
 | Access-site carrier section (`typedwasm.access-sites`) for L2 enforcement
 | `[review]`
+
+| link:0004-capability-grants-carrier.adoc[0004]
+| Capability grants carrier section (`typedwasm.capability-grants`) for L15-C per-call-site enforcement
+| `[draft]`
 |===
+
+Proposal 0003 (`typedwasm.region-imports`) is tracked at
+https://github.com/hyperpolymath/typed-wasm/issues/95[#95] but
+has not yet been drafted; the number is reserved.
 
 The strategic decisions (D1–D6) from
 link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] §"Load-bearing
