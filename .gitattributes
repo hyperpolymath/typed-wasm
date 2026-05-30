@@ -51,13 +51,15 @@ Containerfile  text eol=lf
 *.sh   text eol=lf
 
 # Binary
-*.png   binary
-*.jpg   binary
-*.gif   binary
-*.pdf   binary
-*.woff2 binary
-*.zip   binary
-*.gz    binary
+*.png    binary
+*.jpg    binary
+*.gif    binary
+*.pdf    binary
+*.woff2  binary
+*.zip    binary
+*.gz     binary
+*.wasm   binary
+*.bundle binary
 
 # Lock files
 Cargo.lock  text eol=lf -diff

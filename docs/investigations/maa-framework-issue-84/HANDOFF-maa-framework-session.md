@@ -21,7 +21,24 @@ Authoritative findings — maa@9dbf56b subtree vs upstream `absolute-zero`@7da92
 (EchoBridge*.agda, ECHIDNA_*, examples/go, proofs/coq/quantum/) are now byte-identical to upstream
 (sha256-verified). maa is simply behind.
 
-DO THIS:
+DRY-RUN ALREADY PROVEN (2026-05-30): the conversion was executed against a fresh maa clone and the
+guarded script exited 0. Result commit: `absolute-zero` becomes a gitlink `160000 commit 7da92b3…`,
+`.gitmodules` added, **232 files changed, 4 insertions(+), 36046 deletions(-)**. The safety guard
+confirmed `jekyll-gh-pages.yml` is the ONLY maa-only path before deleting anything. All proof files
+(incl. the two new `common/` modules + EchoBridge/quantum) are restored via the submodule. So you can
+trust the mechanics; this handoff just needs the WRITE access this analysis session lacked.
+
+FASTEST PATH — apply the prebuilt, pre-tested bundle (recommended), then do steps 4–5 only.
+From a maa checkout on a fresh branch (bundle is 683 B, proven to fast-forward onto main @ 9dbf56b):
+  git fetch docs/investigations/maa-framework-issue-84/issue-84-submodule.bundle \
+    refs/heads/claude/issue-84-submodule-dryrun
+  git merge --ff-only FETCH_HEAD
+  git submodule update --init --recursive
+NOTE: if your environment signs commits, the bundle's commit is unsigned — re-commit with your signer
+if branch protection requires it (the dry-run hit a signing-server 400 in /tmp; --no-gpg-sign was used
+there only). Then jump to step 4.
+
+DO THIS (from scratch — equivalent to the artifact above):
 1. Re-verify (gates everything):
    git clone https://github.com/hyperpolymath/absolute-zero /tmp/az
    git -C /tmp/az checkout 7da92b360deacb31d6fc8a2121da57ed6f47f4f9
