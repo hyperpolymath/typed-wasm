@@ -10,6 +10,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Codegen v0 — Phase 0 gate 2 closed (2026-05-30)
+
+Closes the terminal Phase 0 blocker (issue #48 gate 2): "Codegen v0 emits
+valid wasm for `examples/01-single-module.twasm`, verifiable end-to-end by
+`typed-wasm-verify`." Before this, "the parser parses; the verifier verifies
+someone else's wasm, but nothing in this repository emits wasm from a
+`.twasm` source."
+
+**Added:**
+
+- **`src/codegen/`** — `twasmc`, the Zig 0.16 codegen v0 producer (the
+  "Code generator | Zig → Wasm" architecture component). A single-file
+  lexer → recursive-descent parser → layout engine → wasm emitter that
+  compiles the `examples/01-single-module.twasm` surface-syntax subset to a
+  valid wasm module. Emits real typed load/store at computed field offsets
+  (incl. nested `.pos.x` through embedded `@Vec2`, a `region.scan` loop,
+  `if`/`else`, and `is_null`), plus the producer custom sections
+  `typedwasm.ownership` (L7/L10), `typedwasm.regions` (L2-L6), and
+  `typedwasm.access-sites` (L2). Region-handle params are read exactly once
+  into a base local so `&mut` (ExclBorrow) / `own` (Linear) handles stay
+  clean under the verifier. `build.zig` + `README.adoc` included.
+- **`crates/typed-wasm-verify/src/bin/tw-verify.rs`** — a `tw-verify` CLI
+  front-end: structural wasm validation → L7/L10/L13 ownership → L2
+  access-site / L15 capability passes (the latter under the unstable
+  features), with file-path argument and exit codes.
+- **`crates/typed-wasm-verify/tests/fixtures/codegen_v0/`** — the
+  producer-emitted golden `.wasm` (+ `.twasm` source), vendored like
+  `c5_real/`.
+- **`crates/typed-wasm-verify/tests/codegen_v0.rs`** — blocking, Rust-only
+  end-to-end gate: the golden module validates, passes `verify_from_module`,
+  and (under `unstable-l2`) verifies clean access-sites with 3 regions / 11
+  access-site entries / 5 ownership entries.
+- `just` recipes `codegen-build`, `codegen-example-01`, `codegen-verify`.
+
+**Scope:** v0 targets exactly the example-01 subset and errors on anything
+outside it; the remaining examples, full `spec/grammar.ebnf`, WAT/source-map
+emission, human-readable diagnostics, and the AffineScript → Idris2 parser
+front-end are Phase 1 (issue #49). The Idris2-reference emitted-wasm
+byte-equality proof (P3.1(a)) remains open.
+
 ### Multi-producer carrier ABI: proposals 0001 + 0002 accepted, promoted to ADRs (2026-05-30)
 
 Closes typed-wasm#34 (proposal 0001), typed-wasm#78 (proposal 0002),

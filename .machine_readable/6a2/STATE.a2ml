@@ -6,9 +6,9 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-05-27"
+last-updated = "2026-05-30"
 status = "active"  # active | paused | archived
-session = "2026-05-27 — Phase 2 carrier-ABI + Proof-debt closure pass (combined integration). Carrier-ABI (parallel session): #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A; Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72, MERGED): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation; compatCommute mutual-subschema). A11 closes 3/8 untracked (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8 incl. new TypedWasm.ABI.VerifierSpec module. Proof-debt closure pass #79/#80: #79 VerifierSpec total bodies for VerifierSpecAgreement / SourceVerifierAgreement (post-A10 items 7+8) — VADifferential/SADifferential carry inline TrustedFixture so structural witness travels with fixture metadata, all four agreement directions total by case analysis; first total no-believe_me agreement values. #80 Proofs.idr LevelAttestationW + WitnessCertificate (standards#130 long-tail) — 15-ctor witness-indexed GADT with per-level extractors, existential SomeAttestationW wrapper enabling WitnessCertificate as heterogeneous-list lift of ProofCertificate (PR #83 second slice folded in). #74 closed as superseded by #79. Test surface 545 → 627+ assertions (proof regression 25 → 107). Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
+session = "2026-05-30 — Phase 0 gate 2 CLOSED: codegen v0 landed. src/codegen/ (twasmc, Zig 0.16) parses examples/01-single-module.twasm and emits a valid wasm module carrying typedwasm.{ownership,regions,access-sites}; verified end-to-end by typed-wasm-verify (structural validation + L7/L10/L13 ownership + L2 access-sites). New tw-verify CLI bin + blocking golden test crates/typed-wasm-verify/tests/codegen_v0.rs. All 3 Phase 0 gates now met. Previous: 2026-05-27 — Phase 2 carrier-ABI + Proof-debt closure pass (combined integration). Carrier-ABI (parallel session): #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A; Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72, MERGED): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation; compatCommute mutual-subschema). A11 closes 3/8 untracked (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8 incl. new TypedWasm.ABI.VerifierSpec module. Proof-debt closure pass #79/#80: #79 VerifierSpec total bodies for VerifierSpecAgreement / SourceVerifierAgreement (post-A10 items 7+8) — VADifferential/SADifferential carry inline TrustedFixture so structural witness travels with fixture metadata, all four agreement directions total by case analysis; first total no-believe_me agreement values. #80 Proofs.idr LevelAttestationW + WitnessCertificate (standards#130 long-tail) — 15-ctor witness-indexed GADT with per-level extractors, existential SomeAttestationW wrapper enabling WitnessCertificate as heterogeneous-list lift of ProofCertificate (PR #83 second slice folded in). #74 closed as superseded by #79. Test surface 545 → 627+ assertions (proof regression 25 → 107). Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
 
 [project-context]
 name = "typed-wasm"
@@ -21,9 +21,9 @@ Two first-class roles (ADR-004):
      (both compile to WasmGC).  Provides formally verified type layout and ABI
      conventions so cross-language calls require no marshalling layer.
 """
-completion-percentage = 70   # bumped from 55: foundation defensibly engineered; codegen pipeline kickoff complete; CI honest; 545+ test assertions across 11 surfaces; ROADMAP truthful with drift-detection aspect in place
-production-phase = "0"      # see docs/PRODUCTION-PATH.adoc — phase 0 of 6
-production-phase-status = "2 of 3 gates met (gate 1: CI green-or-advisory ✓; gate 2: codegen v0 ✗; gate 3: ROADMAP truthful ✓)"
+completion-percentage = 73   # bumped from 70: codegen v0 landed (src/codegen/ twasmc emits verifiable wasm for example 01) — Phase 0 gate 2 closed; foundation defensibly engineered; CI honest; ROADMAP truthful with drift-detection aspect in place
+production-phase = "0"      # see docs/PRODUCTION-PATH.adoc — phase 0 of 6 (all 3 gates met; Phase 1 open)
+production-phase-status = "3 of 3 gates met (gate 1: CI green-or-advisory ✓; gate 2: codegen v0 ✓ — src/codegen/ twasmc, verified end-to-end by typed-wasm-verify; gate 3: ROADMAP truthful ✓)"
 
 [position]
 phase = "implementation"   # design | implementation | testing | maintenance | archived
@@ -77,7 +77,6 @@ issues = [
   "Venue-facing paper and benchmark claims still outrun the evidence present in-repo (now caught by tests/aspect/claim-envelope §8 drift detection).",
   "generated/abi/ C header pipeline not yet implemented (milestone at 0%).",
   "HostType F32 = Double in TypedAccess.idr — Idris2 lacks Float32; documented limitation.",
-  "Track A codegen v0 outstanding — gates Phase 0 → Phase 1 transition.",
   "Track B (AffineScript verifier migration) requires a separate Claude session pointed at hyperpolymath/affinescript (cross-repo, locked MCP scope).",
   "Build + E2E job persistently red; likely cause: Idris2 release tarball pins ubuntu-20.04 binary but runners are ubuntu-24.04. Marked non-blocking in PR #59; deeper fix needs idris2-pack or build-from-source.",
   "Validate A2ML / Validate K9 third-party actions persistently failing; non-blocking in PR #59; upstream investigation needed in hyperpolymath/{a2ml,k9}-validate-action repos.",
@@ -92,7 +91,7 @@ actions = [
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
   "Track A: ReScript cut single PR (auto-closes anti-pattern policy red).",
-  "Track A: codegen v0 for examples/01-single-module.twasm end-to-end — closes Phase 0 → Phase 1 gate.",
+  "Track A: extend codegen v0 (src/codegen/twasmc) from examples/01 to the remaining examples + full grammar (Phase 1, issue #49).",
   "Track B: open AffineScript session, swap lib/{tw_verify,tw_interface}.ml for subprocess call to typed-wasm-verify binary.",
   "Investigate Build+E2E root cause once authenticated log access available; replace idris2 install with idris2-pack or build-from-source.",
   "L11-modal-box: integration test with TypeLL L10 context; QTT semantics review before graduation.",
@@ -115,7 +114,7 @@ build-oracle = "IDRIS2_PREFIX=…/idris2/0.8.0 idris2 --build src/abi/typed-wasm
 [long-tail-open-after-2026-05-27]
 items = [
   "WasmCert-Isabelle tie-back (requires external Isabelle/HOL install + bridge — multi-week)",
-  "Emitted-wasm byte-equality P3.1(a) — blocked on .twasm→.wasm emitter not yet existing",
+  "Emitted-wasm byte-equality P3.1(a) — a producer-side emitter (codegen v0, src/codegen/) now exists; the Idris2-reference byte-equality tie-back remains open",
   "Parser round-trip in Idris2 — blocked on AffineScript parser port to Idris2",
   "Verifier L1-L6 + L13-L16 coverage on emitted wasm (#34, #35) — L2/L3-L6/L15 carrier-backed verifier passes shipped in PRs #107 + #109 against proposals 0001 + 0002 ([accepted] 2026-05-30 → ADR-0002 + ADR-0003). L13 cross-module + L15-C remaining (proposals 0003 + 0004 [draft], gated on producer-side codegen).",
 ]

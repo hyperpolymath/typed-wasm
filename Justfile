@@ -177,6 +177,24 @@ check-abi:
     cd src/abi && idris2 --build typed-wasm.ipkg
     @echo "Checked ABI package type-checks successfully."
 
+# Build the codegen v0 producer (twasmc) — needs Zig 0.16.0
+# (pip install ziglang==0.16.0). Output: src/codegen/zig-out/bin/twasmc
+codegen-build:
+    @command -v zig >/dev/null 2>&1 || { echo "zig not found — see src/codegen/README.adoc (pip install ziglang==0.16.0)"; exit 1; }
+    cd src/codegen && zig build
+
+# Regenerate the example-01 codegen fixture from its .twasm source
+codegen-example-01: codegen-build
+    @echo "Emitting examples/01-single-module.twasm -> .wasm fixture..."
+    src/codegen/zig-out/bin/twasmc < examples/01-single-module.twasm > crates/typed-wasm-verify/tests/fixtures/codegen_v0/01-single-module.wasm
+    @echo "Regenerated codegen_v0/01-single-module.wasm"
+
+# Full codegen v0 chain: emit example 01 and verify it end-to-end
+codegen-verify: codegen-build
+    @echo "twasmc | tw-verify (Phase 0 gate 2)..."
+    src/codegen/zig-out/bin/twasmc < examples/01-single-module.twasm > /tmp/twasmc-example-01.wasm
+    cargo run -q -p typed-wasm-verify --bin tw-verify --features unstable-l2 -- /tmp/twasmc-example-01.wasm
+
 # Run all quality checks
 quality: fmt-check lint test test-e2e test-aspect test-property test-proof
     @echo "All quality checks passed!"

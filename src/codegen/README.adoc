@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= twasmc — typed-wasm codegen v0
+:toc: preamble
+
+`twasmc` is the **code generator** of the typed-wasm architecture
+(WHITEPAPER.md "Code generator | Zig -> Wasm"): it reads a `.twasm`
+source and emits a WebAssembly binary that is both valid wasm and
+carries the producer-side typed-wasm custom sections the
+`typed-wasm-verify` crate consumes.
+
+This is **codegen v0** — the artifact that closes
+link:../../docs/PRODUCTION-PATH.adoc[PRODUCTION-PATH.adoc] Phase 0
+**gate 2**. Before it, "the parser parses; the verifier verifies someone
+else's wasm, but nothing in this repository emits wasm from a `.twasm`
+source." `twasmc` is the first thing in-tree that does.
+
+== What it emits
+
+For `examples/01-single-module.twasm`, `twasmc` produces a module with:
+
+* a **memory** matching the `memory { initial; maximum }` declaration;
+* one **function** per `fn`, with a wasm signature derived from the
+  parameter/return types (region handles -> `i32` base pointers,
+  scalars -> their wasm value type);
+* **function bodies** that lower typed access to real wasm
+  load/store at computed field offsets (incl. nested `.pos.x` through an
+  embedded `@Vec2`, a `region.scan` loop, `if`/`else`, and `is_null`);
+* three producer custom sections, wire-compatible with
+  `crates/typed-wasm-verify/src/section.rs`:
++
+[cols="1,3"]
+|===
+| `typedwasm.ownership`    | L7 aliasing + L10 linearity (param ownership kinds)
+| `typedwasm.regions`      | L2-L6 region/field schema
+| `typedwasm.access-sites` | L2 per-instruction `(region_id, field_id)` map
+|===
+
+=== The ownership-emission convention
+
+The verifier's L7/L10 pass counts `local.get <param>` per path: a
+`&mut region` (ExclBorrow) param may be read at most once; an
+`own region` (Linear) param exactly once. `twasmc` therefore reads each
+region-handle parameter **exactly once** at function entry into a
+dedicated base-pointer local and threads every field access through that
+local. This is both correct codegen (load the base once) and what keeps
+the emitted bytes clean under `verify_from_module`.
+
+== Usage
+
+`twasmc` is a stdin -> stdout filter:
+
+[source,shell]
+----
+( cd src/codegen && zig build )                    # -> zig-out/bin/twasmc
+src/codegen/zig-out/bin/twasmc < in.twasm > out.wasm
+
+# verify end-to-end:
+cargo run -p typed-wasm-verify --bin tw-verify --features unstable-l2 -- out.wasm
+----
+
+From the repo root, `just codegen-example-01` regenerates the example-01
+fixture and `just codegen-verify` runs the full emit -> verify chain.
+
+== Toolchain
+
+Targets **Zig 0.16.0** (the `std.Io` reorg + unmanaged `ArrayList`).
+Reproduce with:
+
+[source,shell]
+----
+pip install ziglang==0.16.0      # then `python -m ziglang ...`, or symlink as `zig`
+----
+
+NOTE: `ffi/zig/` (the runtime FFI layer) is written against Zig 0.15.1
+and built by CI's non-blocking `build-e2e` job. `twasmc` targets 0.16.0
+and is intentionally **not** wired into that job; its end-to-end gate is
+the Rust-only, blocking `tests/codegen_v0.rs` against the vendored
+fixture at `crates/typed-wasm-verify/tests/fixtures/codegen_v0/`.
+
+== Internals (`src/main.zig`, single file)
+
+. **Lexer** — identifiers/keywords, int/float literals, line comments,
+  multi-char punctuation.
+. **Parser** — recursive descent over the `examples/01` subset of
+  `spec/grammar.ebnf`: `region` (scalars, `@Region`, `opt<@Region>`,
+  `ptr`/`ref`/`unique`, `T[N]`, `where`/`align`/`invariant`), `memory`
+  (`initial`/`maximum`/`place`), and `fn` (handle-mode params, `effects`/
+  `lifetime`/`cost_bound`/`fresh` clauses skipped, body statements).
+. **Layout** — field offsets/sizes/alignment, region element size +
+  stride (e.g. Players slot = 48 bytes, matching the source comment).
+. **Emitter** — wasm sections (type/function/memory/export/code) with
+  LEB128/SLEB128, plus the three little-endian carrier payloads.
+
+== Scope and what's next (Phase 1)
+
+v0 deliberately targets exactly what `examples/01-single-module.twasm`
+exercises and reports an error on anything outside that subset rather
+than mis-lowering it. Phase 1 (issue #49) extends codegen to the
+remaining examples, the full grammar, WAT emission, source maps, and
+human-readable diagnostics — and ultimately replaces this bootstrap
+producer with the AffineScript -> Idris2 parser front-end feeding the
+same emitter.

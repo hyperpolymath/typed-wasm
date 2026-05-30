@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: MPL-2.0
+= Codegen v0 — producer-emitted .wasm fixture
+:toc: preamble
+
+Backs PRODUCTION-PATH.adoc Phase 0 **gate 2** ("Codegen v0 emits valid
+wasm for `examples/01-single-module.twasm`, verifiable end-to-end by
+`typed-wasm-verify`"). Same vendoring pattern as `../c5_real/`: the
+in-tree producer's real output is checked in so the verifier is
+exercised against bytes a producer actually emits, and the Rust test
+suite (`tests/codegen_v0.rs`) gates it on every PR without needing the
+producer's toolchain in CI.
+
+== Corpus
+
+[cols="1,2,3"]
+|===
+| File | Source | What it is
+
+| `01-single-module.wasm`
+  | `01-single-module.twasm`
+  | Output of the `twasmc` codegen v0 producer (`src/codegen/`) on
+    `examples/01-single-module.twasm`. A valid wasm module carrying the
+    `typedwasm.ownership`, `typedwasm.regions`, and
+    `typedwasm.access-sites` custom sections. Verifies `Ok` under
+    `verify_from_module` (L7/L10/L13) and clean under
+    `verify_access_sites_from_module` (L2).
+|===
+
+The `.twasm` source is copied here verbatim from `examples/` so the
+fixture is self-contained.
+
+== Provenance
+
+Reproducible from the paired `.twasm` source:
+
+[source,shell]
+----
+# from repo root; toolchain: Zig 0.16.0 (pip install ziglang==0.16.0)
+( cd src/codegen && zig build )
+src/codegen/zig-out/bin/twasmc \
+  < examples/01-single-module.twasm \
+  > crates/typed-wasm-verify/tests/fixtures/codegen_v0/01-single-module.wasm
+----
+
+or via the convenience recipe `just codegen-example-01`.
+
+Captured 2026-05-30 against:
+
+* `twasmc` at `src/codegen/` (codegen v0)
+* Zig `0.16.0` (`python -m ziglang version`)
+
+The emission is deterministic: the same source + the same `twasmc`
+yields byte-identical output. If `twasmc`'s codegen changes the wire
+shape, regenerate this fixture in the same commit (the
+`tests/codegen_v0.rs::*` assertions on region/access-site counts will
+otherwise fail).
+
+== Why vendored?
+
+The verifier crate's blocking CI (`e2e.yml` job `cargo-verify`) is
+Rust-only and does not provision a Zig toolchain. Vendoring the bytes
+keeps the end-to-end gate fast and reproducible while the producer
+itself stays buildable and documented under `src/codegen/`. Zig builds
+do run in CI's non-blocking `build-e2e` job, but that pins Zig 0.15.1
+and is advisory; `twasmc` targets 0.16.0, so it is intentionally not
+wired into that job.
+
+== Scope (v0)
+
+This fixture covers L1-L6 single-module typed access exactly as far as
+`examples/01-single-module.twasm` exercises it (region schema, embedded
+`@Vec2`, `opt<@Players>` nullable reference, fixed `u8[24]` array,
+`region.get`/`region.set` incl. nested `.pos.x`, `region.scan`, `if`/
+`else`, and `is_null`). The remaining examples (`02`-`06`) and full
+`spec/grammar.ebnf` coverage are Phase 1 producer work.
