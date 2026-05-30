@@ -209,6 +209,34 @@ A conforming producer that emits `typedwasm.access-sites` MUST:
   system). The verifier interprets an entry as a claim that the
   access IS typed.
 
+=== Producer-readiness (cross-reference)
+
+See link:0001-multi-producer-carrier-section.adoc#_appendix_b_producer_readiness_checklist_closes_97[proposal 0001 §"Appendix B — Producer-readiness checklist"]
+for the IR prerequisites of all carrier sections. Access-sites
+specifically requires (in addition to that appendix's
+`typedwasm.regions` row):
+
+* **Per-instruction tracking of typed accesses** through the
+  codegen pipeline. A typed `region.get $r .f` (or equivalent)
+  produces a wasm opcode somewhere in the function body; the
+  producer must record at which **post-rewrite** byte offset the
+  opcode lands.
+* **Post-rewrite hook**. The access-site list must be finalised
+  AFTER every wasm-rewrite pass the producer runs (`wasm-opt`,
+  `snip`, `wasm-gc`, custom passes). Producers using `wasm-encoder`
+  directly can record byte offsets during emission; producers
+  using an IR-to-wasm lowering pass need to capture offsets at the
+  lowering boundary and re-validate post-rewrite.
+* **Region-index stability across sections**. The `(region_id,
+  field_id)` foreign keys in `typedwasm.access-sites` MUST match
+  the indices the producer emits in `typedwasm.regions` for the
+  same module (proposal 0001 §"Producer obligations" ¶2).
+
+Status (v1): **NOT YET EMITTABLE** in either AffineScript or
+Ephapax — both depend on the `typedwasm.regions` IR prerequisites
+landing first. Tracked at affinescript#462 and the ephapax
+companion issue (per #106).
+
 === Consumer obligations (verifier)
 
 `crates/typed-wasm-verify/` will gain (gated behind

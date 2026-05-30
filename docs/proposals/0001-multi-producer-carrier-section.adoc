@@ -211,6 +211,26 @@ A conforming producer that emits either new section MUST:
   unlisted fields" and L2 will flag any access to an unlisted field.
 . For L15: emit only capabilities actually declared by the source
   module; do not synthesise.
+. **Canonical emit order** (recommended, not enforced):
++
+[loweralpha]
+.. `typedwasm.ownership`
+.. `typedwasm.regions`
+.. `typedwasm.region-imports` (proposal 0003)
+.. `typedwasm.capabilities`
+.. `typedwasm.access-sites` (proposal 0002)
+.. `typedwasm.capability-grants` (proposal 0004)
++
+Rationale: matches the runtime dependency graph — `access-sites`
+foreign-keys into `regions`, `capability-grants` foreign-keys into
+`capabilities`, and `region-imports` companions `regions`.
+**Consumers MUST NOT depend on this order**: the verifier reads
+sections by custom-section name, so a non-conforming producer that
+emits in any other order is still parseable. The canonical order
+exists solely so that two producers' emission of the same logical
+module produces byte-equal carrier-section sequences (useful for
+cross-producer module comparison via `cmp` or `diff`, and for
+deterministic content-addressing of typed-wasm modules).
 
 === Consumer obligations (verifier)
 
@@ -634,3 +654,103 @@ required for `[accepted]` — is to encode the same mapping as Idris2
 property tests (`src/abi/` would gain a `WireSchemaEquiv.idr` showing
 `encode/decode` round-trips preserve the spec witnesses listed in A.1
 + A.2). That work is filed as a follow-up after acceptance.
+
+== Appendix B — Producer-readiness checklist (closes #97)
+
+Surfaced in the paired producer reviews of proposals 0001 + 0002
+(ephapax#165 §3 + §6 + affinescript#402 §4 + §7, both 2026-05-30):
+the §"Producer obligations" section enumerates what a conforming
+producer must *do at emission time*, but understates **what a producer
+must already have in its IR** to be capable of emitting populated
+sections at all.
+
+This appendix tabulates the IR prerequisites for each carrier
+section, the producer-side status at v1, and the roadmap-issue
+identifier in each producer's tracker where the gap is named.
+
+NOTE: A producer that emits a carrier section without satisfying its
+IR prerequisites will emit an empty or synthetic section that the
+verifier will treat as "no claim made about anything," falsifying
+the intent of the carrier. **The all-or-nothing rule from §"Producer
+obligations" ¶3 implies: do not emit a section you cannot populate.**
+
+=== B.1 Per-carrier IR prerequisites
+
+[cols="2,3,2,3", options="header"]
+|===
+| Carrier
+| IR prerequisites in the producer
+| Status (v1)
+| Roadmap reference
+
+| `typedwasm.ownership`
+| Per-function-parameter + per-return ownership-kind tracking
+  (`Unrestricted` / `Linear` / `SharedBorrow` / `ExclBorrow`)
+| **SHIPPING** in both producers
+| AffineScript `lib/borrow.ml`; Ephapax `src/ephapax-types/`
+
+| `typedwasm.regions`
+| Per-region declaration in source language (field names + wasm
+  types + nullability + cardinality); stable per-module region
+  index assignment; field offset computation from schema
+| **NOT YET EMITTABLE**
+| AffineScript Roadmap C1 (region inference) DEFERRED at
+  `lib/borrow.ml:1724-1730`; Ephapax `Codegen.region_stack` DEAD
+  CODE at `src/ephapax-wasm/src/lib.rs:271`
+
+| `typedwasm.capabilities`
+| Per-function capability declaration; module-level capability
+  budget; effect-tracking IR for capability-affecting operations
+| **NOT YET EMITTABLE**
+| AffineScript Roadmap C2 (capability tracking) NOT STARTED;
+  Ephapax `ExprKind::Perform` / `Handle` codegen stubs to
+  `Instruction::Unreachable` (`src/ephapax-wasm/src/lib.rs`)
+
+| `typedwasm.region-imports` (proposal 0003)
+| All `typedwasm.regions` prerequisites **plus** cross-module
+  region declaration tracking; wasm-module-name resolution; the
+  high-bit `target_region` convention from proposal 0003
+| **NOT YET EMITTABLE**
+| AffineScript `lib/tw_interface.ml` has L10/L13 boundary
+  scaffolding but Roadmap C3 (multi-module region emission) is
+  the prerequisite; Ephapax cross-module emission not on roadmap
+
+| `typedwasm.access-sites` (proposal 0002)
+| All `typedwasm.regions` prerequisites **plus** per-instruction
+  tracking of typed accesses through codegen; post-rewrite byte
+  offset recording (must run AFTER `wasm-opt` etc.); stable
+  `(region_id, field_id)` matching the regions section
+| **NOT YET EMITTABLE**
+| Depends on regions carrier landing first;
+  affinescript#462 / ephapax issue pending
+
+| `typedwasm.capability-grants` (proposal 0004)
+| All `typedwasm.capabilities` prerequisites **plus**
+  per-call-site grant tracking IR; post-rewrite call-instruction
+  byte offset recording; stable capability-index matching
+| **NOT YET EMITTABLE**
+| Depends on capabilities carrier landing first
+|===
+
+=== B.2 Status legend
+
+* **SHIPPING** — producer emits this carrier on every module today;
+  consumers can rely on its presence.
+* **NOT YET EMITTABLE** — producer-side IR cannot populate this
+  carrier; emitting an empty section would falsify the all-or-nothing
+  contract.
+
+=== B.3 Use this checklist
+
+When any producer's tracker (AffineScript Roadmap C1/C2/C3 issues,
+Ephapax codegen issues, future third-party producer tickets) opens
+a work item for emitting a new carrier, that issue SHOULD
+cross-reference this appendix and the corresponding §B.1 row. This
+makes the multi-quarter IR work explicit rather than discovering it
+ad-hoc during downstream codegen sessions.
+
+The verifier-side adoption (codecs + verify passes in
+`crates/typed-wasm-verify/`) is INDEPENDENT of producer-side
+readiness — the verifier can ship parsing + validation for a carrier
+that no producer yet emits (the verifier just sees an absent section
+and returns `Ok(())`). This appendix only tracks the producer side.
