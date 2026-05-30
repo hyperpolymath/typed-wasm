@@ -145,6 +145,45 @@ Mapping to `ResourceCapabilities.idr`:
   v1.4.x** (per LEVEL-STATUS) and needs a separate per-call-site grant
   record; out of scope for v1.
 
+=== v0 producer surface
+
+As of v0 (proposal acceptance), no shipping producer exercises the full
+wire surface defined above.  Concretely:
+
+* `wasm_ty` codepoints `0`–`5` (`U8, U16, U32, U64, I8, I16`) — no
+  producer language surfaces narrow integer types at the type-system
+  level.  AffineScript emits `{I32, I64, F32, F64}` only (`lib/wasm.ml`);
+  Ephapax exposes `BaseTy { Unit, Bool, I32, I64, F32, F64 }` only
+  (`src/ephapax-syntax/`).  `WBool` (codepoint `10`) is emitted by
+  both producers but lowered to `i32` on the wire.
+* `kind` codepoints `1`–`3` (`PtrOwning, PtrBorrow, PtrExclusive`) are
+  exercised only by AffineScript.  Ephapax codegen erases the borrow
+  distinction (`SharedBorrow`/`ExclBorrow`) before wasm emission and
+  collapses to `Linear`/`Unrestricted` only, so an ephapax-emitted
+  `typedwasm.regions` section would carry `kind ∈ {0, 1}` exclusively.
+* `cardinality` values other than `1` — variable-cardinality fields
+  require array-as-field support, which no producer ships at v0.
+  AffineScript arrays are length-prefixed runtime objects;  Ephapax
+  uses runtime list handles.  Neither emits fixed-array struct fields.
+* The `typedwasm.capabilities` section as a whole — L15 has **no
+  producer at v0**.  The wire format is specified for forward
+  compatibility, but no current producer emits this section.
+
+These codepoints are **reserved** (forward-compatible): consumers
+MUST accept them when they appear (the lenient-reader contract
+applies) and MUST NOT reject a v0 module that omits them.  A producer
+that begins emitting a reserved codepoint in v1.x triggers either:
+
+. an **additive** version bump if only the wire shape extends, or
+. a **breaking** version bump if the semantics of an existing codepoint
+  change.
+
+Implementations of `crates/typed-wasm-verify/` should NOT preallocate
+handling for reserved codepoints at v0; hitting one in a v0 module
+signals either a future-version producer (reject with
+`UnsupportedCarrierVersion`) or a producer bug (reject with the
+appropriate `OwnershipError` variant).
+
 === Versioning policy
 
 Both new sections start with `u16le version = 1`.  Future versions:
