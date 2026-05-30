@@ -1,0 +1,72 @@
+= Architecture Decision Record: 0004-maa-framework-absolute-zero-vendor-audit
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
+# 4. Classify maa-framework's `absolute-zero/` as a stale vendor copy (sibling-estate)
+
+Date: 2026-05-30
+
+## Status
+
+Accepted (typed-wasm side). Execution pending in `hyperpolymath/maa-framework` (issue #84).
+
+## Context
+
+`hyperpolymath/maa-framework` issue #84 asked whether its in-tree `absolute-zero/`
+directory is a deliberate fork, a stale vendor copy, or a hybrid. maa-framework PR #82
+(merged) had tentatively classified all 150 proof-debt markers as `§(e) VENDORED —
+estate-sibling` pending this decision, and flagged three "content-drifted" quantum proof
+files as the disambiguator.
+
+typed-wasm, maa-framework, and `absolute-zero` are sibling projects in the hyperpolymath
+estate (ECHIDNA property-based testing of proof soundness is a shared integration point,
+per this repo's `.claude/CLAUDE.md`). The investigation was performed from a typed-wasm-scoped
+session, so the analysis and artifacts are parked here; the change itself lands in maa-framework.
+
+## Decision
+
+**Classify `absolute-zero/` as a stale vendor copy (option B): convert it to a git submodule
+pinned to upstream `hyperpolymath/absolute-zero`. No file extraction is required.**
+
+Established by cloning both repos and running real `git diff` of the whole subtree
+(`maa@9dbf56b` vs `upstream@7da92b3`):
+
+- **1 file only in maa** — `.github/workflows/jekyll-gh-pages.yml` (inert nested CI).
+- **15 differing files** — 6 proof files + 9 stale infra files. All 6 proof files are
+  *upstream-ahead*: 0 maa-only theorems, 0 maa-only proofs, 0 `sorry`/`admit`/`Admitted`
+  on either side. maa merely carries more inlined axioms because it predates upstream's
+  refactor of `kB`/`temperature`/Shannon axioms into the new shared modules
+  `proofs/coq/common/{PhysicsConstants,StatMechBasis}.v`.
+- **2 files only upstream** — those two new shared modules.
+
+No maa-only proof work exists, so a submodule swap destroys nothing. Hybrid (C) is ruled out:
+the only maa-original content is integration glue, which is byte-identical to upstream after
+PR #83's re-vendor. PR #82's `§(e) VENDORED` classification stands; the submodule makes
+"resolution path = upstream" structurally true.
+
+Full analysis, a guarded conversion script, and a pre-tested 683-byte conversion bundle live
+in `docs/investigations/maa-framework-issue-84/` (this repo). The bundle was dry-run-applied
+onto a fresh maa clone, yielding the correct submodule gitlink `7da92b3` + `.gitmodules`.
+
+## Consequences
+
+### Positive
+
+- maa-framework regains upstream metadata/build files (`CHANGELOG`, `AUDIT.adoc`, `*.agda-lib`,
+  `*.ipkg`, isabelle/mizar/z3 proof systems) "for free" via the submodule.
+- Proof-soundness resolution for the 150 markers becomes structurally upstream, matching #82.
+- The conversion is de-risked to a fast-forward: a maa-scoped session applies the proven bundle.
+
+### Negative
+
+- Execution cannot complete from a typed-wasm-scoped session (no write access to maa-framework);
+  it requires a maa-scoped session to apply the bundle, open the PR, and close #84.
+- Consumers of `absolute-zero/` in maa-framework must run `git submodule update --init` after
+  the swap (CI/checkout wiring required).
+
+### Neutral
+
+- The investigation artifacts are parked in typed-wasm purely because of session scope; they
+  document a sibling-repo decision and touch no typed-wasm project code.
+- A follow-up should land in maa-framework to upstream any future maa-specific proof work rather
+  than re-vendoring.

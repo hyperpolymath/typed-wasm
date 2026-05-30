@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git fetch:*)",
+      "Bash(git show:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git check-attr:*)",
+      "Bash(git bundle verify:*)",
+      "Bash(git bundle list-heads:*)",
+      "Bash(diff -rq:*)",
+      "Bash(curl -s https://raw.githubusercontent.com/:*)",
+      "Bash(curl -sI https://raw.githubusercontent.com/:*)",
+      "Bash(curl -s -o /dev/null https://raw.githubusercontent.com/:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/governance-precheck.sh\"",
+            "timeout": 30,
+            "statusMessage": "Running governance pre-check (invisible chars + SPDX)"
+          }
+        ]
+      }
+    ]
+  }
+}
