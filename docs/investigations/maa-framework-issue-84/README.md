@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
 # Investigation: maa-framework issue #84 (cross-repo)
 
 These documents resolve **`hyperpolymath/maa-framework` issue #84** — "Decide: is

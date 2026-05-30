@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
 # Issue #84 — convert maa-framework's vendored absolute-zero/ subtree into a submodule (Option B).
 # RUN INSIDE A maa-framework CHECKOUT, on a feature branch. Review each step; nothing is forced.
 #

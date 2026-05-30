@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
 # Handoff — paste into a Claude Code session scoped to hyperpolymath/maa-framework
 
 Resolve issue #84 ("is `absolute-zero/` a deliberate fork or stale vendor copy?").

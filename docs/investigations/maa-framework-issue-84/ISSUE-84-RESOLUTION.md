@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
 # Issue #84 — Resolution: `absolute-zero/` is a STALE VENDOR COPY (Option B, pure submodule)
 
 **Repo:** hyperpolymath/maa-framework · **Issue:** #84 · **Related:** PR #82 (merged, classifies markers), PR #83 (re-vendor to upstream)
