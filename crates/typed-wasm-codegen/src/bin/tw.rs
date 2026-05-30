@@ -33,15 +33,42 @@ fn main() -> ExitCode {
 }
 
 fn usage() {
-    eprintln!("usage: tw build <file.twasm> [-o <out.wasm>]");
+    eprintln!("usage: tw build <file.twasm> [-o <out>] [--emit wasm|wat|both]");
+}
+
+/// What `tw build` emits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Emit {
+    Wasm,
+    Wat,
+    Both,
+}
+
+impl Emit {
+    fn parse(s: &str) -> Option<Emit> {
+        match s {
+            "wasm" => Some(Emit::Wasm),
+            "wat" => Some(Emit::Wat),
+            "both" => Some(Emit::Both),
+            _ => None,
+        }
+    }
+    fn wants_wasm(self) -> bool {
+        matches!(self, Emit::Wasm | Emit::Both)
+    }
+    fn wants_wat(self) -> bool {
+        matches!(self, Emit::Wat | Emit::Both)
+    }
 }
 
 fn build(rest: &[String]) -> ExitCode {
     let mut input: Option<String> = None;
     let mut output: Option<String> = None;
+    let mut emit = Emit::Wasm;
     let mut i = 0;
     while i < rest.len() {
-        match rest[i].as_str() {
+        let arg = rest[i].as_str();
+        match arg {
             "-o" | "--output" => {
                 i += 1;
                 match rest.get(i) {
@@ -52,6 +79,23 @@ fn build(rest: &[String]) -> ExitCode {
                     }
                 }
             }
+            "--emit" => {
+                i += 1;
+                match rest.get(i).map(String::as_str).and_then(Emit::parse) {
+                    Some(e) => emit = e,
+                    None => {
+                        eprintln!("tw build: --emit requires a value (wasm|wat|both)");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+            a if a.starts_with("--emit=") => match Emit::parse(&a["--emit=".len()..]) {
+                Some(e) => emit = e,
+                None => {
+                    eprintln!("tw build: --emit must be one of wasm|wat|both");
+                    return ExitCode::FAILURE;
+                }
+            },
             s if !s.starts_with('-') => input = Some(s.to_string()),
             other => {
                 eprintln!("tw build: unknown option '{other}'");
@@ -76,7 +120,7 @@ fn build(rest: &[String]) -> ExitCode {
     };
 
     // v0 gate: confirm the input is (structurally) the example-01 schema
-    // before emitting its baked IR. The general front-end → IR seam is
+    // before emitting its baked IR. The general front-end -> IR seam is
     // deferred per ADR-0004 (tracked by #127).
     let is_example01 = src.contains("region Players")
         && src.contains("region Enemies")
@@ -93,24 +137,40 @@ fn build(rest: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    // v0 emits only the example-01 module; render the bytes once, then
+    // write the requested artifact(s).
     let bytes = typed_wasm_codegen::emit_example01();
+    let base = output.unwrap_or_else(|| input.clone());
+    let mut wrote: Vec<String> = Vec::new();
 
-    let out = output.unwrap_or_else(|| default_output(&input));
-    if let Err(e) = std::fs::write(&out, &bytes) {
-        eprintln!("tw build: cannot write '{out}': {e}");
-        return ExitCode::FAILURE;
+    if emit.wants_wasm() {
+        let path = with_extension(&base, "wasm");
+        if let Err(e) = std::fs::write(&path, &bytes) {
+            eprintln!("tw build: cannot write '{path}': {e}");
+            return ExitCode::FAILURE;
+        }
+        wrote.push(format!("{path} ({} bytes)", bytes.len()));
+    }
+    if emit.wants_wat() {
+        let text = typed_wasm_codegen::wat(&bytes);
+        let path = with_extension(&base, "wat");
+        if let Err(e) = std::fs::write(&path, text.as_bytes()) {
+            eprintln!("tw build: cannot write '{path}': {e}");
+            return ExitCode::FAILURE;
+        }
+        wrote.push(format!("{path} ({} bytes)", text.len()));
     }
 
     eprintln!(
-        "tw build: wrote {out} ({} bytes) — carriers: typedwasm.regions + typedwasm.access-sites \
+        "tw build: wrote {} — carriers: typedwasm.regions + typedwasm.access-sites \
          (verify with `typed-wasm-verify`).",
-        bytes.len()
+        wrote.join(" + ")
     );
     ExitCode::SUCCESS
 }
 
-/// Default output path: input filename with its extension replaced by `.wasm`.
-fn default_output(input: &str) -> String {
-    let p = Path::new(input);
-    p.with_extension("wasm").to_string_lossy().into_owned()
+/// `base` with its extension replaced by `ext`
+/// (e.g. `with_extension("foo.twasm", "wasm")` -> `"foo.wasm"`).
+fn with_extension(base: &str, ext: &str) -> String {
+    Path::new(base).with_extension(ext).to_string_lossy().into_owned()
 }

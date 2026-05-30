@@ -433,3 +433,33 @@ pub fn example01() -> Module {
 pub fn emit_example01() -> Vec<u8> {
     emit(&example01())
 }
+
+// ----------------------------------------------------------------------
+// WAT (text wasm) emission — Phase 1 deliverable 4 (#125)
+// ----------------------------------------------------------------------
+
+/// Render a wasm binary to its WAT (text) form for debugging.
+///
+/// `wasmprinter` faithfully renders the module the emitter produced,
+/// including the `typedwasm.*` custom sections, so the text view shows
+/// the carriers alongside the code.
+///
+/// # Panics
+///
+/// Panics only if `wasm_bytes` is not well-formed wasm. [`emit`] always
+/// produces well-formed wasm (see `tests/roundtrip.rs`), so this never
+/// panics on emitter output; pass emitter output, not arbitrary bytes.
+pub fn wat(wasm_bytes: &[u8]) -> String {
+    wasmprinter::print_bytes(wasm_bytes)
+        .expect("emitted wasm is well-formed and prints to WAT")
+}
+
+/// Lower a [`Module`] to WAT (text wasm) — the textual companion of [`emit`].
+pub fn emit_wat(module: &Module) -> String {
+    wat(&emit(module))
+}
+
+/// Convenience: WAT for [`example01`].
+pub fn emit_example01_wat() -> String {
+    emit_wat(&example01())
+}

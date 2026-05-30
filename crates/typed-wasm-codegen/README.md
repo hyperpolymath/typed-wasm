@@ -28,7 +28,11 @@ in-process — see `tests/roundtrip.rs`.
 # build the example to wasm
 cargo run -p typed-wasm-codegen --bin tw -- build examples/01-single-module.twasm -o /tmp/ex01.wasm
 
-# the round-trip soundness test (emit → validate → verify)
+# emit the WAT (text) debug view, or both binary + text
+cargo run -p typed-wasm-codegen --bin tw -- build examples/01-single-module.twasm -o /tmp/ex01 --emit wat
+cargo run -p typed-wasm-codegen --bin tw -- build examples/01-single-module.twasm -o /tmp/ex01 --emit both
+
+# the round-trip + WAT tests (emit → validate → verify)
 cargo test -p typed-wasm-codegen
 ```
 
@@ -39,6 +43,7 @@ cargo test -p typed-wasm-codegen
 | Host language / location | Rust crate, sibling of `typed-wasm-verify`, emits via `wasm-encoder` |
 | Front-end (`.twasm`) → IR | **deferred** — v0 builds the IR for `example01` directly (seam tracked by #127) |
 | `typedwasm.regions` + `typedwasm.access-sites` | **emitted**, verifier-accepted |
+| WAT (text) emission | **emitted** via `--emit wat\|both` (#125) |
 | `typedwasm.ownership` (L7/L10) | not emitted for example 01 (no linear resources); lands with `examples/03` under #127 |
 | Function-body lowering | representative type-correct bodies, not full `region.scan`/indexing semantics |
 
@@ -47,4 +52,3 @@ cargo test -p typed-wasm-codegen
 - **#127** — codegen coverage across all 10 levels × all 6 examples (and the front-end → IR JSON seam).
 - **#128** — multi-module codegen.
 - **#130** — promote the round-trip test into the ECHIDNA property corpus.
-- **#125** — WAT emission alongside the binary.
