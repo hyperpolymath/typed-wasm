@@ -33,7 +33,7 @@ each consumer are independent — a fix that aligns the verifier with one
 language's invariants says nothing about the other.
 
 Canonical disambiguation:
-link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md[nextgen-languages/docs/disambiguation/ephapax-vs-affinescript.md].
+link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md[ephapax vs affinescript — disambiguation doc (in `hyperpolymath/nextgen-languages`)].
 ====
 
 **Progressive type safety for WebAssembly linear memory — checked L1-L10 core, 0 believe_me in the checked proof package.**
