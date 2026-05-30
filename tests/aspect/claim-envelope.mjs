@@ -374,6 +374,7 @@ const ALLOWLIST_FRAGMENTS = [
   "typell/",
   "vql-ut/",
   "echidna/",
+  "nextgen-languages/",
 ];
 
 // Skip bare filenames without a directory part — those are conventional
