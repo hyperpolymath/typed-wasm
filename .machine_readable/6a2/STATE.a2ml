@@ -64,10 +64,10 @@ milestones = [
   { name = "LevelAttestation reindexed-by-witness (standards#130 long-tail)", completion = 100 },  # 2026-05-27 (PR #80, this PR)
   { name = "WitnessCertificate lift (heterogeneous-list certificate)", completion = 100 },  # 2026-05-27 (#83 folded into #80)
   { name = "L13 module isolation enforcement on emitted wasm", completion = 100 },  # PR #37, 2026-05-19
-  { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 30 },  # PR #76 filed 2026-05-27; [draft], blocked on affinescript+ephapax review
-  { name = "L2 region-binding codec pre-stage (unstable-l2 feature)", completion = 100 },  # PR #77, 2026-05-27 — codec only, no verifier pass yet
-  { name = "L15 capability carrier ABI", completion = 30 },  # bundled into proposal 0001 (typedwasm.capabilities section)
-  { name = "Access-site carrier (proposal 0002)", completion = 30 },  # PR #86 filed + merged 2026-05-28 — proposal authored as [draft] specifying typedwasm.access-sites with Encoding B per issue #78 measurement; next gates: cross-repo affinescript+ephapax review → promote to [accepted] → land unstable-l2-access-sites codec + verify_region_binding pass
+  { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 100 },  # PR #76 filed 2026-05-27; [accepted] 2026-05-30 (PR #115) → ADR-0002 (PR #116)
+  { name = "L2 region-binding codec + verifier pass", completion = 100 },  # PR #77 codec, PR #107 cross-checks, PR #109 verify_regions_from_module
+  { name = "L15 capability carrier ABI + verifier pass", completion = 100 },  # bundled into proposal 0001; verify_capabilities_from_module shipped in PR #109
+  { name = "Access-site carrier (proposal 0002)", completion = 100 },  # PR #86 [draft] → [accepted] 2026-05-30 (PR #115) → ADR-0003 (PR #116). Codec + verify_access_sites_from_module shipped in PR #109. Producer-side access-site emission gated downstream (affinescript#462; ephapax owner-action).
   { name = "C5.1 real-AffineScript fixture corpus", completion = 100 },  # PR #81, 2026-05-27 — 4 fixtures + regenerate workflow
 ]
 
@@ -87,9 +87,9 @@ issues = [
 
 [critical-next-actions]
 actions = [
-  "Phase 2: cross-repo review of proposal 0001 carrier-section ABI — externally gated (affinescript#402 + ephapax#165 sit in maintainers' queues).",
-  "Phase 2: cross-repo review of proposal 0002 access-site carrier (PR #86, [draft]) — affinescript + ephapax codegen-path maintainers gate promotion to [accepted].",
-  "Phase 2: after proposal 0002 [accepted], unstable-l2-access-sites codec + verify_region_binding pass land in crates/typed-wasm-verify/ (closes the deliberate PR #77 omission).",
+  "Phase 2: producer-side access-site emission — gated downstream (affinescript#462 open; ephapax counterpart owner-action pending, auto-mode classifier blocked the cross-repo create on 2026-05-30).",
+  "Phase 2: ephapax `Codegen.region_stack` dead-code removal (proposal 0001 Appendix B follow-up).",
+  "Phase 3: proposals 0003 (region-imports / L13 cross-module) and 0004 (capability-grants / L15-C) move from [draft] when producer-side multi-module + L15-A emission lands.",
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
   "Track A: ReScript cut single PR (auto-closes anti-pattern policy red).",
@@ -118,7 +118,7 @@ items = [
   "WasmCert-Isabelle tie-back (requires external Isabelle/HOL install + bridge — multi-week)",
   "Emitted-wasm byte-equality P3.1(a) — blocked on .twasm→.wasm emitter not yet existing",
   "Parser round-trip in Idris2 — blocked on AffineScript parser port to Idris2",
-  "Verifier L1-L6 + L13-L16 coverage on emitted wasm (#34, #35) — IN PROGRESS on PRs #76 / #77 by a parallel session, do not interfere",
+  "Verifier L1-L6 + L13-L16 coverage on emitted wasm (#34, #35) — L2/L3-L6/L15 carrier-backed verifier passes shipped in PRs #107 + #109 against proposals 0001 + 0002 ([accepted] 2026-05-30 → ADR-0002 + ADR-0003). L13 cross-module + L15-C remaining (proposals 0003 + 0004 [draft], gated on producer-side codegen).",
 ]
 
 [maintenance-status]
@@ -167,21 +167,40 @@ phase-6 = 54
 
 [carrier-abi]
 # Multi-producer carrier sections for L2-L6 and L15.
-# Status as of 2026-05-27.
+# Status as of 2026-05-30 (proposal-acceptance arc closed).
 proposal-0001-pr = 76
-proposal-0001-status = "draft"
-proposal-0001-acceptance-gates = [
-  "hyperpolymath/affinescript review (issue #402)",
-  "hyperpolymath/ephapax review (issue #165)",
-]
+proposal-0001-status = "accepted"
+proposal-0001-accepted-date = "2026-05-30"
+proposal-0001-acceptance-pr = 115
+proposal-0001-adr = "docs/decisions/0002-multi-producer-carrier-sections.adoc"
+proposal-0001-adr-pr = 116
 codec-pre-stage-pr = 77
+codec-cross-checks-pr = 107
+verifier-passes-pr = 109
 codec-feature-flag = "unstable-l2"
 codec-section-name = "typedwasm.regions"
 capabilities-section-name = "typedwasm.capabilities"
 access-site-issue = 78
 access-site-decision = "option A — per-instruction (func_idx, instruction_byte_offset) -> (region_id, field_id)"
-access-site-recommended-encoding = "B (LEB128 per field, ~5 B/access, ~1.1% module overhead)"
-proposal-0002-status = "not yet authored — wait until proposal 0001 [accepted]"
+access-site-encoding = "B (LEB128 per field, ~5 B/access, ~1.1% module overhead)"
+proposal-0002-status = "accepted"
+proposal-0002-accepted-date = "2026-05-30"
+proposal-0002-acceptance-pr = 115
+proposal-0002-adr = "docs/decisions/0003-access-site-carrier.adoc"
+proposal-0002-adr-pr = 116
+# Follow-up proposals in [draft]:
+proposal-0003-status = "draft"
+proposal-0003-section-name = "typedwasm.region-imports"
+proposal-0003-purpose = "L13 cross-module schema agreement"
+proposal-0004-status = "draft"
+proposal-0004-section-name = "typedwasm.capability-grants"
+proposal-0004-purpose = "L15-C per-call-site enforcement"
+# Producer-side codegen of access-sites is the remaining v1 gate:
+producer-gates = [
+  "affinescript#462 — emit typedwasm.access-sites carrier (open)",
+  "ephapax access-sites codegen — owner action pending (classifier-blocked 2026-05-30)",
+  "ephapax Codegen.region_stack dead-code removal",
+]
 
 [c5-real-fixtures]
 # Real-AffineScript-emitted .wasm corpus, PR #81 landed 2026-05-27.

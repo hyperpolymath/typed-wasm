@@ -163,26 +163,35 @@ Active design work:
 
 * **Proposal 0001** —
   link:proposals/0001-multi-producer-carrier-section.adoc[Multi-producer
-  carrier sections for L2–L6 and L15] (PR #76, `[draft]` 2026-05-27).
-  Proposes two new producer-neutral custom sections
+  carrier sections for L2–L6 and L15] (PR #76, `[accepted]`
+  2026-05-30 → link:decisions/0002-multi-producer-carrier-sections.adoc[ADR-0002]).
+  Adopts two producer-neutral custom sections
   (`typedwasm.regions`, `typedwasm.capabilities`) alongside the
-  existing `typedwasm.ownership`. Blocks L2–L6 / L15 enforcement on
-  emitted wasm. Cross-repo review at affinescript#402 + ephapax#165
-  gates promotion to `[review]`.
-* **Codec pre-stage** (PR #77) — `cargo feature = "unstable-l2"`
-  enables the `typedwasm.regions` codec ahead of `[accepted]` so
-  the wire format gets stress-tested through round-trip tests.
+  existing `typedwasm.ownership`. Wire codec landed in PR #107;
+  verifier passes `verify_regions_from_module` and
+  `verify_capabilities_from_module` landed in PR #109 behind
+  `unstable-l2` / `unstable-l15` Cargo features.
 * **Proposal 0002** —
   link:proposals/0002-access-site-carrier.adoc[Access-site carrier
-  section] (PR #86, `[draft]` 2026-05-28). Authors the
-  `typedwasm.access-sites` wire format using **Encoding B (LEB128
-  per field, ~5B/access)** per the issue #78 prototype size
+  section] (PR #86, `[accepted]` 2026-05-30 →
+  link:decisions/0003-access-site-carrier.adoc[ADR-0003]). Adopts
+  the `typedwasm.access-sites` wire format using **Encoding B
+  (LEB128 per field, ~5B/access)** per the issue #78 prototype size
   measurement. Closes the "L2-the-enforcement" gap (region/field
   carriers say *what exists*; access-site carrier says *which
-  load/store hits which field*). Gated on proposal 0001
-  acceptance; verifier's `verify_region_binding` pass (deliberately
-  omitted from PR #77) lands behind `unstable-l2-access-sites`
-  cargo feature once 0002 is `[accepted]`.
+  load/store hits which field*). Verifier pass
+  `verify_access_sites_from_module` landed in PR #109 behind
+  `unstable-l2`.
+* **Proposal 0003** —
+  link:proposals/0003-region-imports-carrier.adoc[Region imports
+  carrier] (`typedwasm.region-imports`) for L13 cross-module schema
+  agreement. Status: `[draft]`. Gated on producer-side multi-module
+  emission.
+* **Proposal 0004** —
+  link:proposals/0004-capability-grants-carrier.adoc[Capability
+  grants carrier] (`typedwasm.capability-grants`) for L15-C
+  per-call-site enforcement. Status: `[draft]`. Gated on producer
+  L15-A emission.
 
 Deliverables:
 

@@ -10,22 +10,25 @@ readme = "README.md"
 
 [features]
 default = []
-# Pre-stages the L2 region-binding carrier codec for typed-wasm proposal
-# 0001 (typed-wasm#76, refs #34). UNSTABLE: wire format may change before
-# the proposal is [accepted]. Enables `parse_regions_section_payload` /
-# `build_regions_section_payload` and the `RegionEntry` / `FieldEntry`
-# types. Also enables `parse_access_sites_section_payload` /
-# `build_access_sites_section_payload` and `AccessSiteEntry` from
-# proposal 0002 (#78) — access-sites is an L2 enforcement carrier and
-# travels with the L2 feature gate. Does NOT enable a
-# `verify_region_binding` pass — that's a separate plumb step.
+# L2 region-binding + access-site carrier codec for typed-wasm
+# proposal 0001 (`[accepted]` 2026-05-30 → ADR-0002) and proposal 0002
+# (`[accepted]` 2026-05-30 → ADR-0003). Feature gate retained as
+# `unstable-l2` while Phase 3 stabilisation is open. Enables:
+#   - `parse_regions_section_payload` / `build_regions_section_payload`
+#     + `RegionEntry` / `FieldEntry` (proposal 0001)
+#   - `parse_access_sites_section_payload` /
+#     `build_access_sites_section_payload` + `AccessSiteEntry`
+#     (proposal 0002)
+#   - `verify_regions_from_module` (PR #107) and
+#     `verify_access_sites_from_module` (PR #109) verifier passes.
 unstable-l2 = []
-# Pre-stages the L15 capability-lattice carrier codec for typed-wasm
-# proposal 0001. UNSTABLE: wire format may change before [accepted].
-# Enables `parse_capabilities_section_payload` /
-# `build_capabilities_section_payload` and the `CapabilityEntry` /
-# `FunctionCapabilities` types. L15-C (per-call-site grants) is deferred
-# to a separate proposal (tracked by #96).
+# L15 capability-lattice carrier codec for typed-wasm proposal 0001
+# (`[accepted]` 2026-05-30 → ADR-0002). Feature gate retained as
+# `unstable-l15` while Phase 3 stabilisation is open. Enables
+# `parse_capabilities_section_payload` /
+# `build_capabilities_section_payload` + `CapabilityEntry` /
+# `FunctionCapabilities` + `verify_capabilities_from_module` (PR #109).
+# L15-C (per-call-site grants) is a separate proposal 0004 (`[draft]`).
 unstable-l15 = []
 
 [dependencies]

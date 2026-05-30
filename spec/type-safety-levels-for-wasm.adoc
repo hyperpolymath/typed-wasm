@@ -712,18 +712,18 @@ can re-check.
 
 | `typedwasm.regions`
 | L2 region-binding, L3 type-compatible access, L4 null-safety, L5 bounds-proof, L6 result-type
-| Proposal 0001 `[review]`; codec behind `unstable-l2`
-| `parse_regions_section_payload` / `build_regions_section_payload`
+| Proposal 0001 `[accepted]` (ADR-0002); codec + verifier pass behind `unstable-l2`
+| `parse_regions_section_payload` / `build_regions_section_payload` / `verify_regions_from_module`
 
 | `typedwasm.capabilities`
 | L15 resource capabilities (lattice + per-function requirements; excluding L15-C per-call-site grants)
-| Proposal 0001 `[review]`; codec behind `unstable-l15`
-| `parse_capabilities_section_payload` / `build_capabilities_section_payload`
+| Proposal 0001 `[accepted]` (ADR-0002); codec + verifier pass behind `unstable-l15`
+| `parse_capabilities_section_payload` / `build_capabilities_section_payload` / `verify_capabilities_from_module`
 
 | `typedwasm.access-sites`
 | L2 enforcement on emitted bytes (per-instruction `(func_idx, byte_offset) -> (region_id, field_id)` mapping)
-| Proposal 0002 `[review]`; codec behind `unstable-l2`
-| `parse_access_sites_section_payload` / `build_access_sites_section_payload`
+| Proposal 0002 `[accepted]` (ADR-0003); codec + verifier pass behind `unstable-l2`
+| `parse_access_sites_section_payload` / `build_access_sites_section_payload` / `verify_access_sites_from_module`
 |===
 
 === `typedwasm.ownership` (L7 / L10)
@@ -869,7 +869,8 @@ contract:
 === Cross-references
 
 * Codec: `crates/typed-wasm-verify/src/section.rs`
-* Proposal 0001 (regions + capabilities): `docs/proposals/0001-multi-producer-carrier-section.adoc`
-* Proposal 0002 (access-sites): `docs/proposals/0002-access-site-carrier.adoc`
-* Pre-stage roadmap: typed-wasm#106 (`[review]` → `[accepted]` tracker)
+* Proposal 0001 (regions + capabilities): `docs/proposals/0001-multi-producer-carrier-section.adoc` — `[accepted]` 2026-05-30 → `docs/decisions/0002-multi-producer-carrier-sections.adoc` (ADR-0002)
+* Proposal 0002 (access-sites): `docs/proposals/0002-access-site-carrier.adoc` — `[accepted]` 2026-05-30 → `docs/decisions/0003-access-site-carrier.adoc` (ADR-0003)
+* Proposal 0003 (region-imports, L13 cross-module): `docs/proposals/0003-region-imports-carrier.adoc` — `[draft]`
+* Proposal 0004 (capability-grants, L15-C): `docs/proposals/0004-capability-grants-carrier.adoc` — `[draft]`
 * Open questions: typed-wasm#94 (WBool wire width), #95 (region-imports v0.3), #96 (capability-grants L15-C), #97 (producer-readiness checklist)
