@@ -101,6 +101,42 @@ for each region (in index order, 0..region_count-1):
                               cross-checks)
 ----
 
+==== WBool wire width — pinned at 4 bytes (resolves #94)
+
+`WBool` (wire codepoint `10`) occupies **4 bytes on the wire**, accessed
+via wasm's standard `i32.store` / `i32.load` opcodes (with the
+convention `0 = false`, nonzero = `true`). Producers SHALL NOT emit
+`i32.store8` / `i32.load8` for `WBool` fields in v1 — the narrower
+encoding is reserved for a future `WBoolPacked` variant in a v2 of this
+section (separate `wasm_ty` codepoint, not a width-flag on `WBool`).
+
+Rationale:
+
+. **Producer reality.** Both current producers
+  (https://github.com/hyperpolymath/affinescript[AffineScript] —
+  `lib/codegen.ml:180-190+:373`,
+  https://github.com/hyperpolymath/ephapax[Ephapax] —
+  `src/ephapax-wasm/src/lib.rs:2937-2944`) lower source-language
+  `Bool` → `ValType::I32` and emit `i32.store` / `i32.load`. Pinning
+  at 4 bytes matches every shipping producer without codegen changes.
+. **Spec self-consistency.** `Region.idr` is amended in this PR to
+  `sizeOf WBool = 4` (was `1`) so that `schemaSize` and `computeOffsets`
+  agree with the wire reality. `alignOf = sizeOf` (Region.idr:113)
+  carries the change through to field-alignment math.
+. **Verifier simplicity.** A single canonical width means no new
+  `MixedWidthBoolean` error variant; `region_byte_size` cross-check is
+  deterministic per schema.
+. **Future flexibility.** A 1-byte `WBoolPacked` (or named-equivalent)
+  remains the v2 escape hatch for size-conscious producers — additive,
+  not a wire-width flag on the existing `WBool` codepoint.
+
+The lenient mixed-width resolution sketched in
+https://github.com/hyperpolymath/typed-wasm/issues/94[#94]'s
+"Recommendation §A" is rejected because it makes `region_byte_size`
+producer-choice-dependent (the same schema would have different
+`schemaSize` values depending on which producer emitted it) and forces
+a new verifier error variant for marginal flexibility.
+
 Mapping to the spec types:
 
 [cols="1,3"]

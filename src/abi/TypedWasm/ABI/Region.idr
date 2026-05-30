@@ -103,7 +103,13 @@ sizeOf I32   = 4
 sizeOf I64   = 8
 sizeOf F32   = 4
 sizeOf F64   = 8
-sizeOf WBool = 1
+sizeOf WBool = 4
+-- WBool pinned at 4 bytes per typed-wasm proposal 0001 §"WBool wire
+-- width" (resolves typed-wasm#94). Wire reality is i32.store/load on
+-- both shipping producers (AffineScript codegen.ml:180-190+:373;
+-- Ephapax ephapax-wasm/src/lib.rs:2937-2944); spec catches up to
+-- producer reality. A future 1-byte WBoolPacked variant is reserved
+-- as a separate WasmType constructor, NOT a width flag on WBool.
 
 ||| Compute the natural alignment of a WASM primitive type.
 ||| Alignment equals the type's size for all WASM primitives — this
