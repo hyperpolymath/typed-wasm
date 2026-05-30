@@ -15,6 +15,10 @@ permissions:
 env:
   REPO_OWNER: ${{ github.repository_owner }}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ---------------------------------------------------------------------------
   # Job 1: panic-attack assail

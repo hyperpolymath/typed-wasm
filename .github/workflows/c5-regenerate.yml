@@ -28,6 +28,10 @@ env:
   # newer affinescript.
   AFFINESCRIPT_SHA: '21edc159caee06a930cb7339b3e729ed5627b823'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   regenerate:
     name: Regenerate C5.1 fixtures and diff
