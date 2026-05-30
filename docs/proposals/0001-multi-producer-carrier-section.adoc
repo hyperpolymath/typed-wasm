@@ -12,9 +12,16 @@
 | Date         | 2026-05-27
 | Last-updated | 2026-05-30 (review → accepted; owner-decision after all gates ✅)
 | Accepted-by  | hyperpolymath (owner), 2026-05-30
+| Promoted to  | link:../decisions/0002-multi-producer-carrier-sections.adoc[ADR-0002] (2026-05-30)
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/34[#34]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
 |===
+
+NOTE: This proposal was promoted to
+link:../decisions/0002-multi-producer-carrier-sections.adoc[ADR-0002]
+on 2026-05-30. The proposal file is retained as the canonical
+reference for wire-format detail, error variants, and producer
+obligations; the ADR records the decision and consequences.
 
 == Context
 

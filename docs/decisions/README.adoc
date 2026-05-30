@@ -1,1 +1,47 @@
-= decisions Unit
+// SPDX-License-Identifier: MPL-2.0
+= Architecture Decision Records (ADRs)
+
+Accepted decisions that shape typed-wasm's architecture. Proposals
+that have hardened past the design-doc stage live here; forward-looking
+proposals still under discussion live in link:../proposals/[`docs/proposals/`].
+
+== Index
+
+[cols="1,4,1,1"]
+|===
+| Number | Title | Date | Status
+
+| link:0001-adopt-rsr-standard.adoc[0001]
+| Adopt Rhodium Standard Repository (RSR) template
+| 2026-02-14
+| Accepted
+
+| link:0002-multi-producer-carrier-sections.adoc[0002]
+| Adopt multi-producer carrier sections for L2–L6 and L15
+| 2026-05-30
+| Accepted
+
+| link:0003-access-site-carrier.adoc[0003]
+| Adopt access-site carrier (`typedwasm.access-sites`) for L2 enforcement
+| 2026-05-30
+| Accepted
+|===
+
+== Authoring an ADR
+
+. Use link:0000-template.adoc[`0000-template.adoc`] as the starting
+  template.
+. Filename: `NNNN-short-slug.adoc` (numbering continues from the highest
+  current ADR; pad to 4 digits).
+. If the ADR promotes a proposal, link back to the proposal file and
+  keep the proposal as the canonical wire-format / detail reference.
+. Add a row to the index above.
+
+== Related
+
+* link:../proposals/[`docs/proposals/`] — forward-looking proposals
+  (pre-ADR design docs)
+* link:../architecture/[`docs/architecture/`] — current architecture
+  documentation
+* link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] —
+  strategic plan; D1–D6 decisions land directly as ADRs here

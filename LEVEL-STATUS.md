@@ -163,9 +163,11 @@ pins affinescript SHA for drift detection).
 3. **L15-C (call-graph monotonicity)** — proposal 0004 `[draft]`
    (`docs/proposals/0004`). Gated on producer-side L15-A emission
    (Roadmap C2 not started in either producer).
-4. **ADR promotion** — proposals 0001 + 0002 remain in
-   `docs/proposals/` post-acceptance; promotion to
-   `docs/decisions/` is a follow-up file-restructure.
+4. **ADR promotion** — DONE (2026-05-30): proposals 0001 + 0002
+   promoted to `docs/decisions/0002-multi-producer-carrier-sections.adoc`
+   (ADR-0002) and `docs/decisions/0003-access-site-carrier.adoc`
+   (ADR-0003). Proposal files retained as canonical wire-format
+   references.
 
 **Spec-of-record alignment (2026-05-27, PR #79).**  The
 `TypedWasm.ABI.VerifierSpec` Idris2 module now states the

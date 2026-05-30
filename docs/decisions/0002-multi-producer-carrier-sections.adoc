@@ -1,0 +1,147 @@
+= Architecture Decision Record: 0002-multi-producer-carrier-sections
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
+# 2. Adopt Multi-Producer Carrier Sections for L2–L6 and L15
+
+Date: 2026-05-30
+
+## Status
+
+Accepted
+
+Promoted from link:../proposals/0001-multi-producer-carrier-section.adoc[Proposal
+0001] (`[accepted]` 2026-05-30). The proposal file remains canonical for
+wire-format detail, error variants, and producer obligations; this ADR
+records the decision and its consequences.
+
+## Context
+
+Before this decision, the post-codegen verifier
+(`crates/typed-wasm-verify/`) could enforce **L7 (aliasing)**,
+**L10 (linearity)**, and **L13 (module isolation, negative form)** on
+emitted wasm via the single `typedwasm.ownership` carrier section, but
+**L2 (region-binding)**, **L3 (type-compatible access)**, **L4 (null
+safety)**, **L5 (bounds-proof)**, **L6 (result-type)**, and
+**L15 (resource capabilities)** had no wire surface at all. The
+source-level Idris2 spec (`Region.idr`, `Pointer.idr`,
+`MultiModule.idr`, `ResourceCapabilities.idr`) modelled all the
+required structure, but the moment a producer emitted `.wasm` bytes
+the schema and capability data was gone — the source-level checker was
+the only line of defence.
+
+Two producers — AffineScript and Ephapax — share `typedwasm` as their
+emission target. Without a wire-level agreement, cross-language module
+linking (the project's load-bearing differentiator: ADR-0001 RSR
+template plus typed shared memory) had no enforcement story on
+post-link binaries.
+
+This was an **ABI** problem, not an enforcement problem: the
+algorithms existed; the carriers did not.
+
+## Decision
+
+Adopt two new wasm custom sections as the v1 carriers for L2–L6 and
+L15 schema/capability data, plus reserve two additional carriers for
+the access-site and cross-module follow-ups:
+
+[cols="1,2,3"]
+|===
+| Section name | Carries | Status
+
+| `typedwasm.regions`
+| Region schemas (fields × types × nullability × cardinality)
+| Adopted v1 (this ADR); realised in `crates/typed-wasm-verify` PR #107
+
+| `typedwasm.capabilities`
+| Capability sets per function signature
+| Adopted v1 (this ADR); realised in `crates/typed-wasm-verify` PR #109
+
+| `typedwasm.access-sites`
+| Per-instruction `(region_id, field_id)` for typed load/store
+| Promoted in link:0003-access-site-carrier.adoc[ADR-0003]
+(realises Open Question §5 of proposal 0001)
+
+| `typedwasm.region-imports`
+| Cross-module schema agreement (foreign-key regions)
+| `[draft]` at link:../proposals/0003-region-imports-carrier.adoc[Proposal
+0003]; tracks issue
+https://github.com/hyperpolymath/typed-wasm/issues/95[#95]
+|===
+
+Wire-format detail (encoding, LEB128 boundaries, error variants,
+acceptance criteria) lives in proposal 0001 §"Wire format" and §"Error
+variants". Producer obligations and canonical emit order live in
+proposal 0001 Appendix B ("Producer-readiness checklist") and
+§"Producer obligations".
+
+Key adopted pins:
+
+* **WBool wire width** is **4 bytes** (`i32.store` / `i32.load`)
+  matching both shipping producers; the Idris2 `sizeOf WBool` is
+  aligned to 4 in PR #113. A 1-byte `WBoolPacked` is reserved as a
+  separate `WasmType` constructor, not a width flag on `WBool`.
+* **LEB128 per field** (encoding option B) for all variable-width
+  integer fields in the new carriers — uniform with existing wasm
+  conventions.
+* **Cardinality-1 producer surface in v1**: both shipping producers
+  emit exactly one of each carrier per module; multi-section behaviour
+  is reserved for a future amendment.
+* Carriers are **opt-in via Cargo features** (`unstable-l2`,
+  `unstable-l15`) until Phase 3.
+
+## Consequences
+
+### Positive
+
+- Verifier can re-check L2–L6 and L15 on emitted bytes; the
+  source-level checker is no longer the only line of defence.
+- Producers in different source languages (AffineScript, Ephapax,
+  future) can interoperate through typed shared memory with a single
+  wire contract.
+- The carrier-based design generalises: ADR-0003 (access-sites) and
+  proposal 0003 (region-imports) and proposal 0004 (capability-grants)
+  all reuse the same custom-section pattern.
+- Idris2 spec and Rust verifier converge on a single source of truth
+  per carrier (mapping recorded in proposal 0001 Appendix A
+  "Wire-vs-Idris2-spec mapping").
+- Producer-readiness checklist (proposal 0001 Appendix B) gives both
+  shipping producers a concrete acceptance test before v1 stabilises.
+
+### Negative
+
+- Two carriers add ~400-line emitter surface per producer. Both
+  AffineScript codegen and Ephapax codegen now have a per-feature debt
+  to track (AffineScript Roadmap C1/C2/C3; Ephapax
+  `Codegen.region_stack` dead-code removal).
+- Until Phase 3 stabilisation (and feature-gating drop), verifier
+  consumers must opt in via `unstable-l2` / `unstable-l15`.
+- Adding two carriers in v1 means the wire-format error surface grows
+  by ~12 variants total (proposal 0001 §"Error variants"); each
+  variant needs a regression test before stabilisation.
+
+### Neutral
+
+- The existing `typedwasm.ownership` carrier (4-kind ownership per
+  function signature) is unchanged; this ADR is purely additive on
+  the wire.
+- L7, L10, L13 (negative form) enforcement is unaffected — the
+  ownership carrier still drives them.
+- ADRs 0001 (RSR template) and 0002 (this) are orthogonal: this
+  decision lives at the wasm-ABI layer; RSR lives at the
+  repo-structure layer.
+
+## Cross-references
+
+* link:../proposals/0001-multi-producer-carrier-section.adoc[Proposal
+  0001] — full wire-format spec (canonical reference)
+* link:0003-access-site-carrier.adoc[ADR-0003] — access-site carrier
+  (companion decision)
+* link:../proposals/0003-region-imports-carrier.adoc[Proposal 0003] —
+  region-imports carrier (cross-module, `[draft]`)
+* link:../proposals/0004-capability-grants-carrier.adoc[Proposal 0004]
+  — capability-grants carrier (L15-C, `[draft]`)
+* https://github.com/hyperpolymath/typed-wasm/issues/34[issue #34] —
+  tracking issue (closed when proposals 0001+0002 reached `[accepted]`)
+* https://github.com/hyperpolymath/typed-wasm/issues/50[issue #50] —
+  Phase 2 (multi-producer adoption)
