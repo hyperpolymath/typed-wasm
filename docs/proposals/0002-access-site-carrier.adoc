@@ -7,14 +7,25 @@
 
 [cols="1,3"]
 |===
-| Status       | draft
+| Status       | review
 | Author       | hyperpolymath
 | Date         | 2026-05-28
-| Last-updated | 2026-05-28
+| Last-updated | 2026-05-30
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/78[#78]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
 | Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (multi-producer carrier sections)
+| Review-state | Paired producer sign-off received 2026-05-30 alongside 0001 (https://github.com/hyperpolymath/ephapax/issues/165[ephapax#165], https://github.com/hyperpolymath/affinescript/issues/402[affinescript#402])
 |===
+
+== Tracking issues for `[review]` → `[accepted]` promotion
+
+Shares the gating set with link:0001-multi-producer-carrier-section.adoc[Proposal 0001]. 0002-specific items:
+
+* https://github.com/hyperpolymath/typed-wasm/issues/93[#93] — annotate the access-site carrier's per-instruction encoding for unused codepoints (currently all 4 LEB128 fields are exercised by v0 producers as soon as one emits — less surface than 0001 in this respect).
+* https://github.com/hyperpolymath/typed-wasm/issues/97[#97] — producer-readiness checklist appendix MUST cover the 0002-specific obligation that the section be emitted AFTER any post-codegen wasm rewrite (`wasm-opt`, etc.) — `instruction_byte_offset` is fragile.
+* `AccessSiteMisalignment` diagnostic and `MissingDependentCarrier` error must be added to `crates/typed-wasm-verify/` before `[accepted]` — currently spec-only.
+
+The shared `WBool` (#94), region-imports (#95), capability-grants (#96), and producer-side preconditions (affinescript#444, ephapax#221) gating items are listed in 0001's tracking section and apply equally here for any module that emits access-sites without first emitting regions (rejected with `MissingDependentCarrier`).
 
 == Context
 
