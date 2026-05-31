@@ -10,6 +10,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### In-tree producer: `typed-wasm-codegen` (codegen v0 → multi-module, debug info, human errors) (2026-05-30)
+
+Adds the first in-tree `.twasm` → `.wasm` **producer** as a Rust crate
+(`crates/typed-wasm-codegen`), per ADR-0004. Before this the toolchain had a
+parser and a verifier but nothing that emitted wasm. The producer lowers a
+typed region IR to a valid wasm module plus the `typedwasm.*` carrier
+sections (reusing the verifier's own encoders so the bytes can't drift) and
+round-trips through `typed-wasm-verify` in-process.
+
+- **#134** — codegen v0 + `tw build` for `examples/01-single-module.twasm`
+  (`typedwasm.regions` + `typedwasm.access-sites`), verifier-accepted;
+  **ADR-0004** fixes the Rust-crate host-language decision. Discharges
+  Phase 0 gate 2 (#48). Includes WAT (text wasm) emission
+  (`tw build --emit wasm|wat|both`, #125).
+- **#139** — multi-module codegen at parity with `verify_cross_module`: a
+  Linear-exporting callee + importing caller (the L10 ownership boundary)
+  (#128).
+- **#141** — `examples/03-ownership-linearity` (L7–L10: `own` / `&mut` / `&`
+  via `typedwasm.ownership`) + the wasm `name` section for debugger symbols
+  (increment of #127 + #129).
+- **human-readable errors (#126)** — a translation layer mapping verifier
+  rejections to actionable, function-name-anchored diagnostics, plus
+  `tw build` self-verification.
+
+Coverage today: examples 01 (L1–6) + 03 (L7–10) + the multi-module linear
+boundary, all verifier-backed. Deferred (tracked): the front-end → IR seam +
+remaining examples (#127), source → line maps (#129), region-imports /
+L13-positive (#140), ECHIDNA round-trip corpus (#130).
+
+> Note: an alternative **Zig** producer (`twasmc`, `src/codegen/`) was
+> proposed in parallel in PR #136 (draft, open). Host-language reconciliation
+> against ADR-0004 (Rust) is an open owner decision.
+
 ### Multi-producer carrier ABI: proposals 0001 + 0002 accepted, promoted to ADRs (2026-05-30)
 
 Closes typed-wasm#34 (proposal 0001), typed-wasm#78 (proposal 0002),
