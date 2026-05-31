@@ -48,6 +48,9 @@ use wasm_encoder::{
     NameSection, TypeSection, ValType,
 };
 
+pub mod errors;
+pub use errors::{humanize, self_verify};
+
 // ----------------------------------------------------------------------
 // Typed region IR
 // ----------------------------------------------------------------------
