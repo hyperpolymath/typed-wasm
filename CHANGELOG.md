@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Real codegen: layout engine + typed-access lowering, harvested from Zig `twasmc` (#136) (2026-05-30)
+
+The Rust producer's function bodies are now **real codegen**, not representative
+stubs. A layout engine computes field offsets, element strides, and alignment —
+including inline embedded regions (`Players` slot stride 48 B; `.pos.x` reaches
+into the embedded `@Vec2` at offset 16) — and typed accesses emit real
+loads/stores at computed offsets addressed as `base + index*stride (+ offsets)`.
+Each region handle is read once into a base-pointer local, so `&mut`/`own` params
+stay clean under the verifier; example 01 now also carries `&`/`&mut` ownership.
+
+After a head-to-head Rust-vs-Zig comparison, the host-language choice was
+ratified (**ADR-0004 → Accepted**) and the approach + base-local convention were
+harvested from the parallel Zig producer (`twasmc`, PR #136), which was closed as
+superseded with credit. Closes the representative-bodies gap noted in #127; the
+front-end → IR parser seam remains (#127) and `if`/`region.scan` control flow is
+still simplified.
+
 ### In-tree producer: `typed-wasm-codegen` (codegen v0 → multi-module, debug info, human errors) (2026-05-30)
 
 Adds the first in-tree `.twasm` → `.wasm` **producer** as a Rust crate

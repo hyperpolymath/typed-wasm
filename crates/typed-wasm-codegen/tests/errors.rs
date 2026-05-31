@@ -8,7 +8,7 @@
 // act on (the Phase-2 gate's "error message they can act on").
 
 use typed_wasm_codegen::{
-    example01, example03, humanize, self_verify, AccessSite, Func, Module, Op, Ownership, Wty,
+    example01, example03, humanize, self_verify, Body, Func, Module, Op, Ownership, Wty,
 };
 use typed_wasm_verify::{OwnershipError, VerifyError};
 
@@ -36,8 +36,7 @@ fn double_free_gives_named_actionable_message() {
             name: "despawn_particle".into(),
             params: vec![Wty::I32],
             results: vec![],
-            body: vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop],
-            accesses: Vec::<AccessSite>::new(),
+            body: Body::Ops(vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop]),
             export: true,
         }],
         ownership: vec![(0, vec![Ownership::Linear])],

@@ -12,8 +12,9 @@ seeds Phase 1 (issue #49, deliverable 1).
 
 Lowers a typed region IR ([`Module`](src/lib.rs)) to:
 
-- a **well-formed wasm module** (linear memory + type-correct function
-  bodies), and
+- a **well-formed wasm module** with **real typed loads/stores at
+  layout-computed offsets** (element `base + index*stride`, nested `.pos.x`
+  into inline embedded regions), and
 - the L2–L6 carrier sections **`typedwasm.regions`** (ADR-0002) and
   **`typedwasm.access-sites`** (ADR-0003),
 
@@ -57,7 +58,7 @@ cargo test -p typed-wasm-codegen
 | `typedwasm.ownership` (L7/L10) | **emitted** — Linear/ExclBorrow/SharedBorrow (example 03 + multi-module callee), checked by `verify_from_module` |
 | Multi-module (linear boundary) | **emitted** — callee export + caller import round-trip through `verify_cross_module` (#128) |
 | Debug symbols (`name` section) | **emitted** — function names for debuggers (#129, first increment) |
-| Function-body lowering | representative type-correct bodies, not full `region.scan`/indexing semantics |
+| Function-body lowering | **real** — layout engine (offsets/stride/align, inline embedded regions) + typed loads/stores via a base-local (harvested from Zig `twasmc` #136); `if`/`region.scan` control flow still simplified |
 
 ## Example coverage (#127)
 
