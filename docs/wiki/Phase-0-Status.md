@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+
 # Phase 0 Status
 
 **Foundation defensibly engineered. All 3 Phase 0 gates met as of 2026-05-30 — gate 2 (codegen v0) discharged by the in-tree Rust producer `crates/typed-wasm-codegen` (PR #134). Phase 1 ([#49](https://github.com/hyperpolymath/typed-wasm/issues/49)) is open.**
