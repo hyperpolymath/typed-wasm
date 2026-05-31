@@ -21,9 +21,9 @@ Two first-class roles (ADR-004):
      (both compile to WasmGC).  Provides formally verified type layout and ABI
      conventions so cross-language calls require no marshalling layer.
 """
-completion-percentage = 70   # bumped from 55: foundation defensibly engineered; codegen pipeline kickoff complete; CI honest; 545+ test assertions across 11 surfaces; ROADMAP truthful with drift-detection aspect in place
-production-phase = "0"      # see docs/PRODUCTION-PATH.adoc — phase 0 of 6
-production-phase-status = "2 of 3 gates met (gate 1: CI green-or-advisory ✓; gate 2: codegen v0 ✗; gate 3: ROADMAP truthful ✓)"
+completion-percentage = 73   # bumped from 70: codegen v0 landed (in-tree Rust producer crates/typed-wasm-codegen, tw build; PR #134) — Phase 0 gate 2 discharged; CI honest; ROADMAP truthful with drift-detection aspect in place
+production-phase = "0"      # see docs/PRODUCTION-PATH.adoc — phase 0 of 6 (all 3 gates met; Phase 1 open)
+production-phase-status = "3 of 3 gates met (gate 1: CI green-or-advisory ✓; gate 2: codegen v0 ✓ — crates/typed-wasm-codegen tw build, PR #134, host-language ADR-0004 Proposed; gate 3: ROADMAP truthful ✓)"
 
 [position]
 phase = "implementation"   # design | implementation | testing | maintenance | archived
@@ -77,7 +77,6 @@ issues = [
   "Venue-facing paper and benchmark claims still outrun the evidence present in-repo (now caught by tests/aspect/claim-envelope §8 drift detection).",
   "generated/abi/ C header pipeline not yet implemented (milestone at 0%).",
   "HostType F32 = Double in TypedAccess.idr — Idris2 lacks Float32; documented limitation.",
-  "Track A codegen v0 outstanding — gates Phase 0 → Phase 1 transition.",
   "Track B (AffineScript verifier migration) requires a separate Claude session pointed at hyperpolymath/affinescript (cross-repo, locked MCP scope).",
   "Build + E2E job persistently red; likely cause: Idris2 release tarball pins ubuntu-20.04 binary but runners are ubuntu-24.04. Marked non-blocking in PR #59; deeper fix needs idris2-pack or build-from-source.",
   "Validate A2ML / Validate K9 third-party actions persistently failing; non-blocking in PR #59; upstream investigation needed in hyperpolymath/{a2ml,k9}-validate-action repos.",
@@ -92,7 +91,7 @@ actions = [
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
   "Track A: ReScript cut single PR (auto-closes anti-pattern policy red).",
-  "Track A: codegen v0 for examples/01-single-module.twasm end-to-end — closes Phase 0 → Phase 1 gate.",
+  "Track A: extend codegen v0 (crates/typed-wasm-codegen) from examples 01/03 + multi-module to the remaining examples + full grammar + front-end → IR seam (Phase 1, issue #49/#127).",
   "Track B: open AffineScript session, swap lib/{tw_verify,tw_interface}.ml for subprocess call to typed-wasm-verify binary.",
   "Investigate Build+E2E root cause once authenticated log access available; replace idris2 install with idris2-pack or build-from-source.",
   "L11-modal-box: integration test with TypeLL L10 context; QTT semantics review before graduation.",
