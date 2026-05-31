@@ -1,6 +1,6 @@
 # Phase 0 Status
 
-**Foundation defensibly engineered as of 2026-05-25. Gates 1 + 3 met; gate 2 (codegen v0) remains as the Phase-1-handoff item.**
+**Foundation defensibly engineered. All 3 Phase 0 gates met as of 2026-05-30 — gate 2 (codegen v0) discharged by the in-tree Rust producer `crates/typed-wasm-codegen` (PR #134). Phase 1 ([#49](https://github.com/hyperpolymath/typed-wasm/issues/49)) is open.**
 
 Phase 0 closes the engineering-surface fragility around the proofs so all subsequent phases have a load-bearing foundation. See [Production-Path](Production-Path) §Phase 0 for the full statement and [#48](https://github.com/hyperpolymath/typed-wasm/issues/48) for live tracking.
 
@@ -8,7 +8,7 @@ Phase 0 closes the engineering-surface fragility around the proofs so all subseq
 
 - **11 PRs landed** across two sessions
 - **545+ test assertions** across 11 surfaces (up from ~430)
-- **2 of 3 Phase 0 gates met** (gate 2 needs Idris2 parser + codegen v0)
+- **3 of 3 Phase 0 gates met** (gate 2 / codegen v0 discharged 2026-05-30 — Rust crate `crates/typed-wasm-codegen` `tw build`, PR #134)
 - **8 deletions** of worthless / template-residue files
 - **4 new RSR-aligned taxonomy stubs** (`AUDIT.adoc`, `docs/onboarding/`, `docs/status/`, `docs/proposals/`)
 - **2 real bugs caught and fixed** by drift-detection aspects (`.well-known/security.txt` template residue, missing SPDX headers)
@@ -24,7 +24,7 @@ Phase 0 closes the engineering-surface fragility around the proofs so all subseq
 | Extend tree-sitter to remaining `spec/grammar.ebnf` productions (imports, L11–L16, match, proof) | 🟡 Next | — |
 | Idris2 parser at 188-test parity with ReScript | ⬜ Not started | — |
 | ReScript cut (single PR) | ⬜ Blocked on parser parity | — |
-| Codegen v0 for `examples/01-single-module.twasm` | ⬜ Blocked on parser | — |
+| Codegen v0 for `examples/01-single-module.twasm` | ✅ Shipped — Rust crate `crates/typed-wasm-codegen` (`tw build`), verifier-accepted; + example 03 (L7–10) + multi-module boundary | [#134](https://github.com/hyperpolymath/typed-wasm/pull/134) |
 
 ### Track B — AffineScript verifier migration
 
@@ -79,10 +79,10 @@ Per the production-path definition, Phase 0 advances to Phase 1 when:
 
 Status against those gates:
 - **Gate 1**: ✅ Met via #59 — all CI is now either green or explicitly advisory with documented removal preconditions.
-- **Gate 2**: ⬜ Not yet — needs codegen v0 from Track A (multi-PR work).
+- **Gate 2**: ✅ Met 2026-05-30 — in-tree Rust producer `crates/typed-wasm-codegen` (`tw build`, PR #134) emits valid wasm for `examples/01-single-module.twasm`, verified end-to-end by `typed-wasm-verify` (round-trip gated by the crate's `tests/roundtrip.rs`). Host-language ADR-0004 is *Proposed* (pending ratification).
 - **Gate 3**: ✅ Met via #60 — every documented claim verified, drift-detection aspect in place.
 
-**So Phase 0 is 2/3 of the way to its gate**. The blocker is codegen v0, which is the terminal deliverable of Track A's multi-PR sequence.
+**So Phase 0 has met all 3 gates and is closed; Phase 1 is open.** Codegen v0 — the terminal gate-2 deliverable — landed as the Rust crate `crates/typed-wasm-codegen` (PRs #134/#139/#141), covering example 01 (L1–6), example 03 (L7–10), and a multi-module linear boundary.
 
 ## Test surface summary
 
@@ -109,7 +109,7 @@ None of D1–D6 from [Production-Path](Production-Path) have ADRs yet. D2 (produ
 
 ## What unblocks Phase 1
 
-Track A's codegen v0 PR. Track B can land in parallel without blocking the gate.
+Codegen v0 landed (`crates/typed-wasm-codegen`, PR #134) — Phase 1 ([#49](https://github.com/hyperpolymath/typed-wasm/issues/49)) is now open: remaining examples + full `spec/grammar.ebnf`, the front-end → IR seam (#127), source → line maps (#129), and the ECHIDNA round-trip corpus (#130). Track B (verifier migration) can still land in parallel in `hyperpolymath/affinescript`.
 
 ## 2026-05-27 — Post-Phase-0 proof-debt closure pass
 
@@ -123,5 +123,29 @@ Independent of the Phase 0 / Phase 1 gate transition, a 2026-05-27 sweep closed 
 
 **Test surface 545 → 627+ assertions** (proof regression 25 → 107 from +33 #79 + +49 #80).
 **Zero new `believe_me` / `assert_total` / `postulate` / `sorry` / `assert_smaller`; `%default total` preserved.**
+
+## 2026-05-30 — Gate 2 closed: codegen v0 (Rust)
+
+The terminal Phase 0 blocker is resolved. `crates/typed-wasm-codegen` adds
+the first in-tree `.twasm → .wasm` **producer** (`tw build`), a Rust
+workspace sibling of `typed-wasm-verify` that emits wasm via `wasm-encoder`
+and round-trips through `verify_from_module` in-process — the tightest
+soundness net. Host language fixed by [ADR-0004](../decisions/0004-codegen-host-language.adoc)
+(*Proposed*, pending ratification).
+
+| PR | What it lands |
+|---|---|
+| [#134](https://github.com/hyperpolymath/typed-wasm/pull/134) | codegen v0 + `tw build` for `examples/01-single-module.twasm` (`typedwasm.regions` + `typedwasm.access-sites`), verifier-accepted; **discharges gate 2**; WAT emission (`--emit wasm\|wat\|both`) |
+| [#139](https://github.com/hyperpolymath/typed-wasm/pull/139) | multi-module codegen at parity with `verify_cross_module` (Linear export/import boundary, L10) |
+| [#141](https://github.com/hyperpolymath/typed-wasm/pull/141) | `examples/03-ownership-linearity` (L7–10 via `typedwasm.ownership`) + wasm `name` section for debugger symbols |
+| #126 | human-readable error translation layer + `tw build` self-verification |
+
+A standalone `tw-verify <module.wasm>` CLI (for verifying wasm from any
+producer, not just `tw build`) is proposed separately in
+[#143](https://github.com/hyperpolymath/typed-wasm/pull/143).
+
+Deferred to Phase 1 (#49): front-end → IR seam (#127), remaining examples,
+source → line maps (#129), region-imports / L13-positive (#140), ECHIDNA
+round-trip corpus (#130).
 
 These PRs are independent of the Phase 0 → Phase 1 gate (which is still blocked on codegen v0). They close debt items that would otherwise haunt the v1.0 audit.
