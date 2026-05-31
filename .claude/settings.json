@@ -18,6 +18,7 @@
       "Bash(git bundle verify:*)",
       "Bash(git bundle list-heads:*)",
       "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
       "Bash(cargo test:*)",
       "Bash(cargo clippy:*)",
       "Bash(cargo fmt --check:*)",

@@ -20,8 +20,9 @@ Checked-in, team-shared configuration for Claude Code sessions on typed-wasm.
 A **non-destructive** allowlist that cuts permission prompts for the commands used routinely in
 this repo: read-only git inspection (`status/log/diff/fetch/show/ls-files/ls-tree/branch/
 rev-parse/merge-base/for-each-ref/check-attr`, `git bundle verify`/`list-heads`), the cargo
-build/test/lint loop (`cargo build/test/clippy`, `cargo fmt --check`, `cargo metadata/audit` —
-these touch only `target/`, never the source tree), `diff -rq`, and `curl` **restricted to
+dev loop (`cargo build/test/run/clippy`, `cargo fmt --check`, `cargo metadata/audit`) — which is
+non-destructive to the source tree (build artifacts land in `target/`; `tw build` writes only the
+`.wasm`/`.wat` you name), `diff -rq`, and `curl` **restricted to
 `https://raw.githubusercontent.com/`** (used to compare sibling-estate repos without a full
 clone). No push, no source-mutating, and no destructive commands are granted — those still
 prompt.

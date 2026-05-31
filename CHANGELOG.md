@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round-trip soundness corpus: `verify(emit(m)) == OK`, property-tested (#130) (2026-05-31)
+
+ECHIDNA-style property corpus for the producer: a deterministically-generated set
+of **512 well-formed modules** (random scalar regions + getter/setter functions)
+must each satisfy `verify(emit(m)) == OK` — full structural validation +
+`verify_from_module` (L7/L10) + `verify_access_sites` (L2). Negative controls
+(double-free, `&mut` aliasing, leak) must be **rejected**, so the property has
+teeth. Generated at the IR level (the producer has no in-process `.twasm` parser —
+#127); a `verify(codegen(parse(src)))` corpus over real `.twasm` sources follows
+once the front-end → IR seam lands. (`crates/typed-wasm-codegen/tests/corpus.rs`.)
+
 ### `tw-verify` CLI: standalone wasm verification (2026-05-31)
 
 Adds a binary front-end to the (previously lib-only) `typed-wasm-verify`
