@@ -4,11 +4,11 @@
 // (Phase 1 deliverable 1 / #127).
 //
 // The producer emits the typedwasm.ownership carrier (Linear / ExclBorrow /
-// SharedBorrow) and bodies that satisfy the verifier's use-count discipline,
-// so the module round-trips through verify_from_module. A deliberately
-// broken double-free is rejected — the carrier has teeth.
+// SharedBorrow) and real field reads through a base-local, so the module
+// round-trips through verify_from_module. A deliberately broken double-free
+// is rejected — the carrier has teeth.
 
-use typed_wasm_codegen::{emit, emit_example03, AccessSite, Func, Module, Op, Ownership, Wty};
+use typed_wasm_codegen::{emit, emit_example03, Body, Func, Module, Op, Ownership, Wty};
 use typed_wasm_verify::{
     verify_access_sites_from_module, verify_from_module, OwnershipError, VerifyError,
 };
@@ -23,8 +23,8 @@ fn example03_is_valid_wasm() {
 
 #[test]
 fn example03_passes_l7_l10_ownership() {
-    // despawn (Linear, used once), update (ExclBorrow, referenced once),
-    // read (SharedBorrow, unconstrained), spawn (Unrestricted) — all clean.
+    // despawn (Linear, consumed once via the base-local read), update
+    // (ExclBorrow, referenced once), read (SharedBorrow), spawn (Unrestricted).
     let bytes = emit_example03();
     verify_from_module(&bytes).expect("example 03 L7/L10 ownership must be clean");
 }
@@ -42,9 +42,9 @@ fn example03_passes_l2_access_sites() {
 
 #[test]
 fn double_free_is_rejected() {
-    // A Linear (own) handle used twice — a double-free the verifier must
-    // catch (LinearUsedMultiple), proving the ownership carrier is enforced
-    // on emitted bytes, not just declared.
+    // A Linear (own) handle used twice — the verifier must catch it
+    // (LinearUsedMultiple), proving the ownership carrier is enforced on
+    // emitted bytes, not just declared.
     let module = Module {
         regions: vec![],
         memory: None,
@@ -53,8 +53,7 @@ fn double_free_is_rejected() {
             name: "double_free".into(),
             params: vec![Wty::I32],
             results: vec![],
-            body: vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop],
-            accesses: Vec::<AccessSite>::new(),
+            body: Body::Ops(vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop]),
             export: true,
         }],
         ownership: vec![(0, vec![Ownership::Linear])],
