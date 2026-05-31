@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### `tw-verify` CLI: standalone wasm verification (2026-05-31)
+
+Adds a binary front-end to the (previously lib-only) `typed-wasm-verify`
+crate (PR #143): `tw-verify <module.wasm>` runs structural wasm validation
+(`wasmparser::Validator`) → L7/L10/L13 ownership (`verify_from_module`) →
+L2 access-site / L15 capability passes (the latter two under the
+`unstable-l2` / `unstable-l15` features), with exit codes `0`/`1`/`2`.
+Complements `crates/typed-wasm-codegen`'s `tw build` — which already
+self-verifies in-process — by verifying a `.wasm` from **any** producer,
+including external / third-party modules. Validated against `tw build`
+output (`structural ✓ · L7/L10/L13 ✓ · L2 ✓`).
+
 ### Real codegen: layout engine + typed-access lowering, harvested from Zig `twasmc` (#136) (2026-05-30)
 
 The Rust producer's function bodies are now **real codegen**, not representative
@@ -56,9 +68,10 @@ boundary, all verifier-backed. Deferred (tracked): the front-end → IR seam +
 remaining examples (#127), source → line maps (#129), region-imports /
 L13-positive (#140), ECHIDNA round-trip corpus (#130).
 
-> Note: an alternative **Zig** producer (`twasmc`, `src/codegen/`) was
-> proposed in parallel in PR #136 (draft, open). Host-language reconciliation
-> against ADR-0004 (Rust) is an open owner decision.
+> Note: an alternative **Zig** producer (`twasmc`, `src/codegen/`) was proposed
+> in parallel in PR #136; after a Rust-vs-Zig comparison the Rust track was
+> retained (ADR-0004 **Accepted**) and #136 was closed as superseded, its layout
+> approach harvested — see the "Real codegen" entry above.
 
 ### Multi-producer carrier ABI: proposals 0001 + 0002 accepted, promoted to ADRs (2026-05-30)
 
