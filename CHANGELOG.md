@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### `tw-verify` CLI: standalone wasm verification (2026-05-31)
+
+Adds a binary front-end to the (previously lib-only) `typed-wasm-verify`
+crate (PR #143): `tw-verify <module.wasm>` runs structural wasm validation
+(`wasmparser::Validator`) → L7/L10/L13 ownership (`verify_from_module`) →
+L2 access-site / L15 capability passes (the latter two under the
+`unstable-l2` / `unstable-l15` features), with exit codes `0`/`1`/`2`.
+Complements `crates/typed-wasm-codegen`'s `tw build` — which already
+self-verifies in-process — by verifying a `.wasm` from **any** producer,
+including external / third-party modules. Validated against `tw build`
+output (`structural ✓ · L7/L10/L13 ✓ · L2 ✓`).
+
 ### In-tree producer: `typed-wasm-codegen` (codegen v0 → multi-module, debug info, human errors) (2026-05-30)
 
 Adds the first in-tree `.twasm` → `.wasm` **producer** as a Rust crate
