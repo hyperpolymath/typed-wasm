@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -9,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Run: just changelog -->
 
 ## [Unreleased]
+
+### Optimization story: vetted `wasm-opt` pass list + verifier-as-oracle gate (#131) (2026-05-31)
+
+Documents the Binaryen pass list that preserves the L1–L10 invariants
+(`docs/optimization.adoc`): optimize with external `wasm-opt`, use
+`typed-wasm-verify` as the invariant oracle (re-run post-opt; if it still
+accepts with the `typedwasm.*` carriers intact, the discipline survived).
+The per-carrier analysis identifies two hazards — custom-section **stripping**
+(→ vacuous verification) and function **reindexing** (→ carriers point at the
+wrong functions) — and the vetted / excluded / safe pass split that avoids
+them. Both hazards are pinned by in-repo tests; the end-to-end
+`wasm-opt → tw-verify` gate is encoded and runs where `wasm-opt` is on `PATH`
+(graceful skip otherwise). (`crates/typed-wasm-codegen/tests/optimization.rs`.)
 
 ### Round-trip soundness corpus: `verify(emit(m)) == OK`, property-tested (#130) (2026-05-31)
 
