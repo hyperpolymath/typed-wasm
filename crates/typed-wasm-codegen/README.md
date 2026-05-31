@@ -78,5 +78,5 @@ Full coverage (all 10 levels × all 6 examples + the front-end → IR seam) is #
 
 - **#127** — remaining example coverage (`04`) + the front-end → IR JSON seam (the matrix above tracks per-example status).
 - **#129** — full offset → source-line map (DWARF or wasm sourcemap); needs source spans from the #127 seam + accurate instruction-offset tracking. The `name` section landed here is the first increment.
-- **#130** — promote the round-trip tests into the ECHIDNA property corpus.
+- **#130** — ✅ landed: `verify(emit(m)) == OK` property corpus over 512 generated modules (`tests/corpus.rs`); the `parse(src)`-fed form awaits the #127 seam.
 - **#140** — L13 positive-form / region-imports (`examples/02`); proposal 0003 `[draft]`.
