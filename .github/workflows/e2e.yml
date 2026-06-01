@@ -54,8 +54,13 @@ jobs:
         with:
           node-version: '25'
 
-      - name: Install npm deps
-        run: npm install --no-audit --no-fund --silent
+      - name: Install npm deps (skip if no package.json — repo is Deno-first since #133)
+        run: |
+          if [ -f package.json ]; then
+            npm install --no-audit --no-fund --silent
+          else
+            echo "::warning::no root package.json (Deno migration, #133) — skipping npm install."
+          fi
 
       # Phase 0 NOTE (issue #48): Track A's parser migration replaced
       # ReScript (.res + rescript.json + rescript build) with AffineScript

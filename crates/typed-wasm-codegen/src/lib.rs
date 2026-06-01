@@ -669,6 +669,11 @@ pub fn emit(module: &Module) -> Vec<u8> {
         }
     }
 
+    // Export the linear memory so a host (Wasmtime, JS) can read/write region data.
+    if module.memory.is_some() {
+        exports.export("memory", ExportKind::Memory, 0);
+    }
+
     let ownership_entries: Vec<OwnershipEntry> = module
         .ownership
         .iter()
