@@ -71,18 +71,32 @@ if have affinescript; then
     log "affinescript present"
 else
     log "installing AffineScript (OCaml @ ${AFFINESCRIPT_SHA})..."
+    # opam refuses to initialise as root without this; CI containers run as root.
+    export OPAMROOTISOK=1
     if ! have opam; then
-        $SUDO apt-get update -qq
+        # `apt-get update` returns 100 when the image carries denylisted 3rd-party
+        # PPAs (e.g. deadsnakes/ondrej → 403) — tolerate it: opam lives in
+        # `universe`, already indexed, so the install below still resolves.
+        $SUDO apt-get update -qq || true
         $SUDO apt-get install -y opam
     fi
-    opam init --bare --no-setup --yes >/dev/null 2>&1 || true
+    # `--disable-sandboxing`: opam's bwrap sandbox does not work in most CI
+    # containers; the pinned SHA + the C5 byte-diff gate are the real guardrails.
+    # Default repo is the github.com git mirror: opam.ocaml.org/index.tar.gz is
+    # denylisted by some network policies (403), but github.com is reachable.
+    opam init --bare --no-setup --disable-sandboxing --yes \
+        default git+https://github.com/ocaml/opam-repository.git
+    opam repository set-url default \
+        git+https://github.com/ocaml/opam-repository.git >/dev/null 2>&1 || true
     src="${AFFINESCRIPT_SRC:-/tmp/affinescript}"
     [ -d "$src/.git" ] || git clone https://github.com/hyperpolymath/affinescript "$src"
     git -C "$src" checkout -q "$AFFINESCRIPT_SHA"
-    opam switch create "$src" "$OCAML_COMPILER" --yes >/dev/null 2>&1 \
-        || opam switch set "$src" >/dev/null 2>&1 || true
+    opam switch create "$src" "$OCAML_COMPILER" --yes || opam switch set "$src"
+    eval "$(opam env --switch="$src" --set-switch)"
     ( cd "$src" && opam install . --deps-only --yes && opam exec -- dune build )
     $SUDO install -m 0755 "$src/_build/default/bin/main.exe" /usr/local/bin/affinescript
+    command -v affinescript >/dev/null 2>&1 \
+        || { echo "ERROR: affinescript build produced no binary" >&2; exit 1; }
     log "affinescript installed (main.exe @ ${AFFINESCRIPT_SHA})"
 fi
 

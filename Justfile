@@ -260,7 +260,7 @@ setup: provision deps
 # Audit dependencies for vulnerabilities
 deps-audit:
     @echo "Auditing for vulnerabilities..."
-    @npm audit --omit=dev --audit-level=high
+    @command -v cargo-audit >/dev/null && cargo audit || echo "  (cargo-audit absent — \`cargo install cargo-audit\`; no npm deps since #133)"
     @command -v trivy >/dev/null && trivy fs --severity HIGH,CRITICAL --quiet . || true
     @command -v gitleaks >/dev/null && gitleaks detect --source . --no-git --quiet || true
     @echo "Audit complete"
