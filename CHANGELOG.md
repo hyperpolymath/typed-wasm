@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Capstone execution gate: run on Wasmtime (#132) (2026-05-31)
+
+The producer now exports the linear **memory** (so a host — Wasmtime, JS — can
+read/write region data), and `crates/typed-wasm-codegen/tests/execute.rs` runs
+the emitted example-01 module on the **`wasmtime` CLI** (invoking
+`get_player_hp`) — the "run on Wasmtime" half of the Phase-2 gate. It skips
+gracefully where `wasmtime` is not on `PATH` (provision it via the environment
+setup). The "actionable error on a violation" half is already the compile-time
+path: `tw build` self-verifies and emits human-readable diagnostics (#126).
+
 ### Optimization story: vetted `wasm-opt` pass list + verifier-as-oracle gate (#131) (2026-05-31)
 
 Documents the Binaryen pass list that preserves the L1–L10 invariants
