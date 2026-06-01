@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Toolchain provisioning + node→Deno harness migration (#133 / standards#253) (2026-06-01)
+
+`tools/provision.sh` (exposed as `just provision` / `just setup`, wired into
+`setup.sh`) installs the full toolchain: **Deno** (the JS runtime — fetched from
+the **GitHub release assets**, since `deno.land` is denied by some network
+policies while `github.com` is reachable), **wasmtime** (the #132 execution
+gate, via crates.io), and **AffineScript** (the parser/codegen compiler — an
+**OCaml** program built from `hyperpolymath/affinescript` with opam + dune at
+the SHA pinned in `c5-regenerate.yml`; it is **not** an npm package — the name
+`@hyperpolymath/affinescript` 404s on npmjs). The stale `deps` recipe — which
+ran `npm ci` against the `package.json` that #133 removed — now checks the real
+toolchain instead.
+
+The `node tests/*.mjs` harnesses now run under **Deno** with scoped permissions
+(`deno.json`, the Justfile `deno_run` recipes, `e2e.yml`'s smoke + build-e2e
+jobs, and `tests/e2e.sh`); the `.mjs` were already Deno-shaped (`node:` imports,
+`import.meta.url`-derived `__dirname`), so the change is mechanical. Removed the
+ReScript-era leftovers `deno.lock` and `package-lock.json`, and the stale
+`rescript build` / `node_modules/@rescript` references in the E2E script.
+
 ### Capstone execution gate: run on Wasmtime (#132) (2026-05-31)
 
 The producer now exports the linear **memory** (so a host — Wasmtime, JS — can

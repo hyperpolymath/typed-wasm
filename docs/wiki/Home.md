@@ -67,10 +67,9 @@ cargo test --workspace --locked
 # Idris2 proofs (when toolchain available)
 cd src/abi && idris2 --build typed-wasm.ipkg
 
-# ReScript parser smoke
-npm install
-node_modules/.bin/rescript build
-node tests/smoke/e2e-smoke.mjs
+# AffineScript parser smoke (Deno runtime; `just provision` installs the toolchain)
+affinescript build
+deno run --allow-read --allow-write --allow-run --allow-env --allow-sys tests/smoke/e2e-smoke.mjs
 
 # Zig FFI
 cd ffi/zig && zig build test
