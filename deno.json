@@ -1,0 +1,13 @@
+{
+  // typed-wasm JS-runtime config — estate npm→Deno migration (#133 / standards#253).
+  // The .affine parser sources compile to .mjs (see affinescript.json); those .mjs
+  // run under Deno. AffineScript itself is an OCaml compiler, not an npm package —
+  // see `just provision`. There are no remote (npm:/https:) imports, only node:
+  // builtins, so no lockfile is needed.
+  "lock": false,
+  "nodeModulesDir": "none",
+  "tasks": {
+    "test-aspect": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys tests/aspect/claim-envelope.mjs && deno run --allow-read --allow-write --allow-run --allow-env --allow-sys tests/aspect/security-envelope.mjs",
+    "test-proof": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys tests/proof/regression.mjs"
+  }
+}
