@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Intra-function L7+L10 verifier.
 //
@@ -808,6 +809,93 @@ mod tests {
                 memory64: false,
                 shared: false,
                 page_size_log2: None,
+            }),
+        );
+        module.section(&imports);
+        let mut mems = MemorySection::new();
+        mems.memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        module.section(&mems);
+        assert!(verify_from_module(&module.finish()).is_ok());
+    }
+
+    /// Sibling of `isolation_module` that exercises the imported-*table*
+    /// arm of the L13 check. A module owning linear memory that also
+    /// imports a table has an externally-backed indirect-call surface,
+    /// which the OCaml port flags via `verify_module_isolation`.
+    fn isolation_module_with_imported_table() -> Vec<u8> {
+        use wasm_encoder::{
+            EntityType, MemorySection, MemoryType, RefType, TableType,
+        };
+        let mut module = Module::new();
+
+        let mut imports = ImportSection::new();
+        imports.import(
+            "Host",
+            "table",
+            EntityType::Table(TableType {
+                element_type: RefType::FUNCREF,
+                table64: false,
+                minimum: 1,
+                maximum: None,
+                shared: false,
+            }),
+        );
+        module.section(&imports);
+
+        let mut mems = MemorySection::new();
+        mems.memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        module.section(&mems);
+
+        // Same ownership-section gating contract as `isolation_module`.
+        let payload = build_ownership_section_payload(&[]);
+        module.section(&CustomSection {
+            name: OWNERSHIP_SECTION_NAME.into(),
+            data: payload.as_slice().into(),
+        });
+        module.finish()
+    }
+
+    #[test]
+    fn own_memory_plus_imported_table_violates_l13() {
+        match verify_from_module(&isolation_module_with_imported_table()) {
+            Err(VerifyError::Ownership(errs)) => assert!(errs
+                .iter()
+                .any(|e| matches!(e, OwnershipError::ModuleNotIsolated { .. }))),
+            other => panic!("expected ModuleNotIsolated, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn imported_table_without_ownership_section_is_ok() {
+        // Contract mirror of `imported_memory_without_ownership_section_is_ok`:
+        // no ownership section ⇒ Ok even when an imported table would
+        // otherwise trigger the L13 isolation check.
+        use wasm_encoder::{
+            EntityType, MemorySection, MemoryType, RefType, TableType,
+        };
+        let mut module = Module::new();
+        let mut imports = ImportSection::new();
+        imports.import(
+            "Host",
+            "table",
+            EntityType::Table(TableType {
+                element_type: RefType::FUNCREF,
+                table64: false,
+                minimum: 1,
+                maximum: None,
+                shared: false,
             }),
         );
         module.section(&imports);
