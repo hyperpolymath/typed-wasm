@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // `tw-verify` — command-line front-end for the typed-wasm verifier.
 //
@@ -10,16 +11,14 @@
 //
 // Exit codes: 0 = verified, 1 = a check failed, 2 = usage / I/O error.
 //
-// This is the executable that makes "verifiable end-to-end by
-// `typed-wasm-verify`" a single command rather than a library call.
-// The in-tree producer `crates/typed-wasm-codegen` (`tw build`) already
-// self-verifies via `verify_from_module`; `tw-verify` is the standalone
-// front-end for checking a `.wasm` from any producer (incl. external /
-// third-party modules).
+// Diagnostic format (#126): violations are printed as a level-prefixed
+// bulleted list grouped by function-index, so a regression points at a
+// named function rather than a `[…]` debug-dump. Source-line resolution
+// ("at .twasm line N") defers to #129 (source maps).
 
 use std::process::ExitCode;
 
-use typed_wasm_verify::verify_from_module;
+use typed_wasm_verify::{verify_from_module, OwnershipError, VerifyError};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -54,8 +53,16 @@ fn main() -> ExitCode {
     // 2. L7 (aliasing) + L10 (linearity) + L13 (module isolation).
     match verify_from_module(&bytes) {
         Ok(()) => println!("ok  L7/L10/L13 ownership verification"),
+        Err(VerifyError::Ownership(errs)) => {
+            print_ownership_violations(&errs);
+            return ExitCode::FAILURE;
+        }
+        Err(VerifyError::Cross(errs)) => {
+            print_cross_violations(&errs);
+            return ExitCode::FAILURE;
+        }
         Err(e) => {
-            eprintln!("tw-verify: ownership verification FAILED: {e}");
+            eprintln!("tw-verify: verification error: {e}");
             return ExitCode::FAILURE;
         }
     }
@@ -65,7 +72,13 @@ fn main() -> ExitCode {
     match typed_wasm_verify::verify_access_sites_from_module(&bytes) {
         Ok(errs) if errs.is_empty() => println!("ok  L2 access-site verification"),
         Ok(errs) => {
-            eprintln!("tw-verify: access-site violations: {errs:?}");
+            eprintln!(
+                "FAIL L2 access-site verification ({} violation(s)):",
+                errs.len()
+            );
+            for e in &errs {
+                eprintln!("  - {e}");
+            }
             return ExitCode::FAILURE;
         }
         Err(e) => {
@@ -79,7 +92,13 @@ fn main() -> ExitCode {
     match typed_wasm_verify::verify_capabilities_from_module(&bytes) {
         Ok(errs) if errs.is_empty() => println!("ok  L15 capability verification"),
         Ok(errs) => {
-            eprintln!("tw-verify: capability violations: {errs:?}");
+            eprintln!(
+                "FAIL L15 capability verification ({} violation(s)):",
+                errs.len()
+            );
+            for e in &errs {
+                eprintln!("  - {e}");
+            }
             return ExitCode::FAILURE;
         }
         Err(e) => {
@@ -90,4 +109,75 @@ fn main() -> ExitCode {
 
     println!("VERIFIED {path}");
     ExitCode::SUCCESS
+}
+
+/// Group OwnershipErrors by their func_idx (or by "(module-scope)" for
+/// the L13 `ModuleNotIsolated` variant which has no func_idx), and print
+/// a bulleted list under each header. Within a function, errors are
+/// sorted by param_idx then by Display.
+fn print_ownership_violations(errs: &[OwnershipError]) {
+    use std::collections::BTreeMap;
+
+    let mut by_func: BTreeMap<String, Vec<&OwnershipError>> = BTreeMap::new();
+    for e in errs {
+        let key = match e {
+            OwnershipError::LinearNotUsed { func_idx, .. }
+            | OwnershipError::LinearDroppedOnSomePath { func_idx, .. }
+            | OwnershipError::LinearUsedMultiple { func_idx, .. }
+            | OwnershipError::ExclBorrowAliased { func_idx, .. } => format!("function #{func_idx}"),
+            OwnershipError::ModuleNotIsolated { .. } => "(module-scope)".to_string(),
+        };
+        by_func.entry(key).or_default().push(e);
+    }
+
+    eprintln!(
+        "FAIL L7/L10/L13 ownership verification ({} violation(s) in {} location(s)):",
+        errs.len(),
+        by_func.len()
+    );
+    for (loc, group) in &by_func {
+        eprintln!("  in {loc}:");
+        let mut sorted: Vec<&&OwnershipError> = group.iter().collect();
+        sorted.sort_by_key(|e| match e {
+            OwnershipError::LinearNotUsed { param_idx, .. }
+            | OwnershipError::LinearDroppedOnSomePath { param_idx, .. }
+            | OwnershipError::LinearUsedMultiple { param_idx, .. }
+            | OwnershipError::ExclBorrowAliased { param_idx, .. } => *param_idx,
+            OwnershipError::ModuleNotIsolated { .. } => 0,
+        });
+        for e in sorted {
+            eprintln!("    - {e}");
+        }
+    }
+}
+
+/// Group CrossErrors by caller_func_idx. Print bulleted list per caller.
+fn print_cross_violations(errs: &[typed_wasm_verify::CrossError]) {
+    use std::collections::BTreeMap;
+    use typed_wasm_verify::CrossError;
+
+    let mut by_caller: BTreeMap<u32, Vec<&CrossError>> = BTreeMap::new();
+    for e in errs {
+        let caller = match e {
+            CrossError::LinearImportCalledMultiple {
+                caller_func_idx, ..
+            }
+            | CrossError::LinearImportDroppedOnSomePath {
+                caller_func_idx, ..
+            } => *caller_func_idx,
+        };
+        by_caller.entry(caller).or_default().push(e);
+    }
+
+    eprintln!(
+        "FAIL L10 cross-module boundary verification ({} violation(s) in {} caller(s)):",
+        errs.len(),
+        by_caller.len()
+    );
+    for (caller, group) in &by_caller {
+        eprintln!("  in caller function #{caller}:");
+        for e in group {
+            eprintln!("    - {e}");
+        }
+    }
 }

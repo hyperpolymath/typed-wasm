@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // typed-wasm post-codegen verifier.
 //
@@ -64,20 +65,20 @@ impl OwnershipKind {
 /// Mirrors OCaml `Tw_verify.ownership_error`.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum OwnershipError {
-    #[error("Level 10 violation: function {func_idx}, param {param_idx} — Linear (own) param dropped on all paths (must be consumed exactly once)")]
+    #[error("L10 (linearity): function #{func_idx} parameter #{param_idx} is a Linear (own) resource but is never used; Linear resources must be consumed exactly once on every path")]
     LinearNotUsed { func_idx: u32, param_idx: u32 },
 
-    #[error("Level 10 violation: function {func_idx}, param {param_idx} — Linear (own) param dropped on some paths (per-path min uses = 0; must be consumed on every path)")]
+    #[error("L10 (linearity): function #{func_idx} parameter #{param_idx} is a Linear (own) resource that is consumed on some control-flow paths but dropped on others; Linear resources must be consumed exactly once on every path")]
     LinearDroppedOnSomePath { func_idx: u32, param_idx: u32 },
 
-    #[error("Level 10 violation: function {func_idx}, param {param_idx} — Linear (own) param loaded {count} times on some path (exactly 1 required; possible duplication)")]
+    #[error("L10 (linearity): function #{func_idx} parameter #{param_idx} is a Linear (own) resource but is used {count} times on some control-flow path; Linear resources must be consumed exactly once (possible duplication)")]
     LinearUsedMultiple {
         func_idx: u32,
         param_idx: u32,
         count: u32,
     },
 
-    #[error("Level 7 violation: function {func_idx}, param {param_idx} — ExclBorrow (mut) param aliased ({count} simultaneous references; at most 1 permitted)")]
+    #[error("L7 (aliasing): function #{func_idx} parameter #{param_idx} is an ExclBorrow (&mut) reference but {count} simultaneous borrows occur on some control-flow path; at most one is permitted")]
     ExclBorrowAliased {
         func_idx: u32,
         param_idx: u32,
@@ -90,7 +91,7 @@ pub enum OwnershipError {
     /// or table — a cross-module shared-state channel outside the
     /// declared function-import boundary. Carrier-free (standard
     /// import/memory sections only; no ownership-section ABI change).
-    #[error("Level 13 violation: {reason}")]
+    #[error("L13 (module isolation): {reason}")]
     ModuleNotIsolated { reason: String },
 }
 
@@ -98,7 +99,7 @@ pub enum OwnershipError {
 /// Mirrors OCaml `Tw_interface.cross_error`.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CrossError {
-    #[error("Level 10 boundary violation: caller fn {caller_func_idx} calls import '{import_name}' {count} time(s) on some path (Linear param; must be called at most once)")]
+    #[error("L10 (linearity, cross-module): caller function #{caller_func_idx} calls Linear import '{import_name}' {count} times on some control-flow path; Linear imports must be called at most once on every path")]
     LinearImportCalledMultiple {
         caller_func_idx: u32,
         import_func_idx: u32,
@@ -106,7 +107,7 @@ pub enum CrossError {
         count: u32,
     },
 
-    #[error("Level 10 boundary violation: caller fn {caller_func_idx} calls import '{import_name}' on some paths but not others (Linear param dropped on zero-call path)")]
+    #[error("L10 (linearity, cross-module): caller function #{caller_func_idx} calls Linear import '{import_name}' on some control-flow paths but not on others; calls must be balanced across all paths")]
     LinearImportDroppedOnSomePath {
         caller_func_idx: u32,
         import_func_idx: u32,
@@ -115,16 +116,33 @@ pub enum CrossError {
 }
 
 /// Top-level verification failures (parse + verify).
+///
+/// The `Ownership` and `Cross` variants carry vectors of inner errors
+/// whose Display impls each emit a full natural-language explanation; the
+/// vector wrappers below render as "N L7/L10 violation(s): <first>; …"
+/// so a single-line log line is still informative and the full per-error
+/// detail is one `Vec::iter()` away for richer surfaces like `tw-verify`.
 #[derive(Debug, Error)]
 pub enum VerifyError {
     #[error("wasm parse error: {0}")]
     Parse(#[from] wasmparser::BinaryReaderError),
 
-    #[error("ownership violations: {0:?}")]
+    #[error("{} L7/L10/L13 ownership violation(s) — {}", .0.len(), display_first_then_ellipsis(.0))]
     Ownership(Vec<OwnershipError>),
 
-    #[error("cross-module boundary violations: {0:?}")]
+    #[error("{} L10 cross-module boundary violation(s) — {}", .0.len(), display_first_then_ellipsis(.0))]
     Cross(Vec<CrossError>),
+}
+
+/// Helper for the vector-variant Display impls: format the first inner
+/// error fully, then append "… and N more" if there are more, otherwise
+/// just the first. Empty vectors render as "(empty)".
+fn display_first_then_ellipsis<E: std::fmt::Display>(errs: &[E]) -> String {
+    match errs.split_first() {
+        None => "(empty)".to_string(),
+        Some((first, [])) => first.to_string(),
+        Some((first, rest)) => format!("{first}; … and {} more", rest.len()),
+    }
 }
 
 /// Custom-section name carrying ownership annotations. Producer-neutral as
@@ -152,14 +170,14 @@ pub const ACCESS_SITES_SECTION_NAME: &str = "typedwasm.access-sites";
 #[cfg(feature = "unstable-l15")]
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CapabilitiesError {
-    #[error("Level 15 violation: function index {func_idx} (entry {entry_idx}) is out of bounds for wasm function section (function_count = {function_count})")]
+    #[error("L15 (capabilities): typedwasm.capabilities entry #{entry_idx} declares function #{func_idx} but the module only has {function_count} function(s)")]
     FuncIdxOutOfRange {
         entry_idx: u32,
         func_idx: u32,
         function_count: u32,
     },
 
-    #[error("Level 15 violation: capability index {cap_idx} in function entry {entry_idx} (func_idx = {func_idx}) is out of bounds for capability table (capability_count = {capability_count})")]
+    #[error("L15 (capabilities): typedwasm.capabilities entry #{entry_idx} (for function #{func_idx}) requires capability #{cap_idx} but the capability table only has {capability_count} entries")]
     CapabilityIdxOutOfRange {
         entry_idx: u32,
         func_idx: u32,
@@ -177,24 +195,24 @@ pub enum AccessSiteError {
     /// `typedwasm.regions` section — the access-site entries reference
     /// `region_id` + `field_id` keys with nothing to resolve them
     /// against otherwise.
-    #[error("Level 2 violation: typedwasm.access-sites section emitted without companion typedwasm.regions section (MissingDependentCarrier)")]
+    #[error("L2 (region binding): typedwasm.access-sites section is present but the companion typedwasm.regions section is missing — access-site (region, field) keys have nothing to resolve against")]
     MissingDependentRegions,
 
-    #[error("Level 2 violation: access-site entry {entry_idx}: func_idx {func_idx} is out of bounds for wasm function section (function_count = {function_count})")]
+    #[error("L2 (region binding): typedwasm.access-sites entry #{entry_idx} declares function #{func_idx} but the module only has {function_count} function(s)")]
     FuncIdxOutOfRange {
         entry_idx: u32,
         func_idx: u32,
         function_count: u32,
     },
 
-    #[error("Level 2 violation: access-site entry {entry_idx}: region_id {region_id} is out of bounds for typedwasm.regions table (region_count = {region_count})")]
+    #[error("L2 (region binding): typedwasm.access-sites entry #{entry_idx} references region #{region_id} but typedwasm.regions only declares {region_count} region(s)")]
     RegionIdOutOfRange {
         entry_idx: u32,
         region_id: u32,
         region_count: u32,
     },
 
-    #[error("Level 2 violation: access-site entry {entry_idx}: field_id {field_id} is out of bounds for region {region_id}'s field table (field_count = {field_count})")]
+    #[error("L2 (region binding): typedwasm.access-sites entry #{entry_idx} references field #{field_id} of region #{region_id}, but that region only has {field_count} field(s)")]
     FieldIdOutOfRange {
         entry_idx: u32,
         region_id: u32,
@@ -285,5 +303,64 @@ mod tests {
             assert_eq!(OwnershipKind::from_byte(b), k);
         }
         assert_eq!(OwnershipKind::from_byte(99), OwnershipKind::Unrestricted);
+    }
+
+    #[test]
+    fn ownership_error_display_is_natural_language() {
+        let e = OwnershipError::LinearUsedMultiple {
+            func_idx: 3,
+            param_idx: 1,
+            count: 5,
+        };
+        let s = e.to_string();
+        assert!(s.starts_with("L10 (linearity):"), "got: {s}");
+        assert!(s.contains("function #3 parameter #1"), "got: {s}");
+        assert!(s.contains("used 5 times"), "got: {s}");
+        assert!(s.contains("exactly once"), "got: {s}");
+    }
+
+    #[test]
+    fn verify_error_ownership_summary_renders_count_and_first() {
+        let e = VerifyError::Ownership(vec![
+            OwnershipError::LinearNotUsed {
+                func_idx: 0,
+                param_idx: 0,
+            },
+            OwnershipError::ExclBorrowAliased {
+                func_idx: 1,
+                param_idx: 0,
+                count: 2,
+            },
+            OwnershipError::ModuleNotIsolated {
+                reason: "module owns linear memory yet imports memory 'Host.memory'".to_string(),
+            },
+        ]);
+        let s = e.to_string();
+        // Header: total count + level mix
+        assert!(
+            s.starts_with("3 L7/L10/L13 ownership violation(s)"),
+            "got: {s}"
+        );
+        // First inner error's full Display is included
+        assert!(
+            s.contains("L10 (linearity): function #0 parameter #0"),
+            "got: {s}"
+        );
+        // Tail summarises remainder
+        assert!(s.contains("… and 2 more"), "got: {s}");
+    }
+
+    #[test]
+    fn cross_error_display_includes_import_name() {
+        let e = CrossError::LinearImportCalledMultiple {
+            caller_func_idx: 7,
+            import_func_idx: 0,
+            import_name: "consume".to_string(),
+            count: 2,
+        };
+        let s = e.to_string();
+        assert!(s.starts_with("L10 (linearity, cross-module):"), "got: {s}");
+        assert!(s.contains("caller function #7"), "got: {s}");
+        assert!(s.contains("'consume'"), "got: {s}");
     }
 }
