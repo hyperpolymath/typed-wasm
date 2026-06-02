@@ -342,8 +342,58 @@ observedHasProvenance :
 observedHasProvenance Unknown         = Nothing
 observedHasProvenance (Observed {oldVer} sync) = Just (oldVer ** sync)
 
+-- ============================================================================
+-- Knowledge chain corollaries (A15, 2026-06-03 — composes A11 + A14)
+-- ============================================================================
+--
+-- Now that `Sync` (via A11) and `Fresh` (via A14) are both pinned to
+-- canonical `FieldVersion` records, the chain from a write to a
+-- knower's freshness is fully witness-carrying.  The three lemmas
+-- below name the chain steps so callers can quote them directly
+-- rather than re-deriving each composition at every use site.
+
+||| A `Sync` event immediately establishes `Knowledge` at the new
+||| version.  Trivial corollary of the `Observed` constructor, named
+||| so the post-sync read protocol can be spelled out lemma-by-lemma.
+public export
+syncImpliesKnowledge :
+  {old : Nat} ->
+  Sync mod field old new -> Knowledge mod field new
+syncImpliesKnowledge {old} sync = Observed {oldVer = old} sync
+
+||| A writer who supplies the canonical `FieldVersion` for its write
+||| has `Knowledge` at the post-write version.  Composes `WriteSync`
+||| with `syncImpliesKnowledge`; the writer's identity flows in via
+||| the `fv.lastWriter = writer` pin, so no caller can claim
+||| post-write knowledge for a module it does not own the write of.
+public export
+writerKnowsPostWrite :
+  (fv : FieldVersion) ->
+  fv.field      = field   ->
+  fv.lastWriter = writer  ->
+  Knowledge writer field fv.version
+writerKnowsPostWrite fv fp wp =
+  Observed (WriteSync {oldVersion = 0} fv fp Refl wp)
+
+||| Any non-trivial `Knows` witness entails a `Fresh` witness at the
+||| same version.  Closes the chain `Sync ⟶ Knowledge ⟶ Knows ⟶
+||| Fresh`: a module that knows a field's version is, by construction,
+||| fresh at that version (because the `Sync` that established the
+||| knowledge restored freshness; A11+A14 pinning guarantees the
+||| `FieldVersion` threads through end-to-end).
+|||
+||| The `Unknown` branch is impossible by the `MkKnows` precondition
+||| `ver > 0 = True`: `Unknown` inhabits only `Knowledge mod field 0`,
+||| at which point `0 > 0` reduces to `False`, contradicting the
+||| `= True` proof.
+public export
+knowsImpliesFresh :
+  Knows mod field ver -> Fresh mod field ver ver
+knowsImpliesFresh (MkKnows (Observed sync) _)  = syncRestoresFresh sync
+knowsImpliesFresh (MkKnows Unknown          p) = absurd p
+
 -- ----------------------------------------------------------------------------
--- Residual debt note — A11 ➞ A14 closure (2026-06-02, #102)
+-- Residual debt note — A11 ➞ A14 ➞ A15 closure (2026-06-03)
 -- ----------------------------------------------------------------------------
 --
 -- A11 (2026-05-26) tightened only `WriteSync` to require a
@@ -357,3 +407,8 @@ observedHasProvenance (Observed {oldVer} sync) = Just (oldVer ** sync)
 -- caller has supplied a real `FieldVersion`.  `Observed` likewise
 -- inherits the pin via its `Sync` argument.  No remaining
 -- constructor in this file admits an unfounded version claim.
+--
+-- A15 (2026-06-03) names the chain corollaries `syncImpliesKnowledge`,
+-- `writerKnowsPostWrite`, and `knowsImpliesFresh`, so the
+-- write ⟶ sync ⟶ knowledge ⟶ knows ⟶ fresh chain can be quoted
+-- step-by-step rather than re-derived at each use site.
