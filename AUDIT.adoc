@@ -68,8 +68,9 @@ For typed-wasm-specific audit posture:
 * `PROOF-NEEDS.md` — outstanding proof obligations
 * `TEST-NEEDS.md` — outstanding test coverage
 * `docs/PRODUCTION-PATH.adoc` — 6-phase plan to production-quality compile
-  target; current state is Phase 0 (foundation stabilisation), 2 of 3 gates
-  met
+  target; current state is Phase 0 (foundation stabilisation), all 3 gates
+  met (gate 2 / codegen v0 discharged by the in-tree Rust producer
+  `crates/typed-wasm-codegen`, PR #134); Phase 1 open
 * `.machine_readable/6a2/STATE.a2ml` — machine-readable project state
 * `tests/aspect/claim-envelope.mjs` (53 assertions) +
   `tests/aspect/security-envelope.mjs` (10 assertions) — automated
@@ -81,8 +82,12 @@ Bots operating on this repository should treat this document as a key root
 audit document and should not make optimistic release or publication claims
 that conflict with it. Specifically:
 
-* Do not claim end-to-end `.twasm → .wasm` compilation works (codegen v0
-  is outstanding — Phase 0 gate 2).
+* Codegen v0 emits valid, verifier-accepted wasm for
+  `examples/01-single-module.twasm` (+ example 03 and a multi-module
+  boundary) via the in-tree Rust producer `crates/typed-wasm-codegen`
+  (`tw build`; Phase 0 gate 2, met by PR #134; host-language ADR-0004 is
+  *Proposed*, pending ratification). Do NOT claim full `.twasm → .wasm`
+  compilation across all examples/levels works — that is Phase 1 (#49).
 * Do not claim "fully verified soundness discipline" without the qualifier
   that producer-side enforcement only; runtime enforcement is Phase 3 work.
 * Do not claim production-readiness — production hardening is Phase 6.
