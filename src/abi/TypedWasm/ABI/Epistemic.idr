@@ -392,8 +392,55 @@ knowsImpliesFresh :
 knowsImpliesFresh (MkKnows (Observed sync) _)  = syncRestoresFresh sync
 knowsImpliesFresh (MkKnows Unknown          p) = absurd p
 
+-- ============================================================================
+-- FieldVersion pin projectors (A16, 2026-06-03 — surfaces the embedded
+-- canonical FieldVersion record from any pin-bearing witness)
+-- ============================================================================
+--
+-- A11 + A14 made the dependent indices on `Sync` and `Fresh` line up
+-- with a real `FieldVersion` value, but the record itself was only
+-- reachable by case-splitting on the data constructor inside this
+-- module.  The three projectors below expose the pin publicly so
+-- downstream code (e.g. read-protocol clients that need to ask "what
+-- is the canonical record for my read?") can quote a single named
+-- lemma instead of duplicating the case split.
+
+||| Project the canonical `FieldVersion` out of a `Fresh` witness.
+||| Both equalities (`fv.field = field`, `fv.version = currentVersion`)
+||| are returned alongside the record itself — the caller can rewrite
+||| with them directly when substituting versions or fields downstream.
+public export
+freshHasPin :
+  Fresh mod field k c ->
+  (fv : FieldVersion ** (fv.field = field, fv.version = c))
+freshHasPin (MkFresh fv fp vp _) = (fv ** (fp, vp))
+
+||| Project the canonical `FieldVersion` out of a `Sync` witness.
+||| Both branches carry a pin: the `ExplicitSync` branch inherits it
+||| via its embedded `Fresh` (re-projected here through `freshHasPin`),
+||| while the `WriteSync` branch supplies it directly.  Total — every
+||| `Sync` carries a pin post-A14, so no `Maybe` wrapping is needed.
+public export
+syncHasPin :
+  Sync mod field old new ->
+  (fv : FieldVersion ** (fv.field = field, fv.version = new))
+syncHasPin (ExplicitSync fresh)        = freshHasPin fresh
+syncHasPin (WriteSync fv fp vp _)      = (fv ** (fp, vp))
+
+||| Project the canonical `FieldVersion` out of a `Level12Proof`.
+||| Composes `epistemicFreshness` (which extracts the proof's `Fresh`
+||| field) with `freshHasPin`.  Returned indices are tied to the
+||| record's own fields (`p.field`, `p.currentVersion`) so callers
+||| holding only a `Level12Proof` can immediately quote the
+||| ground-truth record without case-splitting the proof.
+public export
+level12HasPin :
+  (p : Level12Proof) ->
+  (fv : FieldVersion ** (fv.field = p.field, fv.version = p.currentVersion))
+level12HasPin p = freshHasPin (epistemicFreshness p)
+
 -- ----------------------------------------------------------------------------
--- Residual debt note — A11 ➞ A14 ➞ A15 closure (2026-06-03)
+-- Residual debt note — A11 ➞ A14 ➞ A15 ➞ A16 closure (2026-06-03)
 -- ----------------------------------------------------------------------------
 --
 -- A11 (2026-05-26) tightened only `WriteSync` to require a
@@ -412,3 +459,9 @@ knowsImpliesFresh (MkKnows Unknown          p) = absurd p
 -- `writerKnowsPostWrite`, and `knowsImpliesFresh`, so the
 -- write ⟶ sync ⟶ knowledge ⟶ knows ⟶ fresh chain can be quoted
 -- step-by-step rather than re-derived at each use site.
+--
+-- A16 (2026-06-03) publishes pin projectors `freshHasPin`,
+-- `syncHasPin`, and `level12HasPin` — every pin-bearing witness
+-- now has a named extractor for the canonical `FieldVersion` it
+-- carries, with both field/version equalities surfaced alongside
+-- so downstream `rewrite` proofs can quote them directly.
