@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // typed-wasm post-codegen verifier.
 //
@@ -29,6 +30,12 @@ pub use verify::{count_uses_range, verify_function};
 pub use section::{
     build_regions_section_payload, parse_regions_section_payload, FieldEntry, FieldKind,
     Nullability, RegionEntry, WasmTy, REGIONS_SECTION_VERSION,
+};
+
+#[cfg(feature = "unstable-l13-imports")]
+pub use section::{
+    build_region_imports_section_payload, parse_region_imports_section_payload,
+    ImportedFieldEntry, RegionImportEntry, IMPORT_TABLE_BASE, REGION_IMPORTS_SECTION_VERSION,
 };
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
@@ -148,6 +155,14 @@ pub const CAPABILITIES_SECTION_NAME: &str = "typedwasm.capabilities";
 #[cfg(feature = "unstable-l2")]
 pub const ACCESS_SITES_SECTION_NAME: &str = "typedwasm.access-sites";
 
+/// Custom-section name carrying cross-module region-import declarations
+/// (proposal 0003, typed-wasm#140 refs #95). Companion to
+/// `typedwasm.regions`: a module's `target_region` foreign keys with the
+/// import-table bit set (`>= IMPORT_TABLE_BASE`) resolve through this
+/// section's entries. UNSTABLE.
+#[cfg(feature = "unstable-l13-imports")]
+pub const REGION_IMPORTS_SECTION_NAME: &str = "typedwasm.region-imports";
+
 /// L15 capability-section violation (parsing succeeded, content invalid).
 #[cfg(feature = "unstable-l15")]
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -200,6 +215,62 @@ pub enum AccessSiteError {
         region_id: u32,
         field_id: u32,
         field_count: u32,
+    },
+}
+
+/// L13 region-imports section violation. Self-consistency only; cross-
+/// module schema-agreement (`SchemaSub expected actual`, `SchemaImportMismatch`)
+/// belongs to a future `verify_link_graph` pass (proposal 0003 §"Open
+/// questions" #4 default option a).
+#[cfg(feature = "unstable-l13-imports")]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum RegionImportsError {
+    /// Proposal 0003 §"Producer obligations" #1: a module emitting
+    /// `typedwasm.region-imports` MUST also emit `typedwasm.regions` (the
+    /// import-table foreign keys in `typedwasm.regions`'s field entries
+    /// would otherwise dangle).
+    #[error("Level 13 violation: typedwasm.region-imports section emitted without companion typedwasm.regions section (MissingDependentCarrier)")]
+    MissingDependentRegions,
+
+    /// Inverse companion check: a `typedwasm.regions` field entry has a
+    /// `target_region` value with the import-table bit set, but no
+    /// `typedwasm.region-imports` section is present to resolve it
+    /// against. Emitted at most once per module (further occurrences
+    /// would spam).
+    #[error("Level 13 violation: typedwasm.regions has target_region with import-table bit set (value {target_region:#010x}) but no typedwasm.region-imports section present to resolve it")]
+    MissingDependentRegionImports { target_region: u32 },
+
+    /// Proposal 0003 §"Wire format" Notes: imports MUST have unique
+    /// `(producer_module_name, region_name)` pairs.
+    #[error("Level 13 violation: duplicate import: (producer_module_name = {producer_module_name:?}, region_name = {region_name:?}) appears at import-table indices {first_idx} and {duplicate_idx}")]
+    DuplicateImport {
+        first_idx: u32,
+        duplicate_idx: u32,
+        producer_module_name: String,
+        region_name: String,
+    },
+
+    /// Proposal 0003 §"Producer obligations" #5: imported regions MUST
+    /// have scalar-only expected schemas in v1. Transitive pointer-chain
+    /// resolution is deferred to v2 (see proposal 0003 §"Open questions" #1).
+    #[error("Level 13 violation: import-table entry {import_idx}: expected field {field_idx} ({field_name:?}) has pointer kind {kind:?}; pointer fields are not supported in imported regions in v1 (proposal 0003 §Producer obligations 5)")]
+    PointerInImportNotSupportedInV1 {
+        import_idx: u32,
+        field_idx: u32,
+        field_name: String,
+        kind: FieldKind,
+    },
+
+    /// A `typedwasm.regions` field entry has a `target_region` value
+    /// with the import-table bit set, but the resolved index points past
+    /// the end of the `typedwasm.region-imports` table.
+    #[error("Level 13 violation: typedwasm.regions region {region_idx} field {field_idx}: target_region value {target_region:#010x} resolves to import-table index {resolved_idx} but only {import_count} imports are declared")]
+    ImportTargetOutOfRange {
+        region_idx: u32,
+        field_idx: u32,
+        target_region: u32,
+        resolved_idx: u32,
+        import_count: u32,
     },
 }
 
@@ -258,6 +329,36 @@ pub fn verify_access_sites_from_module(
     wasm_bytes: &[u8],
 ) -> Result<Vec<AccessSiteError>, VerifyError> {
     verify::verify_access_sites_from_module(wasm_bytes)
+}
+
+/// Verify the L13 region-imports section's in-module self-consistency by
+/// reading its embedded `typedwasm.region-imports` and `typedwasm.regions`
+/// custom sections. Modules emitting neither section verify trivially.
+///
+/// Checks:
+///
+/// 1. `MissingDependentRegions`: region-imports present without regions
+///    is a hard error (proposal 0003 §"Producer obligations" #1).
+/// 2. `MissingDependentRegionImports`: regions present with at least one
+///    `target_region` value `>= IMPORT_TABLE_BASE` (i.e. claiming an
+///    import) without region-imports is a hard error (emitted at most
+///    once per module).
+/// 3. `DuplicateImport`: imports MUST have unique
+///    `(producer_module_name, region_name)` pairs.
+/// 4. `PointerInImportNotSupportedInV1`: imported regions' expected
+///    fields MUST all be `kind == Scalar` in v1.
+/// 5. `ImportTargetOutOfRange`: every `target_region` value with the
+///    import-table bit set MUST resolve within the import-table bounds.
+///
+/// Does NOT verify cross-module schema agreement (`SchemaSub expected
+/// actual` from `MultiModule.idr`); that requires the producer module's
+/// bytes and is the subject of a future `verify_link_graph(modules)` pass
+/// (proposal 0003 §"Open questions" #4 default option a).
+#[cfg(feature = "unstable-l13-imports")]
+pub fn verify_region_imports_from_module(
+    wasm_bytes: &[u8],
+) -> Result<Vec<RegionImportsError>, VerifyError> {
+    verify::verify_region_imports_from_module(wasm_bytes)
 }
 
 /// Ownership-annotated signature for one exported function.
