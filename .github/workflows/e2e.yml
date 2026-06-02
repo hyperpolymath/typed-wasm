@@ -5,7 +5,7 @@
 #
 # Runs on every PR and push to main. Three jobs:
 #   structural   — fast structural checks (no compiler required)
-#   smoke        — Node.js smoke test (AffineScript parser + example files)
+#   smoke        — Deno harnesses (AffineScript parser + aspect/proof envelopes)
 #   build-e2e    — Full Idris2 + Zig build then E2E
 #   cargo-verify — Cargo workspace build + test (typed-wasm-verify crate)
 name: E2E Validation
@@ -39,75 +39,76 @@ jobs:
         run: E2E_BUILD=0 bash tests/e2e.sh
 
   # --------------------------------------------------------------------------
-  # Job 2: Smoke test — Node.js parser validation
+  # Job 2: Smoke test — Deno harness validation
   # --------------------------------------------------------------------------
   smoke:
-    name: Smoke test (Node.js AffineScript parser)
+    name: Smoke test (Deno AffineScript harnesses)
     runs-on: ubuntu-latest
+    env:
+      # Scoped permissions covering the harnesses' needs (file read/write,
+      # subprocess spawn for idris2, env). See deno.json / Justfile `deno_run`.
+      DENO_RUN: "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: '25'
-
-      - name: Install npm deps
-        run: npm install --no-audit --no-fund --silent
-
-      # Phase 0 NOTE (issue #48): Track A's parser migration replaced
-      # ReScript (.res + rescript.json + rescript build) with AffineScript
-      # (.affine + affinescript.json + @hyperpolymath/affinescript compiler).
-      # The compiler isn't yet declared as an npm dep in package.json so
-      # `npm install` can't fetch it on a clean CI runner. Detect the
-      # AffineScript or ReScript binary if either is present after install,
-      # build with whichever is available, otherwise skip and let downstream
-      # steps handle the artefact-absent case (they're already guarded).
-      - name: Build parser (AffineScript preferred, ReScript fallback)
+      # Deno is the project's JS runtime (estate npm→Deno migration, #133 /
+      # standards#253). deno.land is denied by some network policies, so install
+      # straight from the GitHub release assets — the same curl pattern the
+      # Idris2 / Zig steps use below.
+      - name: Install Deno
         run: |
-          if [ -x node_modules/.bin/affinescript ]; then
-            echo "Building with AffineScript..."
-            node_modules/.bin/affinescript build
-          elif [ -x node_modules/.bin/rescript ]; then
-            echo "Building with ReScript (migration fallback)..."
-            node_modules/.bin/rescript build
+          DENO_VERSION="2.8.1"
+          curl -fsSL -o /tmp/deno.zip \
+            "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          mkdir -p "$HOME/.deno/bin"
+          unzip -oq /tmp/deno.zip -d "$HOME/.deno/bin"
+          echo "$HOME/.deno/bin" >> "$GITHUB_PATH"
+          "$HOME/.deno/bin/deno" --version
+
+      # The AffineScript parser compiler is OCaml (opam + dune, NOT npm — see
+      # tools/provision.sh). Building it is expensive (~5 min) and is exercised by
+      # c5-regenerate.yml, not here. If it happens to be on PATH, build; otherwise
+      # skip and let the guarded steps below handle the artefact-absent case.
+      - name: Build parser (AffineScript, if provisioned)
+        run: |
+          if command -v affinescript >/dev/null 2>&1; then
+            echo "Building parser with AffineScript..."
+            affinescript build
           else
-            echo "::warning::No parser compiler available — skipping build."
-            echo "::warning::Track A parser-migration is incomplete; see #48."
-            echo "::warning::Downstream smoke / aspect / property / benchmark"
-            echo "::warning::steps will skip if src/parser/Parser.mjs is absent."
+            echo "::warning::affinescript (OCaml) not provisioned — skipping parser build."
+            echo "::warning::smoke / property / benchmark steps will skip if src/parser/Parser.mjs is absent."
           fi
 
       - name: Run smoke test (skip if parser artefacts absent)
         run: |
           if [ -f src/parser/Parser.mjs ]; then
-            node tests/smoke/e2e-smoke.mjs
+            $DENO_RUN tests/smoke/e2e-smoke.mjs
           else
             echo "::warning::src/parser/Parser.mjs absent — skipping smoke test."
           fi
 
       - name: Run aspect tests (claim + security envelopes — no parser dep)
         run: |
-          node tests/aspect/claim-envelope.mjs
-          node tests/aspect/security-envelope.mjs
+          $DENO_RUN tests/aspect/claim-envelope.mjs
+          $DENO_RUN tests/aspect/security-envelope.mjs
 
       - name: Run property tests (skip if parser artefacts absent)
         run: |
           if [ -f src/parser/Parser.mjs ]; then
-            node tests/property/property_test.mjs
+            $DENO_RUN tests/property/property_test.mjs
           else
             echo "::warning::src/parser/Parser.mjs absent — skipping property tests."
           fi
 
       - name: Run proof regression (named theorems + idris2 typecheck if present)
-        run: node tests/proof/regression.mjs
+        run: $DENO_RUN tests/proof/regression.mjs
 
       - name: Run parser benchmark (skip if parser artefacts absent)
         run: |
           if [ -f src/parser/Parser.mjs ]; then
-            BENCH_ITERS=20 node benchmarks/parser-bench.mjs
+            BENCH_ITERS=20 $DENO_RUN benchmarks/parser-bench.mjs
           else
             echo "::warning::src/parser/Parser.mjs absent — skipping benchmark."
           fi
@@ -158,11 +159,18 @@ jobs:
           tar -xJf /tmp/zig.tar.xz -C /opt
           ln -s "/opt/${ZIG_DIR}/zig" /usr/local/bin/zig
 
-      # ---- Node (for smoke test within E2E script) ----
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: '25'
+      # ---- Deno (JS runtime for the smoke harness within the E2E script) ----
+      # Installed from the GitHub release assets (deno.land is denied by some
+      # network policies); matches the curl pattern above. See tests/e2e.sh.
+      - name: Install Deno
+        run: |
+          DENO_VERSION="2.8.1"
+          curl -fsSL -o /tmp/deno.zip \
+            "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          mkdir -p "$HOME/.deno/bin"
+          unzip -oq /tmp/deno.zip -d "$HOME/.deno/bin"
+          echo "$HOME/.deno/bin" >> "$GITHUB_PATH"
+          "$HOME/.deno/bin/deno" --version
 
       # ---- Full E2E ----
       # Phase 0 NOTE (issue #48): this step has been persistently red since

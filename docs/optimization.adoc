@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= typed-wasm Optimization Story
+:toc: preamble
+:sectnums:
+
+Phase 1 deliverable 3 (issue #49 / #131): _"either implement passes inside
+typed-wasm or document the binaryen pass list that preserves the L1–L10
+invariants."_ This document takes the **document** arm.
+
+== Decision
+
+Optimize with **`wasm-opt`** (Binaryen) as an external post-pass, and use
+**`typed-wasm-verify`** (the `tw-verify` CLI) as the **invariant oracle**:
+after optimization, re-run the verifier; if it still accepts the module, the
+L1–L10 discipline survived the optimization.
+
+[source,sh]
+----
+tw build app.twasm -o app.wasm        # producer (typed-wasm-codegen)
+wasm-opt <vetted passes> app.wasm -o app.opt.wasm
+tw-verify app.opt.wasm                # MUST still exit 0
+----
+
+We do **not** ship an in-tree optimizer: Binaryen is the mature wasm
+optimizer, and the verifier already gives us a soundness gate over its
+output. (An in-tree pass set can be revisited later; it is not needed to
+make the invariant claim.)
+
+== What the verifier checks, and what optimization can break
+
+The discipline is carried by three custom sections. Optimization preserves
+the invariants **iff** it preserves these carriers' validity:
+
+[cols="1,3,2",options="header"]
+|===
+| Carrier | Keyed by | Fragility under wasm-opt
+
+| `typedwasm.regions` (L2–L6)
+| nothing function-specific — a pure schema
+| **Robust.** Survives any code transformation, *provided the custom section
+  is not stripped*.
+
+| `typedwasm.ownership` (L7/L10)
+| `func_idx` + parameter position
+| **Fragile to function reindexing.** Any pass that reorders, removes,
+  merges, or inlines functions invalidates `func_idx`.
+
+| `typedwasm.access-sites` (L2)
+| `func_idx`, `byte_offset`, `region_id`, `field_id`
+| `byte_offset` is already a deferred placeholder (the verifier does not
+  check it — proposal 0002 §AccessSiteMisalignment), so body rewrites are
+  fine; `func_idx` is **fragile to function reindexing** as above.
+|===
+
+=== The two hazards
+
+. **Custom-section stripping → vacuous verification.** `wasm-opt` drops
+  custom sections it does not recognise unless told to keep them. A stripped
+  module has *nothing to check*, so the verifier accepts it **vacuously** —
+  silently downgrading a typed module to an untyped one. (Demonstrated in
+  `crates/typed-wasm-codegen/tests/optimization.rs`.)
+. **Function reindexing → carriers point at the wrong functions.** The
+  ownership/access-site carriers reference functions by index. A pass that
+  reorders or removes functions leaves the indices pointing elsewhere — the
+  verifier then checks the *wrong* function (also demonstrated in the tests).
+
+== The vetted pass list (preserves L1–L10)
+
+**Must hold:**
+
+* **Preserve the custom sections** — pass Binaryen's custom-section
+  preservation flag for `typedwasm.regions`, `typedwasm.ownership`, and
+  `typedwasm.access-sites` (or re-attach them after optimizing).
+* **Preserve function identity** — do **not** reorder/remove/merge/inline
+  functions unless the carriers are regenerated afterwards.
+
+**Excluded** (they reindex or remove functions): `--inlining`,
+`--inlining-optimizing`, `--merge-functions`, `--dae` / `--dae-optimizing`,
+`--reorder-functions`, and whole-module `--remove-unused-module-elements`.
+
+**Safe** (intra-function; keep the function table stable — body bytes change,
+but `func_idx` and the region schema hold, and access-site `byte_offset` is
+already non-load-bearing):
+
+----
+--vacuum --optimize-instructions --simplify-locals --coalesce-locals
+--local-cse --code-folding --merge-blocks --remove-unused-brs --precompute
+----
+
+After any run, **`tw-verify` is the gate**: it must still accept, and the
+`typedwasm.*` sections must still be present (a present-but-checked module,
+not a stripped-and-vacuous one).
+
+== Cleaner long-term alternative
+
+Have the producer **optimize the code-only module first, then derive and
+attach the carriers** from the optimized module — so carriers always describe
+the final bytes and no pass can desynchronise them. This removes the
+function-identity constraint entirely. It needs post-optimization
+offset/index re-derivation in the producer; deferred until the front-end → IR
+seam (#127) lands, since it shares the same offset-tracking machinery.
+
+== Status
+
+This documents the Binaryen pass list that preserves L1–L10 — the deliverable's
+"document" arm. The two preservation hazards are pinned by in-repo tests; the
+end-to-end `wasm-opt → tw-verify` gate is encoded in
+`tests/optimization.rs` and runs wherever `wasm-opt` is on `PATH` (it skips
+gracefully otherwise). Optional future work: an in-tree pass set, and a CI lane
+that provisions `wasm-opt` to run the gate non-advisorily.

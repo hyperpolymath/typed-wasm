@@ -26,6 +26,32 @@ cd ffi/zig && zig build test
 cd src/abi && idris2 --check Proofs.idr
 ```
 
+## Environment & Toolchain (operational)
+
+**Provisioning:** `just provision` (→ `tools/provision.sh`) installs the full toolchain;
+`just setup` runs provision + `just deps` (a presence check). `setup.sh` bootstraps `just`
+then calls `just setup`.
+
+- **JS runtime is Deno**, not node (estate npm→Deno migration, #133 / standards#253). The
+  `.affine` parser sources compile to `.mjs` (`affinescript.json`); those `.mjs` run under
+  Deno. Test harnesses use `deno run` via the Justfile `deno_run` var / `deno.json` tasks,
+  with scoped perms `--allow-read --allow-write --allow-run --allow-env --allow-sys`. There
+  is **no `package.json`** (removed in #133) and no lockfile (only `node:` builtins).
+- **AffineScript is an OCaml compiler, NOT an npm package** (`@hyperpolymath/affinescript`
+  404s on npmjs). Built from `hyperpolymath/affinescript` with opam + dune at the SHA pinned
+  in `.github/workflows/c5-regenerate.yml` (`AFFINESCRIPT_SHA`); binary is
+  `_build/default/bin/main.exe`. Building it is the unblock for the #127 front-end→IR seam.
+- **wasmtime** (the #132 capstone execution gate) installs via `cargo install wasmtime-cli`.
+
+**Network policy (Claude Code remote env):** `github.com` release assets, crates.io, npmjs,
+and ubuntu apt are reachable; `deno.land`/`dl.deno.land`, `api.github.com`, and `wasmtime.dev`
+are denylisted (`x-deny-reason: host_not_allowed`). Fetch deno/just from **github.com release
+assets** (not the vendor install scripts); wasmtime via crates.io.
+
+**Git proxy:** serves only `hyperpolymath/typed-wasm`, but direct `git clone
+https://github.com/...` works (github.com is allowed). Ref-deletes return HTTP 403 —
+**branch deletion is GitHub-UI-only** (there is no MCP delete-branch tool either).
+
 ## Key Design Decisions
 
 - Follows hyperpolymath ABI-FFI standard (Idris2 ABI, Zig FFI)

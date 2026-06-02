@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -9,6 +10,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Run: just changelog -->
 
 ## [Unreleased]
+
+### Toolchain provisioning + node→Deno harness migration (#133 / standards#253) (2026-06-01)
+
+`tools/provision.sh` (exposed as `just provision` / `just setup`, wired into
+`setup.sh`) installs the full toolchain: **Deno** (the JS runtime — fetched from
+the **GitHub release assets**, since `deno.land` is denied by some network
+policies while `github.com` is reachable), **wasmtime** (the #132 execution
+gate, via crates.io), and **AffineScript** (the parser/codegen compiler — an
+**OCaml** program built from `hyperpolymath/affinescript` with opam + dune at
+the SHA pinned in `c5-regenerate.yml`; it is **not** an npm package — the name
+`@hyperpolymath/affinescript` 404s on npmjs). The stale `deps` recipe — which
+ran `npm ci` against the `package.json` that #133 removed — now checks the real
+toolchain instead.
+
+The `node tests/*.mjs` harnesses now run under **Deno** with scoped permissions
+(`deno.json`, the Justfile `deno_run` recipes, `e2e.yml`'s smoke + build-e2e
+jobs, and `tests/e2e.sh`); the `.mjs` were already Deno-shaped (`node:` imports,
+`import.meta.url`-derived `__dirname`), so the change is mechanical. Removed the
+ReScript-era leftovers `deno.lock` and `package-lock.json`, and the stale
+`rescript build` / `node_modules/@rescript` references in the E2E script.
+
+### Capstone execution gate: run on Wasmtime (#132) (2026-05-31)
+
+The producer now exports the linear **memory** (so a host — Wasmtime, JS — can
+read/write region data), and `crates/typed-wasm-codegen/tests/execute.rs` runs
+the emitted example-01 module on the **`wasmtime` CLI** (invoking
+`get_player_hp`) — the "run on Wasmtime" half of the Phase-2 gate. It skips
+gracefully where `wasmtime` is not on `PATH` (provision it via the environment
+setup). The "actionable error on a violation" half is already the compile-time
+path: `tw build` self-verifies and emits human-readable diagnostics (#126).
+
+### Optimization story: vetted `wasm-opt` pass list + verifier-as-oracle gate (#131) (2026-05-31)
+
+Documents the Binaryen pass list that preserves the L1–L10 invariants
+(`docs/optimization.adoc`): optimize with external `wasm-opt`, use
+`typed-wasm-verify` as the invariant oracle (re-run post-opt; if it still
+accepts with the `typedwasm.*` carriers intact, the discipline survived).
+The per-carrier analysis identifies two hazards — custom-section **stripping**
+(→ vacuous verification) and function **reindexing** (→ carriers point at the
+wrong functions) — and the vetted / excluded / safe pass split that avoids
+them. Both hazards are pinned by in-repo tests; the end-to-end
+`wasm-opt → tw-verify` gate is encoded and runs where `wasm-opt` is on `PATH`
+(graceful skip otherwise). (`crates/typed-wasm-codegen/tests/optimization.rs`.)
+
+### Round-trip soundness corpus: `verify(emit(m)) == OK`, property-tested (#130) (2026-05-31)
+
+ECHIDNA-style property corpus for the producer: a deterministically-generated set
+of **512 well-formed modules** (random scalar regions + getter/setter functions)
+must each satisfy `verify(emit(m)) == OK` — full structural validation +
+`verify_from_module` (L7/L10) + `verify_access_sites` (L2). Negative controls
+(double-free, `&mut` aliasing, leak) must be **rejected**, so the property has
+teeth. Generated at the IR level (the producer has no in-process `.twasm` parser —
+#127); a `verify(codegen(parse(src)))` corpus over real `.twasm` sources follows
+once the front-end → IR seam lands. (`crates/typed-wasm-codegen/tests/corpus.rs`.)
+
+### `tw-verify` CLI: standalone wasm verification (2026-05-31)
+
+Adds a binary front-end to the (previously lib-only) `typed-wasm-verify`
+crate (PR #143): `tw-verify <module.wasm>` runs structural wasm validation
+(`wasmparser::Validator`) → L7/L10/L13 ownership (`verify_from_module`) →
+L2 access-site / L15 capability passes (the latter two under the
+`unstable-l2` / `unstable-l15` features), with exit codes `0`/`1`/`2`.
+Complements `crates/typed-wasm-codegen`'s `tw build` — which already
+self-verifies in-process — by verifying a `.wasm` from **any** producer,
+including external / third-party modules. Validated against `tw build`
+output (`structural ✓ · L7/L10/L13 ✓ · L2 ✓`).
+
+### Real codegen: layout engine + typed-access lowering, harvested from Zig `twasmc` (#136) (2026-05-30)
+
+The Rust producer's function bodies are now **real codegen**, not representative
+stubs. A layout engine computes field offsets, element strides, and alignment —
+including inline embedded regions (`Players` slot stride 48 B; `.pos.x` reaches
+into the embedded `@Vec2` at offset 16) — and typed accesses emit real
+loads/stores at computed offsets addressed as `base + index*stride (+ offsets)`.
+Each region handle is read once into a base-pointer local, so `&mut`/`own` params
+stay clean under the verifier; example 01 now also carries `&`/`&mut` ownership.
+
+After a head-to-head Rust-vs-Zig comparison, the host-language choice was
+ratified (**ADR-0004 → Accepted**) and the approach + base-local convention were
+harvested from the parallel Zig producer (`twasmc`, PR #136), which was closed as
+superseded with credit. Closes the representative-bodies gap noted in #127; the
+front-end → IR parser seam remains (#127) and `if`/`region.scan` control flow is
+still simplified.
+
+### In-tree producer: `typed-wasm-codegen` (codegen v0 → multi-module, debug info, human errors) (2026-05-30)
+
+Adds the first in-tree `.twasm` → `.wasm` **producer** as a Rust crate
+(`crates/typed-wasm-codegen`), per ADR-0004. Before this the toolchain had a
+parser and a verifier but nothing that emitted wasm. The producer lowers a
+typed region IR to a valid wasm module plus the `typedwasm.*` carrier
+sections (reusing the verifier's own encoders so the bytes can't drift) and
+round-trips through `typed-wasm-verify` in-process.
+
+- **#134** — codegen v0 + `tw build` for `examples/01-single-module.twasm`
+  (`typedwasm.regions` + `typedwasm.access-sites`), verifier-accepted;
+  **ADR-0004** fixes the Rust-crate host-language decision. Discharges
+  Phase 0 gate 2 (#48). Includes WAT (text wasm) emission
+  (`tw build --emit wasm|wat|both`, #125).
+- **#139** — multi-module codegen at parity with `verify_cross_module`: a
+  Linear-exporting callee + importing caller (the L10 ownership boundary)
+  (#128).
+- **#141** — `examples/03-ownership-linearity` (L7–L10: `own` / `&mut` / `&`
+  via `typedwasm.ownership`) + the wasm `name` section for debugger symbols
+  (increment of #127 + #129).
+- **human-readable errors (#126)** — a translation layer mapping verifier
+  rejections to actionable, function-name-anchored diagnostics, plus
+  `tw build` self-verification.
+
+Coverage today: examples 01 (L1–6) + 03 (L7–10) + the multi-module linear
+boundary, all verifier-backed. Deferred (tracked): the front-end → IR seam +
+remaining examples (#127), source → line maps (#129), region-imports /
+L13-positive (#140), ECHIDNA round-trip corpus (#130).
+
+> Note: an alternative **Zig** producer (`twasmc`, `src/codegen/`) was proposed
+> in parallel in PR #136; after a Rust-vs-Zig comparison the Rust track was
+> retained (ADR-0004 **Accepted**) and #136 was closed as superseded, its layout
+> approach harvested — see the "Real codegen" entry above.
 
 ### Multi-producer carrier ABI: proposals 0001 + 0002 accepted, promoted to ADRs (2026-05-30)
 
