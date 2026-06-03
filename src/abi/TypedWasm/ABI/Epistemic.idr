@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+-- Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 --
 -- Epistemic.idr — Level 12: Epistemic safety for shared memory
 --
@@ -52,11 +52,30 @@ data Stale : (mod : ModuleId) -> (field : String) ->
   MkStale : LT knownVersion currentVersion -> Stale mod field knownVersion currentVersion
 
 ||| Freshness: the module's knowledge is current.
+|||
+||| **Fresh soundness (A14, 2026-06-02 — closes #102).**  `Fresh` now
+||| requires a real `FieldVersion` value pinning the `currentVersion`
+||| index to global ground truth.  The original constructor took only
+||| a `(knownVersion = currentVersion)` self-referential proof —
+||| anyone could mint `MkFresh Refl` for any `(mod, field, v)` pair,
+||| symmetric to the pre-A11 `WriteSync` gap.  The tightened form
+||| forces the caller to commit to a `FieldVersion` record matching
+||| `(field, currentVersion)`.  `ExplicitSync` inherits the pin via
+||| its `Fresh` argument — no separate `FieldVersion` parameter is
+||| required on the sync constructor itself.
 public export
 data Fresh : (mod : ModuleId) -> (field : String) ->
              (knownVersion : Nat) -> (currentVersion : Nat) -> Type where
-  ||| Knowledge is fresh when knownVersion == currentVersion.
-  MkFresh : knownVersion = currentVersion -> Fresh mod field knownVersion currentVersion
+  ||| Knowledge is fresh when (a) `knownVersion = currentVersion` AND
+  ||| (b) `currentVersion` is pinned to the canonical FieldVersion
+  ||| record for `field`.  The reader does not have to be the writer,
+  ||| so `fv.lastWriter` is unconstrained here; writer provenance is
+  ||| captured by `WriteSync` instead.
+  MkFresh : (fv : FieldVersion) ->
+            fv.field   = field          ->
+            fv.version = currentVersion ->
+            knownVersion = currentVersion ->
+            Fresh mod field knownVersion currentVersion
 
 -- ============================================================================
 -- Synchronisation Points
@@ -148,11 +167,21 @@ record Level12Proof where
 -- Key Theorems
 -- ============================================================================
 
-||| A writer always has fresh knowledge of what it wrote.
+||| A writer always has fresh knowledge of what it wrote, given the
+||| canonical `FieldVersion` at the post-write state.  Post-A14
+||| (#102 closure), `Fresh` requires a `FieldVersion` pin — so this
+||| lemma must thread that record through.  The writer-identity pin
+||| (`fv.lastWriter = writer`) is also taken for the obvious-but-
+||| previously-implicit reason: a writer's freshness comes from being
+||| the one named in `lastWriter`.
 export
 writerKnowsFresh : (writer : ModuleId) -> (field : String) -> (ver : Nat) ->
+                   (fv : FieldVersion) ->
+                   fv.field      = field ->
+                   fv.version    = ver   ->
+                   fv.lastWriter = writer ->
                    Fresh writer field ver ver
-writerKnowsFresh _ _ _ = MkFresh Refl
+writerKnowsFresh _ _ _ fv fp vp _ = MkFresh fv fp vp Refl
 
 ||| Staleness is decidable: given two versions, knowledge is either fresh,
 ||| stale-forward (known < current), or stale-backward (current < known).
@@ -170,10 +199,16 @@ freshOrStale (S k) (S c) = case freshOrStale k c of
   Right (Right gt)  => Right (Right (LTESucc gt))
 
 ||| Sync restores freshness.
+|||
+||| Post-A14: both branches must supply the `FieldVersion` pin.  The
+||| `ExplicitSync` branch returns its embedded `Fresh` witness
+||| directly (the pin is already inside).  The `WriteSync` branch
+||| rebuilds a `Fresh` using the same `FieldVersion` that the write
+||| committed to.
 export
 syncRestoresFresh : Sync mod field old new -> Fresh mod field new new
-syncRestoresFresh (ExplicitSync fresh) = MkFresh Refl
-syncRestoresFresh (WriteSync _ _ _ _) = MkFresh Refl
+syncRestoresFresh (ExplicitSync fresh)            = fresh
+syncRestoresFresh (WriteSync fv fp vp _)          = MkFresh fv fp vp Refl
 
 -- ============================================================================
 -- Concurrent-write propagation theorems (A10, 2026-05-26 — closes
@@ -185,7 +220,7 @@ syncRestoresFresh (WriteSync _ _ _ _) = MkFresh Refl
 ||| downstream proofs about reads.
 export
 freshImpliesEqual : Fresh mod field known current -> known = current
-freshImpliesEqual (MkFresh eq) = eq
+freshImpliesEqual (MkFresh _ _ _ eq) = eq
 
 ||| Stale witnesses a strict ordering on versions.  Dual projector to
 ||| `freshImpliesEqual`.
@@ -206,7 +241,7 @@ ltIrreflexive (LTESucc rest) = ltIrreflexive rest
 ||| handles the case where `current` actually advances.
 export
 freshNotStale : Fresh mod field v v' -> Stale mod field v v' -> Void
-freshNotStale (MkFresh Refl) (MkStale lt) = ltIrreflexive lt
+freshNotStale (MkFresh _ _ _ Refl) (MkStale lt) = ltIrreflexive lt
 
 ||| Concurrent-write staleness.  If module `mod`'s view of `field` was
 ||| fresh at version `v` and the global current version subsequently
@@ -216,7 +251,7 @@ freshNotStale (MkFresh Refl) (MkStale lt) = ltIrreflexive lt
 export
 concurrentWriteStales :
   Fresh mod field v v -> LT v v' -> Stale mod field v v'
-concurrentWriteStales (MkFresh Refl) lt = MkStale lt
+concurrentWriteStales (MkFresh _ _ _ Refl) lt = MkStale lt
 
 ||| Re-synchronisation after a concurrent write restores freshness.  If
 ||| `mod`'s view is stale at `(v, cur)` and `mod` performs a Sync to
@@ -307,18 +342,126 @@ observedHasProvenance :
 observedHasProvenance Unknown         = Nothing
 observedHasProvenance (Observed {oldVer} sync) = Just (oldVer ** sync)
 
+-- ============================================================================
+-- Knowledge chain corollaries (A15, 2026-06-03 — composes A11 + A14)
+-- ============================================================================
+--
+-- Now that `Sync` (via A11) and `Fresh` (via A14) are both pinned to
+-- canonical `FieldVersion` records, the chain from a write to a
+-- knower's freshness is fully witness-carrying.  The three lemmas
+-- below name the chain steps so callers can quote them directly
+-- rather than re-deriving each composition at every use site.
+
+||| A `Sync` event immediately establishes `Knowledge` at the new
+||| version.  Trivial corollary of the `Observed` constructor, named
+||| so the post-sync read protocol can be spelled out lemma-by-lemma.
+public export
+syncImpliesKnowledge :
+  {old : Nat} ->
+  Sync mod field old new -> Knowledge mod field new
+syncImpliesKnowledge {old} sync = Observed {oldVer = old} sync
+
+||| A writer who supplies the canonical `FieldVersion` for its write
+||| has `Knowledge` at the post-write version.  Composes `WriteSync`
+||| with `syncImpliesKnowledge`; the writer's identity flows in via
+||| the `fv.lastWriter = writer` pin, so no caller can claim
+||| post-write knowledge for a module it does not own the write of.
+public export
+writerKnowsPostWrite :
+  (fv : FieldVersion) ->
+  fv.field      = field   ->
+  fv.lastWriter = writer  ->
+  Knowledge writer field fv.version
+writerKnowsPostWrite fv fp wp =
+  Observed (WriteSync {oldVersion = 0} fv fp Refl wp)
+
+||| Any non-trivial `Knows` witness entails a `Fresh` witness at the
+||| same version.  Closes the chain `Sync ⟶ Knowledge ⟶ Knows ⟶
+||| Fresh`: a module that knows a field's version is, by construction,
+||| fresh at that version (because the `Sync` that established the
+||| knowledge restored freshness; A11+A14 pinning guarantees the
+||| `FieldVersion` threads through end-to-end).
+|||
+||| The `Unknown` branch is impossible by the `MkKnows` precondition
+||| `ver > 0 = True`: `Unknown` inhabits only `Knowledge mod field 0`,
+||| at which point `0 > 0` reduces to `False`, contradicting the
+||| `= True` proof.
+public export
+knowsImpliesFresh :
+  Knows mod field ver -> Fresh mod field ver ver
+knowsImpliesFresh (MkKnows (Observed sync) _)  = syncRestoresFresh sync
+knowsImpliesFresh (MkKnows Unknown          p) = absurd p
+
+-- ============================================================================
+-- FieldVersion pin projectors (A16, 2026-06-03 — surfaces the embedded
+-- canonical FieldVersion record from any pin-bearing witness)
+-- ============================================================================
+--
+-- A11 + A14 made the dependent indices on `Sync` and `Fresh` line up
+-- with a real `FieldVersion` value, but the record itself was only
+-- reachable by case-splitting on the data constructor inside this
+-- module.  The three projectors below expose the pin publicly so
+-- downstream code (e.g. read-protocol clients that need to ask "what
+-- is the canonical record for my read?") can quote a single named
+-- lemma instead of duplicating the case split.
+
+||| Project the canonical `FieldVersion` out of a `Fresh` witness.
+||| Both equalities (`fv.field = field`, `fv.version = currentVersion`)
+||| are returned alongside the record itself — the caller can rewrite
+||| with them directly when substituting versions or fields downstream.
+public export
+freshHasPin :
+  Fresh mod field k c ->
+  (fv : FieldVersion ** (fv.field = field, fv.version = c))
+freshHasPin (MkFresh fv fp vp _) = (fv ** (fp, vp))
+
+||| Project the canonical `FieldVersion` out of a `Sync` witness.
+||| Both branches carry a pin: the `ExplicitSync` branch inherits it
+||| via its embedded `Fresh` (re-projected here through `freshHasPin`),
+||| while the `WriteSync` branch supplies it directly.  Total — every
+||| `Sync` carries a pin post-A14, so no `Maybe` wrapping is needed.
+public export
+syncHasPin :
+  Sync mod field old new ->
+  (fv : FieldVersion ** (fv.field = field, fv.version = new))
+syncHasPin (ExplicitSync fresh)        = freshHasPin fresh
+syncHasPin (WriteSync fv fp vp _)      = (fv ** (fp, vp))
+
+||| Project the canonical `FieldVersion` out of a `Level12Proof`.
+||| Composes `epistemicFreshness` (which extracts the proof's `Fresh`
+||| field) with `freshHasPin`.  Returned indices are tied to the
+||| record's own fields (`p.field`, `p.currentVersion`) so callers
+||| holding only a `Level12Proof` can immediately quote the
+||| ground-truth record without case-splitting the proof.
+public export
+level12HasPin :
+  (p : Level12Proof) ->
+  (fv : FieldVersion ** (fv.field = p.field, fv.version = p.currentVersion))
+level12HasPin p = freshHasPin (epistemicFreshness p)
+
 -- ----------------------------------------------------------------------------
--- Residual debt note (A11)
+-- Residual debt note — A11 ➞ A14 ➞ A15 ➞ A16 closure (2026-06-03)
 -- ----------------------------------------------------------------------------
 --
--- The constructor-soundness tightening above plugs the most pointed
--- leaks but does not fully close the chain.  `Fresh` and `ExplicitSync`
--- remain freely constructible:
---   - `MkFresh Refl : Fresh mod field v v` for any (mod, field, v)
---   - `ExplicitSync (writerKnowsFresh _ _ _) : Sync mod field _ v`
--- so a caller can still synthesise a `Sync` (and hence an `Observed`)
--- by chaining trivial constructions.  Full tightening requires
--- re-indexing `Fresh` on a `FieldVersion` value so that the
--- `currentVersion` index is pinned to global ground truth — the next
--- residual-debt item, tracked in
--- `~/.claude/projects/-home-hyperpolymath/memory/project_typed_wasm_proof_debt_post_a10.md`.
+-- A11 (2026-05-26) tightened only `WriteSync` to require a
+-- `FieldVersion` pin.  A14 (2026-06-02) closes the symmetric gap by
+-- re-indexing `Fresh` on a `FieldVersion` value too — the
+-- `currentVersion` index is now pinned to global ground truth, so
+-- `MkFresh Refl` no longer types and a caller cannot mint freshness
+-- ex nihilo.  `ExplicitSync` does NOT need a separate `FieldVersion`
+-- parameter: its `Fresh` argument now carries the pin, and
+-- `ExplicitSync (writerKnowsFresh _ _ _ fv ..)` only types if the
+-- caller has supplied a real `FieldVersion`.  `Observed` likewise
+-- inherits the pin via its `Sync` argument.  No remaining
+-- constructor in this file admits an unfounded version claim.
+--
+-- A15 (2026-06-03) names the chain corollaries `syncImpliesKnowledge`,
+-- `writerKnowsPostWrite`, and `knowsImpliesFresh`, so the
+-- write ⟶ sync ⟶ knowledge ⟶ knows ⟶ fresh chain can be quoted
+-- step-by-step rather than re-derived at each use site.
+--
+-- A16 (2026-06-03) publishes pin projectors `freshHasPin`,
+-- `syncHasPin`, and `level12HasPin` — every pin-bearing witness
+-- now has a named extractor for the canonical `FieldVersion` it
+-- carries, with both field/version equalities surfaced alongside
+-- so downstream `rewrite` proofs can quote them directly.
