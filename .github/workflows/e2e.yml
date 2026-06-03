@@ -214,3 +214,12 @@ jobs:
 
       - name: Cargo test (workspace)
         run: cargo test --workspace --locked
+
+      # Explicit named step for the IR-level round-trip corpus (#130).
+      # Already covered by the workspace test above, but naming it
+      # explicitly makes any regression in the verify(emit(m)) loop
+      # surface as a clearly-named failure. Surface .twasm corpus is
+      # blocked on the front-end → IR seam (#127); this is the cheap-wire
+      # half of #130.
+      - name: Round-trip soundness corpus (IR-level slice — refs #130)
+        run: cargo test --test corpus -p typed-wasm-codegen --locked

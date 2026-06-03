@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+-- Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 --
 -- Proofs.idr — Top-level proof combinators for typed-wasm ABI
 --
@@ -1445,11 +1445,15 @@ witnessToLegacy (MkWitnessCert ls hi mm) =
 -- the projections equals projection of the witness composition.
 
 ||| Compose two witness certificates by concatenation + minimum.
+|||
+||| Uses `Data.Nat.minimum` (not `Prelude.min`) to keep the highest-proven
+||| component definitionally aligned with `composeCertificates` so the
+||| `composeWitnessLegacyAgree` bridge lemma reduces to a single rewrite.
 public export
 composeWitness :
      WitnessCertificate -> WitnessCertificate -> WitnessCertificate
 composeWitness (MkWitnessCert ls1 h1 mm1) (MkWitnessCert ls2 h2 mm2) =
-  MkWitnessCert (ls1 ++ ls2) (min h1 h2) (mm1 ++ mm2)
+  MkWitnessCert (ls1 ++ ls2) (minimum h1 h2) (mm1 ++ mm2)
 
 -- ----------------------------------------------------------------------------
 -- Bridge / composition compatibility lemma
