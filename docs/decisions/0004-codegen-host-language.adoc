@@ -8,13 +8,18 @@ Date: 2026-05-30
 
 ## Status
 
-Proposed
+Accepted (2026-05-30)
 
-This ADR is the decision gate for Phase 1 codegen
+The decision gate for Phase 1 codegen
 (https://github.com/hyperpolymath/typed-wasm/issues/123[issue #123]).
-It is **Proposed** pending owner ratification at PR review: committing
-to Rust for the in-tree producer is a load-bearing choice and the
-front-end → IR seam is deferred, so the decision is not yet Accepted.
+Ratified by the owner after the Rust producer landed (PRs #134 / #139 /
+#141 / #142) and was re-evaluated head-to-head against a parallel **Zig**
+producer (`twasmc`, PR #136). Rust is retained for the reasons in
+§Decision; the Zig implementation's layout engine and
+read-handle-once-into-a-base-local convention were **harvested** into
+`crates/typed-wasm-codegen` to give real field-offset emission, and #136
+was closed as superseded with credit. The front-end → IR seam remains
+deferred (https://github.com/hyperpolymath/typed-wasm/issues/127[issue #127]).
 
 ## Context
 

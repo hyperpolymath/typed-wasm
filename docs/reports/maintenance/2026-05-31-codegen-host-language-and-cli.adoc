@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= 2026-05-31 — Codegen host-language reconciliation + verifier CLI
+:author: Jonathan D.A. Jewell
+:revdate: 2026-05-31
+:toc:
+
+== Purpose
+
+Written record of the 2026-05-31 session that reconciled two parallel
+codegen efforts and closed Phase 0. Companion to `CHANGELOG.md` (what
+shipped) and `docs/wiki/Phase-0-Status.md` (the live ledger). The
+headline: Phase 0 gate 2 (codegen v0) is **met**, and the in-tree
+producer is the **Rust** crate `crates/typed-wasm-codegen` — not the
+Zig experiment explored in parallel.
+
+== Context: two codegen efforts
+
+Phase 0 gate 2 required an in-tree `.twasm -> .wasm` producer
+(link:../../PRODUCTION-PATH.adoc[PRODUCTION-PATH.adoc] §"What advancing
+to Phase 1 requires"). Two independent attempts converged in the same
+window:
+
+* **Rust** — `crates/typed-wasm-codegen` (`tw build`), a workspace
+  sibling of `typed-wasm-verify` emitting wasm via `wasm-encoder` and
+  round-tripping through `verify_from_module` in-process. Host language
+  fixed by link:../../decisions/0004-codegen-host-language.adoc[ADR-0004]
+  (status *Proposed*). Landed via PR #134 (example 01), #139 (multi-module
+  L10 boundary), #141 (example 03 L7-L10 + wasm `name` section), #126
+  (human-readable errors). **This is the canonical producer.**
+* **Zig** — `src/codegen/` (`twasmc`), a single-file lexer ->
+  recursive-descent parser -> layout -> wasm emitter, proposed in PR
+  #136 (draft). Same "toolchain available in CI" rationale as ADR-0004,
+  but a different host language.
+
+ADR-0004 pins the producer to Rust (same toolchain as the verifier;
+`wasm-encoder`/`wasmparser` already pinned; the verifier's own carrier
+encoders are reused so emitted bytes provably match what the verifier
+accepts). The Zig `twasmc` is therefore redundant and off-decision.
+
+== Decisions taken this session
+
+. **#136 (Zig `twasmc`) closed as superseded.** No `src/codegen/`, no
+  vendored golden `.wasm` fixture, and no Zig toolchain dependency land
+  in-tree. The closed PR retains its diff for the historical record.
+. **One piece salvaged — the standalone verifier CLI.** The verifier
+  crate was lib-only; `tw build` self-verifies but nothing verified a
+  pre-existing `.wasm`. PR #143 adds `crates/typed-wasm-verify/src/bin/
+  tw-verify.rs`: `tw-verify <module.wasm>` runs structural validation ->
+  L7/L10/L13 ownership -> L2 access-site / L15 capability passes. It is
+  host-language-neutral and complements the Rust producer; validated
+  against `tw build` output.
+. **Status drift reconciled (PR #144).** `main`'s CHANGELOG recorded
+  gate 2 discharged by #134, but `AUDIT.adoc`, `STATE.a2ml`,
+  `docs/PRODUCTION-PATH.adoc`, and `docs/wiki/Phase-0-Status.md` still
+  read "2 of 3 gates met / codegen v0 outstanding". All four were
+  reconciled to "3 of 3", crediting the Rust producer and noting
+  ADR-0004 is *Proposed* (so the host-language decision is not
+  over-claimed as final).
+
+== State at session close
+
+[cols="1,3"]
+|===
+| Phase 0 gates | **3 of 3 met** (gate 1 CI green-or-advisory; gate 2 codegen v0 via `crates/typed-wasm-codegen` #134; gate 3 ROADMAP truthful)
+| Producer | `crates/typed-wasm-codegen` (`tw build`): examples 01 (L1-6) + 03 (L7-10) + a multi-module linear boundary; WAT emission; `name` section
+| Verifier CLI | `tw-verify` (#143) — standalone validation for wasm from any producer
+| Tracking issue | #48 (Phase 0) closed — gate met; carry-forward items below live under Phase 1
+|===
+
+Merges this session used an admin (owner-directed) squash-merge past a
+backlogged CI runner queue; the only red checks were the known
+pre-existing advisories (Build+E2E Idris2/Zig, Validate A2ML/K9,
+scorecard). Each PR's blocking gates (`cargo test --workspace --locked`,
+claim/security envelopes, structural E2E, governance precheck) were
+verified locally on the merged `main` before and after merge.
+
+== Carry-forward (Phase 1, issue #49)
+
+* Front-end -> IR seam: route the AffineScript/Idris2 parser into the
+  Rust producer's IR (#127). v0 lowers a fixed example schema.
+* Remaining examples + full `spec/grammar.ebnf` coverage.
+* Source -> line maps (#129); region-imports / L13-positive (#140);
+  ECHIDNA round-trip corpus (#130).
+* **ADR-0004 ratification** (Accept the Rust host-language pin at owner
+  review).
+* **Track B** (cross-repo): swap `affinescript/lib/{tw_verify,
+  tw_interface}.ml` for a `typed-wasm-verify` subprocess — needs a
+  session pointed at `hyperpolymath/affinescript`.
+
+== Housekeeping note
+
+The merged topic branches (#143, #144) auto-deleted on merge. The stale
+branch `claude/kind-lovelace-twRRg` (closed #136) could not be deleted
+via the available tooling (git ref-deletion returns 403 over the session
+proxy and the GitHub MCP exposes no delete-branch verb); it is safe to
+delete from the GitHub UI — PR #136 retains its diff regardless.

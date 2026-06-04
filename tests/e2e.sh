@@ -222,7 +222,7 @@ for f in "${PARSER_OUTPUTS[@]}"; do
   if [ -f "$f" ]; then
     pass "Parser build output exists: $f"
   else
-    skip "Parser build output not yet built: $f (run \`rescript build\`)"
+    skip "Parser build output not yet built: $f (run \`affinescript build\`)"
   fi
 done
 
@@ -254,13 +254,14 @@ else
   skip "selur-compose.toml not present (optional)"
 fi
 
-# deno.lock or package.json for JS deps
-if [ -f "deno.lock" ]; then
-  pass "deno.lock present (Deno dependency lockfile)"
+# deno.json — Deno JS-runtime config (no lockfile needed: only node: builtins,
+# no remote npm:/https: imports). package.json was dropped in #133 (Deno-first).
+if [ -f "deno.json" ]; then
+  pass "deno.json present (Deno JS-runtime config)"
 elif [ -f "package.json" ]; then
   pass "package.json present (JS deps)"
 else
-  skip "No JS lockfile found (deno.lock / package.json)"
+  skip "No Deno/JS config found (deno.json / package.json)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -311,21 +312,23 @@ for f in "${SPDX_CHECK_FILES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# 9. Existing smoke test can be invoked (node available)
+# 9. Existing smoke test can be invoked (Deno available)
 # ---------------------------------------------------------------------------
 section "9. Smoke test invocability"
 
-if ! command -v node &>/dev/null; then
-  skip "node not found — skipping smoke test invocation"
-elif [ ! -f "src/parser/Parser.mjs" ] || [ ! -d "node_modules/@rescript" ]; then
-  # Structural job runs without a build; smoke test needs rescript artifacts +
-  # the @rescript runtime in node_modules. Skip cleanly rather than fail —
-  # the smoke job runs the real invocation after `rescript build`.
-  skip "rescript artifacts or node_modules absent — skipping smoke test invocation"
+DENO_RUN="deno run --allow-read --allow-write --allow-run --allow-env --allow-sys"
+
+if ! command -v deno &>/dev/null; then
+  skip "deno not found — skipping smoke test invocation"
+elif [ ! -f "src/parser/Parser.mjs" ]; then
+  # Structural job runs without a build; the smoke test needs the AffineScript
+  # parser output (src/parser/Parser.mjs). Skip cleanly rather than fail — the
+  # smoke job runs the real invocation after `affinescript build`.
+  skip "src/parser/Parser.mjs absent — skipping smoke test invocation"
 else
-  echo "  Invoking: node tests/smoke/e2e-smoke.mjs"
-  if node tests/smoke/e2e-smoke.mjs 2>&1 | tail -5; then
-    if node tests/smoke/e2e-smoke.mjs 2>&1 | grep -q "passed"; then
+  echo "  Invoking: \$DENO_RUN tests/smoke/e2e-smoke.mjs"
+  if $DENO_RUN tests/smoke/e2e-smoke.mjs 2>&1 | tail -5; then
+    if $DENO_RUN tests/smoke/e2e-smoke.mjs 2>&1 | grep -q "passed"; then
       pass "Smoke test ran and reports passed"
     else
       fail "Smoke test ran but reported failures or no 'passed' summary"

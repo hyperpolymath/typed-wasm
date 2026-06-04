@@ -58,16 +58,24 @@ The plan below targets reading (1).
 
 What is *not* yet in place:
 
-* A `.twasm` -> `.wasm` codegen. The parser parses, the verifier verifies
-  someone else's wasm, but nothing in this repository emits wasm from a
-  `.twasm` source.
+* A `.twasm` -> `.wasm` codegen *beyond v0*. As of 2026-05-30 the in-tree
+  Rust producer `crates/typed-wasm-codegen` (`tw build`, PR #134) emits
+  verifier-accepted wasm for `examples/01-single-module.twasm` (plus
+  example 03 and a multi-module boundary); codegen for the remaining
+  examples, the full grammar, and the front-end -> IR seam is Phase 1
+  (issue #49 / #127). (At the start of Phase 0, nothing in this repository
+  emitted wasm from a `.twasm` source.)
 * Tree-sitter grammar, LSP, Linguist registration.
 * A producer specification document for third-party compilers.
 * Runtime-side enforcement of L7-L10.
 * Frozen 1.0 spec, conformance suite, third-party verifier implementation.
 
-Honest framing: today typed-wasm is a *verifier + spec*, not a *compiler*.
-That distinction is the spine of every phase that follows.
+Honest framing: at the start of Phase 0 typed-wasm was a *verifier + spec*,
+not a *compiler*. Codegen v0 (gate 2, met 2026-05-30 via
+`crates/typed-wasm-codegen`) makes it a *minimal compiler* for the
+example-01 schema (plus example 03 and a multi-module boundary); the full
+producer story is Phase 1. That distinction is the spine of every phase
+that follows.
 
 == The six phases
 
@@ -118,7 +126,10 @@ What advancing to Phase 1 requires:
   removed from the merge requirement set, with reason recorded in this
   document).
 . Codegen v0 emits valid wasm for `examples/01-single-module.twasm`,
-  verifiable end-to-end by `typed-wasm-verify`.
+  verifiable end-to-end by `typed-wasm-verify`. **MET 2026-05-30** —
+  in-tree Rust producer `crates/typed-wasm-codegen` (`tw build`, PR #134;
+  host-language ADR-0004 *Proposed*); round-trip gated by that crate's
+  `tests/roundtrip.rs`.
 . ROADMAP.adoc reflects reality — claims that an artifact is DONE only
   when the artifact exists and is reachable from a green CI run.
 
