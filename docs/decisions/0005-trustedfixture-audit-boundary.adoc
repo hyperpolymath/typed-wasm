@@ -1,0 +1,285 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Architecture Decision Record: 0005-trustedfixture-audit-boundary
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+
+# 5. `MkTrustedFixture` is the formal audit boundary for the `VerifierAccepts` / `SourceAccepts` predicates
+
+Date: 2026-06-02
+
+## Status
+
+Accepted
+
+Closes
+https://github.com/hyperpolymath/typed-wasm/issues/103[issue #103].
+Promotes the audit-boundary half of PR #79's design (commit `06ec00e`
+on `main`) from an inline comment in
+link:../../src/abi/TypedWasm/ABI/VerifierSpec.idr[`VerifierSpec.idr`]
+to a load-bearing architecture decision.
+
+## Context
+
+PR #79 landed TOTAL bodies (`%default total`; no `believe_me`, no
+`assert_total`, no `postulate`, no `sorry`, no `Admitted`) for both
+post-A10 audit obligations:
+
+* `verifierSpecAgreement : VerifierSpecAgreement` — bundles
+  `verifierIsSound` (verifier ⇒ spec) and `verifierIsComplete`
+  (spec ⇒ verifier).
+* `sourceVerifierAgreement : SourceVerifierAgreement` — bundles
+  `sourceImpliesVerifier` and `verifierImpliesSource`.
+
+The lemma bodies are total by case analysis on the constructor of the
+input. Both `VerifierAccepts m` constructors — `VAStructural` and
+`VADifferential` — surface a `FunctionsAccepted m.functions` payload
+that wraps directly into `SpecAccepts`. `SourceAccepts m` mirrors the
+shape. The composition lemmas (`sourceImpliesSpec` / `specImpliesSource`)
+inherit totality.
+
+What did NOT change in PR #79: the differential constructors
+(`VADifferential`, `SADifferential`) still ultimately depend on a
+non-Idris-proven step — the Rust differential harness's
+accept-verdict. PR #79's design choice was to **package** that
+attestation inline, via the `TrustedFixture m` record:
+
+[source,idris2]
+----
+record TrustedFixture (m : ModuleSummary) where
+  constructor MkTrustedFixture
+  trustedFixtureName : String
+  trustedFixtureId   : Nat
+  trustedWitness     : FunctionsAccepted m.functions
+----
+
+The structural witness `trustedWitness` is **required** at construction
+time. Once a `MkTrustedFixture` value exists, every downstream consumer
+operates on a structural Idris2 proof; no further trust is injected
+anywhere in the chain. The trust-injection moment is therefore exactly
+the act of writing `MkTrustedFixture` in source.
+
+Issue #103 framed the residual obligation:
+
+> Closing this issue means **either** discharging those bodies to
+> constructive proofs **or** documenting the trust-injection moment
+> formally (single grep point: `MkTrustedFixture` construction).
+
+and listed three closure paths:
+
+. WasmCert-Isabelle tie-back for the Rust-verifier soundness step.
+. A constructive proof of the Rust verifier's soundness, in-tree.
+. An explicit ADR documenting `MkTrustedFixture` as the audit
+  boundary.
+
+Paths (1) and (2) are both multi-month external/upstream commitments.
+Path (3) is the same audit story PR #79 already implemented as a
+docstring; promoting it to an ADR gives the inspection invariants a
+load-bearing home and a stable cross-reference target for the proof
+code and the proof-debt documents.
+
+## Decision
+
+Adopt `MkTrustedFixture` as the **formal, single, named audit
+boundary** for the `VerifierAccepts` / `SourceAccepts` predicates in
+link:../../src/abi/TypedWasm/ABI/VerifierSpec.idr[`VerifierSpec.idr`].
+
+### What this means concretely
+
+. The audit-boundary statement is normative: every `VerifierAccepts m`
+  or `SourceAccepts m` value whose history includes a
+  `VADifferential` / `SADifferential` step **must** route through a
+  `MkTrustedFixture` construction. The smart constructors
+  `differentialAccepted` and `sourceAccepted` enforce this at the
+  type level (both take a `FunctionsAccepted m.functions` argument
+  and wrap it into a `MkTrustedFixture` inside the differential
+  constructor — there is no other surface for differential
+  acceptance).
+. `MkTrustedFixture` is the **single grep point**: a complete
+  enumeration of trust injections is `git grep MkTrustedFixture` in
+  the proof code (and its companion in the test/wiring code if a
+  fixture-table module is added in future work).
+. The inspection invariants below (§Inspection invariants) define what
+  reviewers verify at each `MkTrustedFixture` call site. These
+  invariants are the spec the ADR pins; they replace the implicit
+  "trust the harness" reading.
+. The closure paths (1) and (2) from issue #103 remain valid future
+  upgrades. This ADR does NOT preclude them: an Isabelle tie-back or
+  a constructive verifier-soundness proof would **subsume** the
+  audit boundary by allowing every `VAStructural`/`SAStructural`
+  construction to absorb what `VADifferential`/`SADifferential`
+  currently delegate. Either upgrade would supersede this ADR.
+
+### Inspection invariants
+
+Every `MkTrustedFixture m` construction site is audited against the
+following three invariants. Inspection is the load-bearing step the
+ADR formalises.
+
+[discrete]
+==== I1. Provenance — fixture identity matches a harness row
+
+The pair `(trustedFixtureName, trustedFixtureId)` MUST correspond to
+an existing row in the Rust differential harness
+(link:../../crates/typed-wasm-verify/tests/cross_compat.rs[`crates/typed-wasm-verify/tests/cross_compat.rs`]).
+
+* `trustedFixtureName` MUST equal the harness fixture's name as it
+  appears in the `cross_compat` test table.
+* `trustedFixtureId` MUST equal the harness row's numeric id (the row
+  index used by the cross-compat report).
+
+Worked example (PR #79 commit `06ec00e`):
+
+[source,idris2]
+----
+fixtureCleanLinearConsumerTrusted = MkTrustedFixture
+  "fixture_clean_linear_consumer"   -- name matches harness fixture
+  1                                  -- id matches harness row 1
+  fixtureCleanLinearConsumerWitness  -- structural witness — see I2
+----
+
+[discrete]
+==== I2. Witness fidelity — `trustedWitness` matches the harness's verdict
+
+The `FunctionsAccepted m.functions` payload passed as `trustedWitness`
+MUST be the structural witness the harness's ACCEPT verdict
+establishes — i.e., the L7+L10 structural acceptance predicate over
+`m.functions`. In particular:
+
+* If the harness REJECTS the fixture, no `MkTrustedFixture` may be
+  constructed for that fixture. (The reviewer should flag any such
+  attempt; the type system already rules out fabricating a
+  `FunctionsAccepted` for a fixture that lacks one — see the
+  `notVerifierStructuralAcceptsBadDoubleConsume` family in
+  `VerifierSpec.idr` for the negative side.)
+* If the harness ACCEPTS the fixture but for a strictly weaker
+  property than `IntentsLinearAcceptable` (e.g., a partial decode
+  pass), no `MkTrustedFixture` may be constructed at the full
+  `FunctionsAccepted` strength. Add a strictly-weaker predicate
+  instead, in a separate, audited follow-up.
+
+[discrete]
+==== I3. Module shape — `ModuleSummary` mirrors the harness's view
+
+The `ModuleSummary` value indexing the `TrustedFixture` MUST mirror
+the Rust harness's `ModuleSummary` reconstruction for the same
+fixture bytes:
+
+* Function order MUST match the harness's iteration order over the
+  module's exports.
+* `OwnershipIntent` list per function MUST match the harness's
+  decoded `typedwasm.ownership` carrier section (or its absence —
+  see the cross-references below).
+
+A mismatch between the Idris2 `ModuleSummary` and the harness's
+decoded view is a fixture-wiring bug, not a soundness bug, but it
+voids `I2` and therefore voids the `MkTrustedFixture`.
+
+### What this does NOT do
+
+* It does not constitute a constructive proof of Rust-verifier
+  soundness. The Rust verifier remains the trusted base for the
+  differential path; the ADR pins the audit story for that trust,
+  not its discharge.
+* It does not change the Idris2 source. The audit-boundary docstring
+  PR #79 placed near `MkTrustedFixture` already states the same
+  invariants in narrative form; this ADR is the load-bearing,
+  cross-referenced version of that statement.
+* It does not gate the structural path. `VAStructural` and
+  `SAStructural` continue to inject zero trust — they only require a
+  pure Idris2 `FunctionsAccepted m.functions` value. The
+  `verifierIsComplete` direction (spec ⇒ verifier) routes through
+  `VAStructural` and therefore is trust-free in both PR #79 and this
+  ADR.
+
+## Consequences
+
+### Positive
+
+* **Single grep point** — `MkTrustedFixture` is the unique
+  trust-injection name. `git grep MkTrustedFixture` enumerates every
+  audit-relevant call site, in proof code and test wiring alike.
+* **Total Idris2 chain preserved** — the audit boundary does not add
+  any escape hatch (no `believe_me`, no `assert_total`, no `postulate`,
+  no `sorry`, no `Admitted`); the trust budget lives in a record
+  constructor, not in a soundness lemma.
+* **Stable cross-reference for proof-debt docs** — `PROOF-NEEDS.md`
+  and `docs/proof-debt.md` can now point at ADR-0005 instead of
+  re-stating the invariants inline.
+* **Explicit subsumption path** — a future WasmCert-Isabelle
+  tie-back or constructive verifier-soundness proof has a named
+  ADR to supersede, not an inline docstring to argue with.
+* **Audit checklist for reviewers** — the I1/I2/I3 invariants give
+  PR reviewers a concrete, three-bullet checklist for any new
+  `MkTrustedFixture` site.
+
+### Negative
+
+* **Trust is real and named** — the ADR makes explicit that the Rust
+  verifier (and the source-side harness) remain the trusted base for
+  the differential path. Anyone reading `verifierSpecAgreement.idr`
+  as "no trust anywhere" is wrong; the audit boundary moved to
+  `MkTrustedFixture`, it did not disappear.
+* **Per-fixture review burden** — adding a fixture means a manual
+  invariant check against the harness; the ADR does not automate
+  this. (A future CI script that grep-cross-references
+  `MkTrustedFixture` against `cross_compat.rs` fixture names is a
+  cheap follow-up.)
+
+### Neutral
+
+* The ADR does not change any Idris2 type. PR #79's record shape
+  remains canonical.
+* The smart constructors `differentialAccepted` / `sourceAccepted`
+  continue to be the recommended surface for constructing a
+  fixture-backed acceptance witness; they are documented as the
+  pre-`MkTrustedFixture` ergonomic wrapper.
+
+## Future work — when this ADR is superseded
+
+The two paths that would supersede this ADR by collapsing the audit
+boundary into a constructive proof:
+
+. **WasmCert-Isabelle tie-back** — port the Rust verifier's
+  acceptance criterion to the WasmCert-Isabelle development and
+  prove it sound against the WebAssembly spec's typing rules. The
+  Idris2 side would then receive the Isabelle theorem as an external
+  trust commit (the trusted base shifts to WasmCert-Isabelle), and
+  `VADifferential` could be replaced with a constructor that
+  carries the Isabelle theorem instead of a fixture row.
+. **Constructive Rust-verifier soundness** — prove the Rust verifier
+  sound in a system (Rust + Creusot, Lean, Coq, or Idris2) that can
+  be checked in the same CI run. The Idris2 side would then receive
+  the verifier-soundness theorem and absorb the differential
+  constructor into `VAStructural`.
+
+Either upgrade would land its own ADR that supersedes this one. Until
+then, the audit boundary is `MkTrustedFixture` and the inspection
+invariants are I1/I2/I3.
+
+## Cross-references
+
+* link:../../src/abi/TypedWasm/ABI/VerifierSpec.idr[`src/abi/TypedWasm/ABI/VerifierSpec.idr`]
+  — the proof code this ADR pins. PR #79 / commit `06ec00e`.
+* link:../../crates/typed-wasm-verify/tests/cross_compat.rs[`crates/typed-wasm-verify/tests/cross_compat.rs`]
+  — the Rust differential harness. Fixture names and row ids in I1
+  refer to entries in this file.
+* link:../../PROOF-NEEDS.md[`PROOF-NEEDS.md`] — proof-debt handoff.
+  Long-tail item "Full proof bodies for `VerifierSpecAgreement` /
+  `SourceVerifierAgreement`" is closed via this ADR (audit-boundary
+  path). Cross-references back to ADR-0005 from the post-A10 / A13
+  RECONCILIATION banner.
+* https://github.com/hyperpolymath/typed-wasm/issues/103[issue #103] —
+  this ADR closes #103.
+* https://github.com/hyperpolymath/typed-wasm/pull/79[PR #79] — landed
+  the statement-level records and TOTAL bodies; this ADR formalises
+  the audit-boundary half of that PR's design.
+* https://github.com/hyperpolymath/typed-wasm/pull/74[PR #74] — the
+  superseded alternative design (Maybe-returning bridges + closed-world
+  `RegisteredFixture` GADT). PR #79 picked the inline-witness shape
+  this ADR pins; the `RegisteredFixture` machinery remains available
+  as a composable add-on if a fixture-table module is added in
+  future work.
+* link:../../PROOF-NEEDS.md[`PROOF-NEEDS.md` RECONCILIATION 2026-05-27
+  (post-A10 items 7 + 8 bodies closed)] — the prior reconciliation
+  banner whose audit-boundary claim this ADR backs.

@@ -137,18 +137,9 @@ fn build(rest: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    // v0 emits only the example-01 module. Build it, then self-verify so a
-    // codegen bug surfaces as an actionable message (#126) instead of bad
-    // bytes; only then render the artifact(s).
-    let module = typed_wasm_codegen::example01();
-    if let Err(diagnostics) = typed_wasm_codegen::self_verify(&module) {
-        eprintln!("tw build: the emitted module failed verification:");
-        for d in &diagnostics {
-            eprintln!("  - {d}");
-        }
-        return ExitCode::FAILURE;
-    }
-    let bytes = typed_wasm_codegen::emit(&module);
+    // v0 emits only the example-01 module; render the bytes once, then
+    // write the requested artifact(s).
+    let bytes = typed_wasm_codegen::emit_example01();
     let base = output.unwrap_or_else(|| input.clone());
     let mut wrote: Vec<String> = Vec::new();
 
@@ -171,7 +162,8 @@ fn build(rest: &[String]) -> ExitCode {
     }
 
     eprintln!(
-        "tw build: wrote {} — verified OK (L2 region binding + L7/L10 ownership).",
+        "tw build: wrote {} — carriers: typedwasm.regions + typedwasm.access-sites \
+         (verify with `typed-wasm-verify`).",
         wrote.join(" + ")
     );
     ExitCode::SUCCESS

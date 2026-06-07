@@ -22,11 +22,6 @@ REPO := "typed-wasm"
 version := "0.1.0"
 tier := "infrastructure"  # 1 | 2 | infrastructure
 
-# JS runtime: Deno (estate npm→Deno migration, #133 / standards#253). The .affine
-# parser sources compile to .mjs; those .mjs run under Deno with scoped permissions
-# (file read/write, subprocess spawn for idris2/zig, env access). See deno.json.
-deno_run := "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys"
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEFAULT & HELP
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -103,25 +98,25 @@ clean-all: clean
 test *args:
     @echo "Running AffineScript parser tests..."
     affinescript build
-    {{deno_run}} tests/parser/ParserTests.mjs
+    node tests/parser/ParserTests.mjs
     @echo ""
     @echo "Running contract tests..."
-    {{deno_run}} tests/contracts/airborne-step-state-contract.mjs
+    node tests/contracts/airborne-step-state-contract.mjs
     @echo ""
     @echo "Running E2E driver (parse + check every example)..."
-    {{deno_run}} tests/e2e/e2e-driver.mjs
+    node tests/e2e/e2e-driver.mjs
     @echo ""
     @echo "Running per-level test suites (L1-L10)..."
-    {{deno_run}} tests/levels/L1.mjs
-    {{deno_run}} tests/levels/L2.mjs
-    {{deno_run}} tests/levels/L3.mjs
-    {{deno_run}} tests/levels/L4.mjs
-    {{deno_run}} tests/levels/L5.mjs
-    {{deno_run}} tests/levels/L6.mjs
-    {{deno_run}} tests/levels/L7.mjs
-    {{deno_run}} tests/levels/L8.mjs
-    {{deno_run}} tests/levels/L9.mjs
-    {{deno_run}} tests/levels/L10.mjs
+    node tests/levels/L1.mjs
+    node tests/levels/L2.mjs
+    node tests/levels/L3.mjs
+    node tests/levels/L4.mjs
+    node tests/levels/L5.mjs
+    node tests/levels/L6.mjs
+    node tests/levels/L7.mjs
+    node tests/levels/L8.mjs
+    node tests/levels/L9.mjs
+    node tests/levels/L10.mjs
     @echo ""
     @echo "Running Zig FFI tests..."
     cd ffi/zig && zig build test
@@ -132,49 +127,49 @@ test *args:
 test-verbose:
     @echo "Running all tests (verbose)..."
     affinescript build
-    {{deno_run}} tests/parser/ParserTests.mjs
+    node tests/parser/ParserTests.mjs
     cd ffi/zig && zig build test
-    {{deno_run}} tests/smoke/e2e-smoke.mjs
+    node tests/smoke/e2e-smoke.mjs
 
 # End-to-end smoke test — parse example, verify ABI correspondence
 test-smoke:
     @echo "Running E2E smoke test..."
     affinescript build
-    {{deno_run}} tests/smoke/e2e-smoke.mjs
+    node tests/smoke/e2e-smoke.mjs
 
 # ABI contract tests
 test-contract:
     @echo "Running ABI contract tests..."
-    {{deno_run}} tests/contracts/airborne-step-state-contract.mjs
+    node tests/contracts/airborne-step-state-contract.mjs
 
 # End-to-end test surface
 test-e2e:
     @echo "Running end-to-end tests..."
     affinescript build
-    {{deno_run}} tests/smoke/e2e-smoke.mjs
-    {{deno_run}} tests/e2e/e2e-driver.mjs
+    node tests/smoke/e2e-smoke.mjs
+    node tests/e2e/e2e-driver.mjs
 
 # Aspect tests for cross-surface claim coherence
 test-aspect:
     @echo "Running aspect tests..."
-    {{deno_run}} tests/aspect/claim-envelope.mjs
-    {{deno_run}} tests/aspect/security-envelope.mjs
+    node tests/aspect/claim-envelope.mjs
+    node tests/aspect/security-envelope.mjs
 
 # Property-based tests of parser/checker invariants
 test-property:
     @echo "Running property tests..."
-    {{deno_run}} tests/property/property_test.mjs
+    node tests/property/property_test.mjs
 
 # Proof-level regression (named-theorem presence; idris2 typecheck if available)
 test-proof:
     @echo "Running proof regression..."
-    {{deno_run}} tests/proof/regression.mjs
+    node tests/proof/regression.mjs
 
 # Parser benchmark surface
 bench:
     @echo "Running parser benchmark..."
     affinescript build
-    {{deno_run}} benchmarks/parser-bench.mjs
+    node benchmarks/parser-bench.mjs
 
 # Type-check Idris2 ABI modules (formal proofs)
 check-abi:
@@ -209,7 +204,7 @@ fmt-check:
 # Run linter
 lint:
     @echo "Linting AffineScript sources with warnings-as-errors..."
-    affinescript build --warn-error "+3+4+45+102"
+    npx affinescript build --warn-error "+3+4+45+102"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUN & EXECUTE
@@ -217,7 +212,7 @@ lint:
 
 # Run the application
 run *args: build
-    {{deno_run}} tests/smoke/e2e-smoke.mjs
+    node tests/smoke/e2e-smoke.mjs
 
 # Run with verbose output
 run-verbose *args: build
@@ -233,34 +228,21 @@ install: build-release
 # DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Check the toolchain is present (install everything with `just provision`)
+# Install/check all dependencies
 deps:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    echo "Checking toolchain (install with \`just provision\`)..."
-    have() { command -v "$1" >/dev/null 2>&1; }
-    report() { if have "$1"; then echo "  ok    $1"; else echo "  $2  $1 — $3"; fi; }
-    report deno         FAIL "JS runtime, required (estate npm→Deno, #133/#253)"
-    report cargo        FAIL "Rust verifier + codegen, required"
-    report affinescript warn "AffineScript parser compiler (OCaml)"
-    report wasmtime     warn "capstone execution gate (#132)"
-    report zig          warn "Zig FFI"
-    report idris2       warn "Idris2 proofs"
-    if have deno && have cargo; then echo "Required toolchain present."; \
-    else echo "Missing a required tool — run \`just provision\`."; exit 1; fi
-
-# Install the full toolchain — Deno, wasmtime, AffineScript (OCaml) — see tools/provision.sh
-provision:
-    bash tools/provision.sh
-
-# First-run setup: provision the toolchain then verify it (invoked by setup.sh)
-setup: provision deps
-    @echo "Setup complete — try \`just build\` then \`just test\`."
+    @echo "Checking dependencies..."
+    @command -v node >/dev/null
+    @command -v npx >/dev/null
+    @command -v zig >/dev/null
+    @command -v idris2 >/dev/null
+    @test -d node_modules || npm ci
+    @npm ls >/dev/null
+    @echo "All dependencies satisfied"
 
 # Audit dependencies for vulnerabilities
 deps-audit:
     @echo "Auditing for vulnerabilities..."
-    @command -v cargo-audit >/dev/null && cargo audit || echo "  (cargo-audit absent — \`cargo install cargo-audit\`; no npm deps since #133)"
+    @npm audit --omit=dev --audit-level=high
     @command -v trivy >/dev/null && trivy fs --severity HIGH,CRITICAL --quiet . || true
     @command -v gitleaks >/dev/null && gitleaks detect --source . --no-git --quiet || true
     @echo "Audit complete"
