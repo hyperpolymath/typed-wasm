@@ -30,6 +30,7 @@ jobs:
   structural:
     name: Structural E2E (no-build)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -44,6 +45,7 @@ jobs:
   smoke:
     name: Smoke test (Node.js AffineScript parser)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -118,6 +120,7 @@ jobs:
   build-e2e:
     name: Build + E2E (Idris2 + Zig)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -187,6 +190,7 @@ jobs:
   cargo-verify:
     name: Cargo build + test (typed-wasm-verify)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository

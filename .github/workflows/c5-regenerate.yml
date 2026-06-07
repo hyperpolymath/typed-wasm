@@ -36,6 +36,7 @@ jobs:
   regenerate:
     name: Regenerate C5.1 fixtures and diff
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout typed-wasm
