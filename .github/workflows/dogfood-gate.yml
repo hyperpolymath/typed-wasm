@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Check for A2ML files
         id: detect
@@ -48,7 +48,7 @@ jobs:
       - name: Validate A2ML manifests
         if: steps.detect.outputs.count > 0
         continue-on-error: true
-        uses: hyperpolymath/a2ml-validate-action@6bff6ec134fc977e86d25166a5c522ddea5c1e78 # main
+        uses: hyperpolymath/a2ml-validate-action@59145c7d1039fa3059b3ecacdb50ee23d7505898 # main
         with:
           path: '.'
           strict: 'false'
@@ -79,7 +79,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Check for K9 files
         id: detect
@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Scan for invisible characters
         id: lint
@@ -196,7 +196,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Check for Groove manifest
         id: groove
@@ -256,7 +256,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Generate dogfooding scorecard
         run: |

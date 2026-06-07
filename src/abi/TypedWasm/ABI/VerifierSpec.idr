@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+-- Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 --
 -- VerifierSpec.idr — Spec-of-record for the post-codegen Rust verifier
 -- and the source-side checker, with TOTAL bodies for both agreement
@@ -153,6 +153,12 @@ data FunctionsAccepted : List FunctionSummary -> Type where
 ||| id) with the structural witness the fixture is claimed to certify.
 ||| Constructing one is the trust-injection moment.  Search for
 ||| `MkTrustedFixture` to enumerate every fixture trust-injection.
+|||
+||| The audit boundary, the I1/I2/I3 inspection invariants every
+||| construction site is audited against, and the supersession path
+||| (WasmCert-Isabelle tie-back or constructive Rust-verifier
+||| soundness) are pinned by ADR-0005
+||| (`docs/decisions/0005-trustedfixture-audit-boundary.adoc`).
 public export
 record TrustedFixture (m : ModuleSummary) where
   constructor MkTrustedFixture
