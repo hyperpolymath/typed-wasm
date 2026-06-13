@@ -36,7 +36,7 @@ unstable-l15 = []
 # (0.221 -> 0.250 reshaped the import iterator). Keep these locked so the
 # next dependabot bump shows up as a visible Cargo.toml diff and forces a
 # deliberate port rather than a silent lockfile move.
-wasmparser = "=0.251.0"
+wasmparser = "=0.252.0"
 thiserror = "2"
 
 [dev-dependencies]

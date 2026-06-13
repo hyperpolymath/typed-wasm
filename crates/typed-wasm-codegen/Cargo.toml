@@ -30,4 +30,4 @@ typed-wasm-verify = { path = "../typed-wasm-verify", features = ["unstable-l2"] 
 [dev-dependencies]
 # Round-trip test validates the emitted module is well-formed wasm before
 # handing it to the verifier.
-wasmparser = "=0.251.0"
+wasmparser = "=0.252.0"
