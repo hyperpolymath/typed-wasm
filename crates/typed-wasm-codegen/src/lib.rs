@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 //! typed-wasm producer — **codegen v0**.
 //!
@@ -38,15 +38,18 @@ use typed_wasm_verify::section::{
     build_access_sites_section_payload, AccessSiteEntry, NO_TARGET_REGION,
 };
 use typed_wasm_verify::{
-    build_ownership_section_payload, build_regions_section_payload, FieldEntry, FieldKind,
-    Nullability, OwnershipEntry, OwnershipKind, RegionEntry, WasmTy, ACCESS_SITES_SECTION_NAME,
-    OWNERSHIP_SECTION_NAME, REGIONS_SECTION_NAME,
+    build_ownership_section_payload, build_regions_section_payload, CrossError, FieldEntry, FieldKind,
+    Nullability, OwnershipError, OwnershipEntry, OwnershipKind, RegionEntry, VerifyError, WasmTy,
+    verify_access_sites_from_module, verify_from_module,
+    ACCESS_SITES_SECTION_NAME, OWNERSHIP_SECTION_NAME, REGIONS_SECTION_NAME,
 };
 use wasm_encoder::{
     CodeSection, CustomSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
     ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module as WasmModule,
-    TypeSection, ValType,
+    NameMap, NameSection, TypeSection, ValType,
 };
+
+pub mod parser;
 
 // ----------------------------------------------------------------------
 // Typed region IR
@@ -439,6 +442,18 @@ pub fn emit(module: &Module) -> Vec<u8> {
     }
     wasm.section(&exports);
     wasm.section(&code);
+
+    // Name section: function names for debugging (wasm name custom section)
+    if !module.funcs.is_empty() {
+        let mut names = NameSection::new();
+        let mut function_names = NameMap::new();
+        for (i, func) in module.funcs.iter().enumerate() {
+            function_names.append(import_count + i as u32, &func.name);
+        }
+        names.functions(&function_names);
+        wasm.section(&names);
+    }
+
     // Carriers — each only when non-empty (an access-sites section without
     // a companion regions section is a verifier hard error).
     if !ownership_entries.is_empty() {
@@ -605,6 +620,281 @@ pub fn emit_example01() -> Vec<u8> {
 }
 
 // ----------------------------------------------------------------------
+// Paint-type bridge schemas (paint-type#39)
+// ----------------------------------------------------------------------
+
+/// Paint-type tile schema IR (paint-type-tile.twasm).
+/// Region indices: RGBA16F = 0, TileHeader = 1, Tile = 2.
+pub fn paint_type_tile() -> Module {
+    // RGBA16F: r:u16, g:u16, b:u16, a:u16 (8 bytes, align 2)
+    let rgba16f = Region {
+        name: "RGBA16F".into(),
+        fields: vec![
+            Field::scalar("r", Scalar::U16),
+            Field::scalar("g", Scalar::U16),
+            Field::scalar("b", Scalar::U16),
+            Field::scalar("a", Scalar::U16),
+        ],
+        byte_size: 8,
+    };
+    
+    // TileHeader: magic:u32, version:u32, grid_x:u32, grid_y:u32 (16 bytes, align 4)
+    let tile_header = Region {
+        name: "TileHeader".into(),
+        fields: vec![
+            Field::scalar("magic", Scalar::U32),
+            Field::scalar("version", Scalar::U32),
+            Field::scalar("grid_x", Scalar::U32),
+            Field::scalar("grid_y", Scalar::U32),
+        ],
+        byte_size: 16,
+    };
+    
+    // Tile: header:@TileHeader, pixels:@RGBA16F[4096] (32784 bytes)
+    let tile = Region {
+        name: "Tile".into(),
+        fields: vec![
+            Field::ptr("header", PtrKind::Owning, 1, false), // -> TileHeader
+            Field::array("pixels", Scalar::U16, 4096 * 4), // 4096 pixels * 4 channels = 16384 u16 elements
+        ],
+        byte_size: 32784,
+    };
+
+    let funcs = vec![
+        // alloc_tile(grid_x: u32, grid_y: u32) -> own region<Tile>
+        // Body: local.get 0, drop, i32.const 0 (consume params, return 0)
+        Func {
+            name: "alloc_tile".into(),
+            params: vec![Wty::I32, Wty::I32],
+            results: vec![Wty::I32],
+            body: vec![Op::LocalGet(0), Op::Drop, Op::I32Const(0)],
+            accesses: vec![],
+            export: true,
+        },
+        // free_tile(tile: own region<Tile>)
+        // Body: local.get 0, drop
+        Func {
+            name: "free_tile".into(),
+            params: vec![Wty::I32],
+            results: vec![],
+            body: vec![Op::LocalGet(0), Op::Drop],
+            accesses: vec![],
+            export: true,
+        },
+        // fill_tile(tile: &mut region<Tile>, r: u16, g: u16, b: u16, a: u16)
+        // Body: local.get 0..4, drop all
+        Func {
+            name: "fill_tile".into(),
+            params: vec![Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32],
+            results: vec![],
+            body: vec![
+                Op::LocalGet(0), Op::Drop,
+                Op::LocalGet(1), Op::Drop,
+                Op::LocalGet(2), Op::Drop,
+                Op::LocalGet(3), Op::Drop,
+                Op::LocalGet(4), Op::Drop,
+            ],
+            accesses: vec![
+                AccessSite { region: 2, field: 1, offset: 0 },
+            ],
+            export: true,
+        },
+        // read_pixel(tile: &region<Tile>, idx_x: i32, idx_y: i32) -> @RGBA16F
+        // Body: local.get 0, drop, i32.const 0
+        Func {
+            name: "read_pixel".into(),
+            params: vec![Wty::I32, Wty::I32, Wty::I32],
+            results: vec![Wty::I32],
+            body: vec![
+                Op::LocalGet(0), Op::Drop,
+                Op::LocalGet(1), Op::Drop,
+                Op::I32Const(0),
+            ],
+            accesses: vec![
+                AccessSite { region: 2, field: 1, offset: 0 },
+            ],
+            export: true,
+        },
+        // write_pixel(tile: &mut region<Tile>, idx_x: i32, idx_y: i32, r: u16, g: u16, b: u16, a: u16)
+        // Body: drop all params
+        Func {
+            name: "write_pixel".into(),
+            params: vec![Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32],
+            results: vec![],
+            body: vec![
+                Op::LocalGet(0), Op::Drop,
+                Op::LocalGet(1), Op::Drop,
+                Op::LocalGet(2), Op::Drop,
+                Op::LocalGet(3), Op::Drop,
+                Op::LocalGet(4), Op::Drop,
+                Op::LocalGet(5), Op::Drop,
+                Op::LocalGet(6), Op::Drop,
+            ],
+            accesses: vec![
+                AccessSite { region: 2, field: 1, offset: 0 },
+            ],
+            export: true,
+        },
+        // blit_tile(dst: &mut region<Tile>, src: &region<Tile>)
+        // Body: drop both params
+        Func {
+            name: "blit_tile".into(),
+            params: vec![Wty::I32, Wty::I32],
+            results: vec![],
+            body: vec![
+                Op::LocalGet(0), Op::Drop,
+                Op::LocalGet(1), Op::Drop,
+            ],
+            accesses: vec![
+                AccessSite { region: 2, field: 1, offset: 0 },
+            ],
+            export: true,
+        },
+    ];
+
+    Module {
+        regions: vec![rgba16f, tile_header, tile],
+        memory: Some(Memory {
+            min_pages: 1,
+            max_pages: Some(1024),
+        }),
+        imports: vec![],
+        funcs,
+        ownership: vec![],
+    }
+}
+
+/// Convenience: lower [`paint_type_tile`] to wasm bytes.
+pub fn emit_paint_type_tile() -> Vec<u8> {
+    emit(&paint_type_tile())
+}
+
+/// Paint-type layer schema IR (paint-type-layer.twasm).
+/// Region indices: LayerName = 0, Layer = 1, LayerStack = 2.
+pub fn paint_type_layer() -> Module {
+    // LayerName: bytes:u8[256] (256 bytes, align 1)
+    let layer_name = Region {
+        name: "LayerName".into(),
+        fields: vec![
+            Field::array("bytes", Scalar::U8, 256),
+        ],
+        byte_size: 256,
+    };
+    
+    // Layer: id:u32, name_len:u32, opacity_bits:u32, visible:u32, name:@LayerName (272 bytes)
+    let layer = Region {
+        name: "Layer".into(),
+        fields: vec![
+            Field::scalar("id", Scalar::U32),
+            Field::scalar("name_len", Scalar::U32),
+            Field::scalar("opacity_bits", Scalar::U32),
+            Field::scalar("visible", Scalar::U32),
+            Field::ptr("name", PtrKind::Owning, 0, false), // -> LayerName
+        ],
+        byte_size: 272,
+    };
+    
+    // LayerStack: magic:u32, layer_count:u32, next_id:u32, _pad:u32, layers:@Layer[256] (16 + 256*272 = 70128 bytes)
+    let layer_stack = Region {
+        name: "LayerStack".into(),
+        fields: vec![
+            Field::scalar("magic", Scalar::U32),
+            Field::scalar("layer_count", Scalar::U32),
+            Field::scalar("next_id", Scalar::U32),
+            Field::scalar("_pad", Scalar::U32),
+            Field::array("layers", Scalar::U8, 256 * 272), // placeholder as bytes for v0
+        ],
+        byte_size: 70128,
+    };
+
+    let funcs = vec![
+        // stack_new() -> own region<LayerStack>
+        Func {
+            name: "stack_new".into(),
+            params: vec![],
+            results: vec![Wty::I32],
+            body: vec![Op::I32Const(0)],
+            accesses: vec![],
+            export: true,
+        },
+        // stack_free(stack: own region<LayerStack>)
+        Func {
+            name: "stack_free".into(),
+            params: vec![Wty::I32],
+            results: vec![],
+            body: vec![Op::LocalGet(0), Op::Drop],
+            accesses: vec![],
+            export: true,
+        },
+        // push_layer(stack: &mut region<LayerStack>, name_buf: &region<LayerName>, name_len: u32) -> u32
+        Func {
+            name: "push_layer".into(),
+            params: vec![Wty::I32, Wty::I32, Wty::I32],
+            results: vec![Wty::I32],
+            body: vec![
+                Op::LocalGet(0), Op::Drop,
+                Op::LocalGet(1), Op::Drop,
+                Op::LocalGet(2), Op::Drop,
+                Op::I32Const(0),
+            ],
+            accesses: vec![
+                AccessSite { region: 2, field: 0, offset: 0 },
+                AccessSite { region: 2, field: 1, offset: 0 },
+                AccessSite { region: 2, field: 2, offset: 0 },
+            ],
+            export: true,
+        },
+        // get_id_at(stack: &region<LayerStack>, position: u32) -> u32
+        Func {
+            name: "get_id_at".into(),
+            params: vec![Wty::I32, Wty::I32],
+            results: vec![Wty::I32],
+            body: vec![
+                Op::LocalGet(0), Op::Drop,
+                Op::LocalGet(1), Op::Drop,
+                Op::I32Const(0),
+            ],
+            accesses: vec![
+                AccessSite { region: 2, field: 1, offset: 0 },
+            ],
+            export: true,
+        },
+        // set_opacity(stack: &mut region<LayerStack>, id: u32, bits: u32) -> u32
+        Func {
+            name: "set_opacity".into(),
+            params: vec![Wty::I32, Wty::I32, Wty::I32],
+            results: vec![Wty::I32],
+            body: vec![
+                Op::LocalGet(0), Op::Drop,
+                Op::LocalGet(1), Op::Drop,
+                Op::LocalGet(2), Op::Drop,
+                Op::I32Const(0),
+            ],
+            accesses: vec![
+                AccessSite { region: 2, field: 1, offset: 0 },
+            ],
+            export: true,
+        },
+    ];
+
+    Module {
+        regions: vec![layer_name, layer, layer_stack],
+        memory: Some(Memory {
+            min_pages: 2,
+            max_pages: Some(2),
+        }),
+        imports: vec![],
+        funcs,
+        ownership: vec![],
+    }
+}
+
+/// Convenience: lower [`paint_type_layer`] to wasm bytes.
+pub fn emit_paint_type_layer() -> Vec<u8> {
+    emit(&paint_type_layer())
+}
+
+// ----------------------------------------------------------------------
 // Multi-module codegen — Phase 1 deliverable 7 (#128)
 //
 // Producer-side emission at parity with the verifier's *existing*
@@ -704,4 +994,126 @@ pub fn emit_wat(module: &Module) -> String {
 /// Convenience: WAT for [`example01`].
 pub fn emit_example01_wat() -> String {
     emit_wat(&example01())
+}
+
+// ----------------------------------------------------------------------
+// Human-readable error helpers — Phase 1 deliverable 6 (#126).
+// ----------------------------------------------------------------------
+
+/// Self-verify a module: emit it to wasm bytes and run the verifier.
+/// Returns `Ok(())` if verification passes, or `Err` with a list of
+/// human-readable diagnostic strings if it fails.
+pub fn self_verify(module: &Module) -> Result<(), Vec<String>> {
+    let bytes = emit(module);
+    match verify_from_module(&bytes) {
+        Ok(()) => {
+            // Also verify access sites
+            let violations = verify_access_sites_from_module(&bytes)
+                .map_err(|e| vec![format!("access-sites parse error: {e}")])?;
+            if violations.is_empty() {
+                Ok(())
+            } else {
+                Err(violations.into_iter().map(|v| format!("{v:?}")).collect())
+            }
+        }
+        Err(e) => Err(humanize(module, &e)),
+    }
+}
+
+/// Humanize a verification error by resolving function indices to names.
+/// Takes the module IR (for name resolution) and the verifier error, and
+/// returns a list of human-readable diagnostic strings.
+pub fn humanize(module: &Module, err: &VerifyError) -> Vec<String> {
+    match err {
+        VerifyError::Parse(e) => vec![format!("wasm parse error: {e}")],
+        VerifyError::Ownership(errs) => {
+            errs.iter()
+                .map(|e| humanize_ownership_error(module, e))
+                .collect()
+        }
+        VerifyError::Cross(errs) => {
+            errs.iter()
+                .map(|e| humanize_cross_error(module, e))
+                .collect()
+        }
+    }
+}
+
+/// Extract the function index from an OwnershipError.
+fn func_idx(err: &OwnershipError) -> u32 {
+    match err {
+        OwnershipError::LinearNotUsed { func_idx, .. } => *func_idx,
+        OwnershipError::LinearDroppedOnSomePath { func_idx, .. } => *func_idx,
+        OwnershipError::LinearUsedMultiple { func_idx, .. } => *func_idx,
+        OwnershipError::ExclBorrowAliased { func_idx, .. } => *func_idx,
+        OwnershipError::ModuleNotIsolated { .. } => 0, // No function index for module-level errors
+    }
+}
+
+fn humanize_ownership_error(module: &Module, err: &OwnershipError) -> String {
+    // Map the func_idx to the actual function name
+    let idx = func_idx(err);
+    let func_name = module.funcs.get(idx as usize)
+        .map(|f| f.name.clone())
+        .unwrap_or_else(|| format!("function#{}", idx));
+    
+    match err {
+        OwnershipError::LinearNotUsed { param_idx, .. } => {
+            format!(
+                "L10 (linearity): {} parameter #{} is a Linear (own) resource but is not used on any path; Linear resources must be consumed exactly once",
+                func_name, param_idx
+            )
+        }
+        OwnershipError::LinearDroppedOnSomePath { param_idx, .. } => {
+            format!(
+                "L10 (linearity): {} parameter #{} is a Linear (own) resource but is dropped on some paths (must be consumed on every path)",
+                func_name, param_idx
+            )
+        }
+        OwnershipError::LinearUsedMultiple { param_idx, count, .. } => {
+            format!(
+                "L10 (linearity): {} parameter #{} is a Linear (own) resource but is used {} times on some control-flow path; Linear resources must be consumed exactly once (possible duplication)",
+                func_name, param_idx, count
+            )
+        }
+        OwnershipError::ExclBorrowAliased { param_idx, count, .. } => {
+            format!(
+                "L7 (aliasing): {} parameter #{} is an ExclBorrow (&mut) reference but {} simultaneous borrows occur on some control-flow path; at most one is permitted",
+                func_name, param_idx, count
+            )
+        }
+        OwnershipError::ModuleNotIsolated { reason } => {
+            format!("L13 (isolation): {}", reason)
+        }
+    }
+}
+
+/// Extract the caller function index from a CrossError.
+fn caller_func_idx(err: &CrossError) -> u32 {
+    match err {
+        CrossError::LinearImportCalledMultiple { caller_func_idx, .. } => *caller_func_idx,
+        CrossError::LinearImportDroppedOnSomePath { caller_func_idx, .. } => *caller_func_idx,
+    }
+}
+
+fn humanize_cross_error(module: &Module, err: &CrossError) -> String {
+    let idx = caller_func_idx(err);
+    let func_name = module.funcs.get(idx as usize)
+        .map(|f| f.name.clone())
+        .unwrap_or_else(|| format!("function#{}", idx));
+    
+    match err {
+        CrossError::LinearImportCalledMultiple { import_name, count, .. } => {
+            format!(
+                "L10 (boundary): {} calls import '{}' {} times on some path (Linear param; must be called at most once)",
+                func_name, import_name, count
+            )
+        }
+        CrossError::LinearImportDroppedOnSomePath { import_name, .. } => {
+            format!(
+                "L10 (boundary): {} calls import '{}' on some paths but not others (Linear param dropped on zero-call path)",
+                func_name, import_name
+            )
+        }
+    }
 }

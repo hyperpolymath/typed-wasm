@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Round-trip soundness for codegen v0 (Phase 1, issue #124).
 //
@@ -82,3 +83,35 @@ fn example01_embeds_both_l2_carriers() {
     let names: Vec<&str> = regions.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(names, ["Vec2", "Players", "Enemies"]);
 }
+
+#[test]
+fn paint_type_tile_is_well_formed_wasm() {
+    let bytes = typed_wasm_codegen::emit_paint_type_tile();
+    wasmparser::Validator::new()
+        .validate_all(&bytes)
+        .expect("paint-type-tile emitted module must be valid wasm");
+}
+
+#[test]
+fn paint_type_tile_passes_l7_l10_verifier() {
+    let bytes = typed_wasm_codegen::emit_paint_type_tile();
+    typed_wasm_verify::verify_from_module(&bytes)
+        .expect("paint-type-tile L7/L10 ownership pass must accept codegen output");
+}
+
+#[test]
+fn paint_type_layer_is_well_formed_wasm() {
+    let bytes = typed_wasm_codegen::emit_paint_type_layer();
+    wasmparser::Validator::new()
+        .validate_all(&bytes)
+        .expect("paint-type-layer emitted module must be valid wasm");
+}
+
+#[test]
+fn paint_type_layer_passes_l7_l10_verifier() {
+    let bytes = typed_wasm_codegen::emit_paint_type_layer();
+    typed_wasm_verify::verify_from_module(&bytes)
+        .expect("paint-type-layer L7/L10 ownership pass must accept codegen output");
+}
+
+

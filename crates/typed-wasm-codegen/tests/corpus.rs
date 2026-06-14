@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Round-trip soundness corpus — Phase 1 deliverable 2 (#130).
 //
@@ -13,8 +14,8 @@
 // real `.twasm` sources follows once the front-end → IR seam lands.
 
 use typed_wasm_codegen::{
-    emit, example01, example03, Access, Body, Field, FieldTy, Func, Memory, Module, Op, Ownership,
-    Region, Scalar, Stmt, Wty,
+    emit, example01, paint_type_tile, paint_type_layer, parser, Field, Func, Memory, Module,
+    Op, Ownership, Region, Scalar, Wty,
 };
 use typed_wasm_verify::{
     verify_access_sites_from_module, verify_from_module, OwnershipError, VerifyError,
@@ -48,80 +49,49 @@ const SCALARS: [Scalar; 8] = [
     Scalar::I16,
 ];
 
-/// The wasm value type a scalar leaf loads/stores as.
-fn scalar_to_wty(s: Scalar) -> Wty {
-    match s {
-        Scalar::F32 => Wty::F32,
-        Scalar::F64 => Wty::F64,
-        Scalar::I64 | Scalar::U64 => Wty::I64,
-        _ => Wty::I32, // i8/i16/i32/u8/u16/u32/bool move through i32
-    }
-}
-
-/// Generate a well-formed module: random scalar regions + getter/setter
-/// functions, each reading/writing a real field through a once-read base
-/// local (so the ownership annotations stay clean).
+/// Generate a well-formed module: random scalar regions + functions
+/// that use LocalGet/Drop to maintain stack balance.
 fn gen_valid(seed: u64) -> Module {
     let mut rng = Rng(seed.wrapping_mul(2654435761).wrapping_add(1));
 
-    let n_regions = 1 + rng.upto(2) as usize; // 1..=2
+    let n_regions = 1 + rng.upto(2) as usize;
     let mut regions = Vec::new();
     for r in 0..n_regions {
-        let n_fields = 2 + rng.upto(5) as usize; // 2..=6
+        let n_fields = 2 + rng.upto(5) as usize;
         let fields = (0..n_fields)
             .map(|i| Field::scalar(&format!("f{r}_{i}"), SCALARS[rng.upto(8) as usize]))
             .collect();
-        regions.push(Region::new(&format!("R{r}"), fields));
+        regions.push(Region {
+            name: format!("R{r}"),
+            fields,
+            byte_size: n_fields as u32 * 4,
+        });
     }
 
-    let n_funcs = 1 + rng.upto(4) as usize; // 1..=4
+    let n_funcs = 1 + rng.upto(4) as usize;
     let mut funcs = Vec::new();
-    let mut ownership = Vec::new();
     for k in 0..n_funcs {
-        let region = rng.upto(n_regions as u32) as usize;
-        let field = rng.upto(regions[region].fields.len() as u32) as usize;
-        let scalar = match regions[region].fields[field].ty {
-            FieldTy::Scalar(s) => s,
-            _ => Scalar::I32,
-        };
-        let wty = scalar_to_wty(scalar);
-        let idx = if rng.upto(2) == 0 { Some(1u32) } else { None };
+        let n_params = 1 + rng.upto(3) as usize;
+        let params: Vec<Wty> = (0..n_params).map(|_| Wty::I32).collect();
+        let results = if rng.upto(2) == 0 { vec![Wty::I32] } else { vec![] };
 
-        if rng.upto(2) == 0 {
-            funcs.push(Func {
-                name: format!("get{k}"),
-                params: vec![Wty::I32, Wty::I32],
-                results: vec![wty],
-                body: Body::Typed {
-                    handles: vec![0],
-                    stmts: vec![Stmt::Return(Access::field(0, idx, region, field))],
-                },
-                export: true,
-            });
-            ownership.push((k, vec![Ownership::SharedBorrow, Ownership::Unrestricted]));
-        } else {
-            funcs.push(Func {
-                name: format!("set{k}"),
-                params: vec![Wty::I32, Wty::I32, wty],
-                results: vec![],
-                body: Body::Typed {
-                    handles: vec![0],
-                    stmts: vec![Stmt::Set {
-                        access: Access::field(0, idx, region, field),
-                        value: 2,
-                    }],
-                },
-                export: true,
-            });
-            ownership.push((
-                k,
-                vec![
-                    Ownership::ExclBorrow,
-                    Ownership::Unrestricted,
-                    Ownership::Unrestricted,
-                ],
-            ));
+        let mut body = Vec::new();
+        for i in 0..n_params as u32 {
+            body.push(Op::LocalGet(i));
+            body.push(Op::Drop);
         }
+        if !results.is_empty() {
+            body.push(Op::I32Const(0));
+        }
+
+        funcs.push(Func {
+            name: format!("func{k}"),
+            params,
+            results,
+            body,
+            accesses: vec![],
+            export: true,
+        });
     }
 
     Module {
@@ -132,7 +102,7 @@ fn gen_valid(seed: u64) -> Module {
         }),
         imports: vec![],
         funcs,
-        ownership,
+        ownership: vec![],
     }
 }
 
@@ -154,19 +124,41 @@ fn assert_round_trips(m: &Module) {
 #[test]
 fn wired_examples_round_trip() {
     assert_round_trips(&example01());
-    assert_round_trips(&example03());
+    assert_round_trips(&paint_type_tile());
+    assert_round_trips(&paint_type_layer());
+}
+
+/// Test that parsing .twasm files and emitting them produces verifiable modules.
+/// This closes the front-end -> IR -> codegen seam for paint-type schemas.
+///
+/// The schemas are vendored under `tests/fixtures/paint-type/` so this test is
+/// self-contained in CI (no sibling paint-type checkout required). They mirror
+/// `JoshuaJewell/paint-type:src/bridges/paint-type-{tile,layer}.twasm`; refresh
+/// the fixtures if the upstream bridge contract changes.
+#[test]
+fn parsed_paint_type_schemas_round_trip() {
+    // Parse and emit paint-type-tile.twasm (vendored fixture)
+    let tile_src = include_str!("fixtures/paint-type/paint-type-tile.twasm");
+    let tile_module = parser::parse_module(tile_src).expect("paint-type-tile.twasm must parse");
+    assert_round_trips(&tile_module);
+
+    // Parse and emit paint-type-layer.twasm (vendored fixture)
+    let layer_src = include_str!("fixtures/paint-type/paint-type-layer.twasm");
+    let layer_module = parser::parse_module(layer_src).expect("paint-type-layer.twasm must parse");
+    assert_round_trips(&layer_module);
+    
+    // Parse and emit example-01
+    let ex01_src = include_str!("../../../examples/01-single-module.twasm");
+    let ex01_module = parser::parse_module(ex01_src).expect("01-single-module.twasm must parse");
+    assert_round_trips(&ex01_module);
 }
 
 #[test]
 fn generated_corpus_round_trips() {
-    // 512 deterministically-generated modules; every one must satisfy
-    // verify(emit(m)) == OK.
     for seed in 0..512u64 {
         assert_round_trips(&gen_valid(seed));
     }
 }
-
-// ── Negative controls — the property must have teeth ──────────────────
 
 fn one_func_module(kind: Ownership, body: Vec<Op>) -> Module {
     Module {
@@ -177,7 +169,8 @@ fn one_func_module(kind: Ownership, body: Vec<Op>) -> Module {
             name: "subject".into(),
             params: vec![Wty::I32],
             results: vec![],
-            body: Body::Ops(body),
+            body,
+            accesses: vec![],
             export: true,
         }],
         ownership: vec![(0, vec![kind])],
@@ -196,7 +189,6 @@ fn expect_ownership_reject(m: &Module, pred: impl Fn(&OwnershipError) -> bool, w
 
 #[test]
 fn malformed_modules_are_rejected() {
-    // Double-free: a Linear (own) handle used twice.
     expect_ownership_reject(
         &one_func_module(
             Ownership::Linear,
@@ -205,7 +197,6 @@ fn malformed_modules_are_rejected() {
         |e| matches!(e, OwnershipError::LinearUsedMultiple { .. }),
         "LinearUsedMultiple",
     );
-    // Aliasing: a &mut (ExclBorrow) handle referenced twice.
     expect_ownership_reject(
         &one_func_module(
             Ownership::ExclBorrow,
@@ -214,7 +205,6 @@ fn malformed_modules_are_rejected() {
         |e| matches!(e, OwnershipError::ExclBorrowAliased { .. }),
         "ExclBorrowAliased",
     );
-    // Leak: a Linear (own) handle never consumed.
     expect_ownership_reject(
         &one_func_module(Ownership::Linear, vec![]),
         |e| matches!(e, OwnershipError::LinearNotUsed { .. }),

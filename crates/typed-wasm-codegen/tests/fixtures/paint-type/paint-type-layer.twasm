@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Joshua Jewell (JoshuaJewell)
+//
+// paint-type-layer.twasm — typed-wasm schema for paint-type's layer
+// metadata stack.
+//
+// STATUS (2026-06-07): DRAFT — same status as paint-type-tile.twasm.
+// Compiles with `tw build` via hardcoded IR; tracked under paint-type#39 /
+// hyperpolymath/typed-wasm#127.
+//
+// Surface mirrored (see src/interface/ffi/src/main.zig in this repo):
+//   pt_layer_stack_new / pt_layer_stack_free
+//   pt_layer_push / pt_layer_delete / pt_layer_reorder_to
+//   pt_layer_count / pt_layer_get_id_at / pt_layer_get_name
+//   pt_layer_set_opacity / pt_layer_get_opacity
+//   pt_layer_set_visible / pt_layer_get_visible
+//
+// Constants pinned to PT_LAYER_NAME_MAX = 256, PT_LAYER_MAX_PER_STACK = 256.
+
+// --- Region Declarations ---
+
+// A bounded UTF-8 name buffer. 256 bytes — long enough for any human-
+// authored layer name, short enough that a full stack of 256 layers
+// (LayerStack below) keeps under ~70 KiB per pt_layer_stack_new alloc.
+region LayerName {
+    bytes: u8[256];
+
+    align 1;
+}
+
+// A single layer's metadata. 272 bytes:
+//   id (4) + name_len (4) + opacity_bits (4) + visible (4) + name (256).
+// `id == 0` is the PT_LAYER_ID_NONE sentinel; allocated ids are dense
+// from 1 upward and never recycled after delete.
+region Layer {
+    id:           u32;
+    name_len:     u32;
+    opacity_bits: u32;       // IEEE 754 binary32 bit pattern, clamped [0,1]
+    visible:      u32;       // 0 = hidden, non-zero = visible
+    name:         @LayerName;
+
+    where name_len <= 256;
+
+    align 4;
+}
+
+// The full stack: 16 B header + 256 layer slots = ~70 KiB.
+// Mirror of struct `PtLayerStack` in src/interface/ffi/src/main.zig.
+// PT_LAYER_STACK_MAGIC = 0x504C5354 ("PLST") is the safety pin.
+region LayerStack {
+    magic:       u32;
+    layer_count: u32;
+    next_id:     u32;
+    _pad:        u32;
+    layers:      @Layer[256];
+
+    where magic == 0x504C5354;
+    where layer_count <= 256;
+
+    align 4;
+}
+
+// --- Memory Declaration ---
+
+memory layer_memory {
+    initial: 2;        // 2 pages = 128 KiB — one stack + headroom
+    maximum: 2;        // exact: one stack lives here at a time
+
+    place LayerStack at 0;
+}
+
+// --- Functions ---
+
+// Level 10: linear allocation. Mirrors `pt_layer_stack_new() -> u64`.
+fn stack_new() -> own region<LayerStack>
+    effects { Alloc }
+{
+    region.alloc LayerStack {
+        magic = 0x504C5354,
+        layer_count = 0,
+        next_id = 1,
+        _pad = 0
+        // layers[] zero-initialised; id 0 == PT_LAYER_ID_NONE.
+    } -> stack;
+    return stack;
+}
+
+// Level 10: consumes the linear handle. Mirrors `pt_layer_stack_free`.
+fn stack_free(stack: own region<LayerStack>)
+    effects { Free }
+{
+    region.free $stack;
+}
+
+// Level 8: writes the new layer entry. Mirrors `pt_layer_push`.
+// Returns the newly issued id, or PT_LAYER_ID_NONE (0) if the stack is
+// full or name overflows.
+fn push_layer(
+    stack: &mut region<LayerStack>,
+    name_buf: &region<LayerName>,
+    name_len: u32
+) -> u32
+    effects { ReadRegion(LayerName), WriteRegion(LayerStack) }
+{
+    region.get $stack .layer_count -> count;
+    if count >= 256 {
+        return 0;            // full
+    }
+    if name_len > 256 {
+        return 0;            // name overflow
+    }
+
+    region.get $stack .next_id -> new_id;
+
+    region.set $stack.layers[count] .id, new_id;
+    region.set $stack.layers[count] .name_len, name_len;
+    region.set $stack.layers[count] .opacity_bits, 0x3F800000;  // 1.0f
+    region.set $stack.layers[count] .visible, 1;
+    // Copy name_buf into layers[count].name — modelled as a region.scan.
+    region.scan $name_buf.bytes indexed -> |i, b| {
+        region.get $b -> byte_val;
+        region.set $stack.layers[count].name.bytes[i], byte_val;
+    }
+
+    region.set $stack .layer_count, count + 1;
+    region.set $stack .next_id, new_id + 1;
+    return new_id;
+}
+
+// Level 5: looks up by id. Mirrors `pt_layer_get_id_at`.
+// Returns 0 if position is out of range.
+fn get_id_at(
+    stack: &region<LayerStack>,
+    position: u32
+) -> u32
+    effects { ReadRegion(LayerStack) }
+{
+    region.get $stack .layer_count -> count;
+    if position >= count {
+        return 0;
+    }
+    region.get $stack.layers[position] .id -> id;
+    return id;
+}
+
+// Level 8: clamps opacity_bits into [0.0, 1.0] (NaN → 1.0).
+// Mirrors `pt_layer_set_opacity`. The clamp itself is modelled here as
+// host responsibility — typed-wasm carries the f32 bits opaquely.
+fn set_opacity(
+    stack: &mut region<LayerStack>,
+    id: u32,
+    bits: u32
+) -> u32
+    effects { ReadRegion(LayerStack), WriteRegion(LayerStack) }
+{
+    region.get $stack .layer_count -> count;
+    let mut found: u32 = 0;
+    region.scan $stack.layers where id == id -> |layer| {
+        region.set $layer .opacity_bits, bits;
+        found = 1;
+    }
+    if found == 0 {
+        return 1;            // unknown id
+    }
+    return 0;
+}

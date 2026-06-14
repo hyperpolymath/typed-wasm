@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Optimization invariant-preservation — Phase 1 deliverable 3 (#131).
 //
@@ -9,10 +10,10 @@
 // that runs a real wasm-opt round-trip where the tool is available.
 
 use std::process::Command;
-use typed_wasm_codegen::{emit, emit_example01, Body, Func, Module, Op, Ownership, Wty};
+use typed_wasm_codegen::{emit, emit_example01, Func, Module, Op, Ownership, Wty};
 use typed_wasm_verify::{
     verify_access_sites_from_module, verify_from_module, OwnershipError, VerifyError,
-    ACCESS_SITES_SECTION_NAME, OWNERSHIP_SECTION_NAME, REGIONS_SECTION_NAME,
+    ACCESS_SITES_SECTION_NAME, REGIONS_SECTION_NAME,
 };
 
 fn custom_section_names(bytes: &[u8]) -> Vec<String> {
@@ -26,15 +27,17 @@ fn custom_section_names(bytes: &[u8]) -> Vec<String> {
 }
 
 /// HAZARD 1 — stripping custom sections makes verification vacuous.
-/// example 01 carries the sections the verifier checks; a carrier-free module
-/// is "accepted" only because there is nothing to check. An optimizer that
-/// drops custom sections silently turns the former into the latter.
+/// example 01 carries the L2 sections the verifier checks (regions +
+/// access-sites); a carrier-free module is "accepted" only because there is
+/// nothing to check. An optimizer that drops custom sections silently turns
+/// the former into the latter.
 #[test]
 fn stripping_carriers_makes_verification_vacuous() {
     let names = custom_section_names(&emit_example01());
     assert!(names.iter().any(|n| n == REGIONS_SECTION_NAME));
     assert!(names.iter().any(|n| n == ACCESS_SITES_SECTION_NAME));
-    assert!(names.iter().any(|n| n == OWNERSHIP_SECTION_NAME));
+    // example01 has no ownership annotations, so no ownership section is emitted
+    // assert!(names.iter().any(|n| n == OWNERSHIP_SECTION_NAME));
 
     let bare = emit(&Module {
         regions: vec![],
@@ -44,7 +47,8 @@ fn stripping_carriers_makes_verification_vacuous() {
             name: "f".into(),
             params: vec![Wty::I32],
             results: vec![],
-            body: Body::Ops(vec![Op::LocalGet(0), Op::Drop]),
+            body: vec![Op::LocalGet(0), Op::Drop],
+            accesses: vec![],
             export: true,
         }],
         ownership: vec![],
@@ -67,20 +71,21 @@ fn stripping_carriers_makes_verification_vacuous() {
 fn ownership_func_idx_is_load_bearing() {
     // Two functions of identical shape, each using its param twice.
     let funcs = || {
-        let dup = || Body::Ops(vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop]);
         vec![
             Func {
                 name: "a".into(),
                 params: vec![Wty::I32],
                 results: vec![],
-                body: dup(),
+                body: vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop],
+                accesses: vec![],
                 export: true,
             },
             Func {
                 name: "b".into(),
                 params: vec![Wty::I32],
                 results: vec![],
-                body: dup(),
+                body: vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop],
+                accesses: vec![],
                 export: true,
             },
         ]

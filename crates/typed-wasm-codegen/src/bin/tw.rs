@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 //! `tw` — the typed-wasm build CLI (codegen v0).
 //!
@@ -119,27 +119,53 @@ fn build(rest: &[String]) -> ExitCode {
         }
     };
 
-    // v0 gate: confirm the input is (structurally) the example-01 schema
-    // before emitting its baked IR. The general front-end -> IR seam is
-    // deferred per ADR-0004 (tracked by #127).
-    let is_example01 = src.contains("region Players")
-        && src.contains("region Enemies")
-        && src.contains("memory game_memory");
-    if !is_example01 {
-        eprintln!(
-            "tw build: codegen v0 only supports the example-01 schema \
-             (regions Players + Enemies and `memory game_memory`)."
-        );
-        eprintln!(
-            "           General .twasm front-end -> IR lowering is tracked \
-             in ADR-0004 and issue #127."
-        );
-        return ExitCode::FAILURE;
-    }
-
-    // v0 emits only the example-01 module; render the bytes once, then
-    // write the requested artifact(s).
-    let bytes = typed_wasm_codegen::emit_example01();
+    // Try to parse the .twasm file using the Rust parser (issue #127).
+    // This parser handles the paint-type schemas and example-01.
+    let bytes = match typed_wasm_codegen::parser::parse_module(&src) {
+        Ok(module) => {
+            let bytes = typed_wasm_codegen::emit(&module);
+            // Try to self-verify the emitted module
+            if let Err(diagnostics) = typed_wasm_codegen::self_verify(&module) {
+                for msg in diagnostics {
+                    eprintln!("tw build: self-verify warning: {}", msg);
+                }
+            }
+            bytes
+        }
+        Err(e) => {
+            // Fall back to string-matching for hardcoded schemas
+            eprintln!("tw build: parsing failed ({}), falling back to v0 string-matching: {}", input, e);
+            let is_example01 = src.contains("region Players")
+                && src.contains("region Enemies")
+                && src.contains("memory game_memory");
+            let is_paint_type_tile = src.contains("region RGBA16F")
+                && src.contains("region TileHeader")
+                && src.contains("region Tile")
+                && src.contains("memory tile_memory");
+            let is_paint_type_layer = src.contains("region LayerName")
+                && src.contains("region Layer")
+                && src.contains("region LayerStack")
+                && src.contains("memory layer_memory");
+            
+            if is_example01 {
+                typed_wasm_codegen::emit_example01()
+            } else if is_paint_type_tile {
+                typed_wasm_codegen::emit_paint_type_tile()
+            } else if is_paint_type_layer {
+                typed_wasm_codegen::emit_paint_type_layer()
+            } else {
+                eprintln!(
+                    "tw build: codegen v0 only supports example-01, paint-type-tile, \
+                     or paint-type-layer schemas."
+                );
+                eprintln!(
+                    "           General .twasm front-end -> IR lowering is tracked \
+                     in ADR-0004 and issue #127."
+                );
+                return ExitCode::FAILURE;
+            }
+        }
+    };
     let base = output.unwrap_or_else(|| input.clone());
     let mut wrote: Vec<String> = Vec::new();
 
