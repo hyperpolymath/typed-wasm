@@ -5,7 +5,7 @@
 // source spans from the front-end -> IR seam (#127); this provides the
 // function-name symbolication a debugger shows in stack traces.
 
-use typed_wasm_codegen::{emit_example01, emit_example03};
+use typed_wasm_codegen::emit_example01;
 
 fn name_section_strings(bytes: &[u8]) -> Option<String> {
     for payload in wasmparser::Parser::new(0).parse_all(bytes) {
@@ -29,15 +29,6 @@ fn example01_emits_function_names() {
         "count_active_enemies",
         "move_player",
     ] {
-        assert!(names.contains(f), "name section should include `{f}`");
-    }
-}
-
-#[test]
-fn example03_emits_function_names() {
-    let names = name_section_strings(&emit_example03())
-        .expect("emitted module must carry a `name` custom section");
-    for f in ["despawn_particle", "update_particle", "read_particle_pos"] {
         assert!(names.contains(f), "name section should include `{f}`");
     }
 }

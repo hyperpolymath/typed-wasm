@@ -1,0 +1,161 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Joshua Jewell (JoshuaJewell)
+//
+// paint-type-tile.twasm — typed-wasm schema for paint-type's RGBA16F tile.
+//
+// STATUS (2026-06-07): DRAFT. Compiles with `tw build` via hardcoded IR
+// in typed-wasm codegen v0 (added 2026-06-07). General `.twasm` front-end →
+// IR lowering (parsing) is tracked in hyperpolymath/typed-wasm#127; paint-type
+// side gate is paint-type#39. Round-trip soundness tracked in typed-wasm#130.
+//
+// This file documents the bridge contract today so it is reviewable
+// alongside the Rust + Zig FFI it shadows. When #127 lands, it becomes
+// the actual source the bridge generator emits, plus a corpus entry for
+// the round-trip soundness property (typed-wasm#130).
+//
+// Surface mirrored: pt_tile_alloc / pt_tile_free / pt_tile_fill /
+// pt_tile_read_pixel / pt_tile_write_pixel / pt_tile_blit / pt_version
+// (see src/interface/ffi/src/main.zig in this repo).
+
+// --- Region Declarations (the "schema") ---
+
+// One pixel: four IEEE 754 binary16 channels in premultiplied alpha.
+// 8 bytes total, naturally aligned.
+region RGBA16F {
+    r: u16;   // f16 bit pattern; verifier treats as opaque u16
+    g: u16;
+    b: u16;
+    a: u16;
+
+    where 0 <= r;     // u16 range is its own bounds; placeholder for
+    where 0 <= g;     // future f16-classifier constraint (TP-3 carrier).
+    where 0 <= b;
+    where 0 <= a;
+
+    align 2;
+}
+
+// Header: 16 bytes, magic + version + grid coordinates + pad.
+region TileHeader {
+    magic:   u32;     // 0x504C5400 "PTLE" — written by pt_tile_alloc
+    version: u32;     // schema version (bumped on layout change)
+    grid_x:  u32;     // tile coordinate in the larger image plane
+    grid_y:  u32;
+
+    where magic == 0x504C5400;   // L5: structural pin
+
+    align 4;
+}
+
+// A full tile: 32 KiB pixel buffer + 16 B header = 32784 B.
+// Mirror of struct `Tile` in src/interface/ffi/src/main.zig + the
+// constants TILE_SIZE / TILE_CHANNELS / TILE_PIXEL_BYTES in
+// src/paint_core/src/lib.rs.
+region Tile {
+    header: @TileHeader;        // embedded
+    pixels: @RGBA16F[64 * 64];  // 4096 pixels × 8 B = 32768 B
+
+    align 8;
+}
+
+// --- Memory Declaration ---
+
+memory tile_memory {
+    initial: 1;        // 1 page = 64 KiB — fits one tile + headroom
+    maximum: 1024;     // 64 MiB ceiling — caller-decided in v0.3.0
+
+    place Tile at 0;
+}
+
+// --- Functions ---
+
+// Level 10: linear allocation. Returns an OWNING handle that must be
+// freed exactly once. Mirrors `pt_tile_alloc(x, y) -> u64` where 0
+// signals allocation failure.
+fn alloc_tile(grid_x: u32, grid_y: u32) -> own region<Tile>
+    effects { Alloc }
+{
+    region.alloc Tile {
+        header = TileHeader {
+            magic = 0x504C5400,
+            version = 1,
+            grid_x = grid_x,
+            grid_y = grid_y
+        }
+        // pixels left zero-initialised; caller calls fill_tile next.
+    } -> tile;
+    return tile;
+}
+
+// Level 10: consumes the linear handle. Mirrors `pt_tile_free`.
+fn free_tile(tile: own region<Tile>)
+    effects { Free }
+{
+    region.free $tile;
+}
+
+// Level 8: write-effect on Tile. Mirrors `pt_tile_fill`.
+// All four channels write under exclusive borrow — guaranteed by &mut.
+fn fill_tile(
+    tile: &mut region<Tile>,
+    r: u16, g: u16, b: u16, a: u16
+)
+    effects { WriteRegion(Tile) }
+{
+    region.scan $tile.pixels -> |px| {
+        region.set $px .r, r;
+        region.set $px .g, g;
+        region.set $px .b, b;
+        region.set $px .a, a;
+    }
+}
+
+// Level 5: bounds-proven pixel read. Mirrors `pt_tile_read_pixel`.
+// idx_x and idx_y are bounded to [0, 64) by the array type; the
+// verifier eliminates the runtime bounds check.
+fn read_pixel(
+    tile: &region<Tile>,
+    idx_x: i32, idx_y: i32
+) -> @RGBA16F
+    effects { ReadRegion(Tile) }
+{
+    let linear: i32 = idx_y * 64 + idx_x;
+    region.get $tile.pixels[linear] -> px;
+    return px;
+}
+
+// Level 8: write at one pixel. Mirrors `pt_tile_write_pixel`.
+fn write_pixel(
+    tile: &mut region<Tile>,
+    idx_x: i32, idx_y: i32,
+    r: u16, g: u16, b: u16, a: u16
+)
+    effects { WriteRegion(Tile) }
+{
+    let linear: i32 = idx_y * 64 + idx_x;
+    region.set $tile.pixels[linear] .r, r;
+    region.set $tile.pixels[linear] .g, g;
+    region.set $tile.pixels[linear] .b, b;
+    region.set $tile.pixels[linear] .a, a;
+}
+
+// Level 7: paired-region aliasing safety. Mirrors `pt_tile_blit(dst, src)`
+// where dst and src are distinct tiles. The `&mut`/`&` split is what
+// makes the no-self-blit guarantee statically checkable.
+fn blit_tile(
+    dst: &mut region<Tile>,
+    src: &region<Tile>
+)
+    effects { ReadRegion(Tile), WriteRegion(Tile) }
+{
+    region.scan $src.pixels indexed -> |i, src_px| {
+        region.get $src_px .r -> sr;
+        region.get $src_px .g -> sg;
+        region.get $src_px .b -> sb;
+        region.get $src_px .a -> sa;
+        region.set $dst.pixels[i] .r, sr;
+        region.set $dst.pixels[i] .g, sg;
+        region.set $dst.pixels[i] .b, sb;
+        region.set $dst.pixels[i] .a, sa;
+    }
+}
