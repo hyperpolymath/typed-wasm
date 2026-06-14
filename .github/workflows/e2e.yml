@@ -56,30 +56,24 @@ jobs:
         with:
           node-version: '25'
 
-      - name: Install npm deps
-        run: npm install --no-audit --no-fund --silent
-
-      # Phase 0 NOTE (issue #48): Track A's parser migration replaced
-      # ReScript (.res + rescript.json + rescript build) with AffineScript
-      # (.affine + affinescript.json + @hyperpolymath/affinescript compiler).
-      # The compiler isn't yet declared as an npm dep in package.json so
-      # `npm install` can't fetch it on a clean CI runner. Detect the
-      # AffineScript or ReScript binary if either is present after install,
-      # build with whichever is available, otherwise skip and let downstream
-      # steps handle the artefact-absent case (they're already guarded).
-      - name: Build parser (AffineScript preferred, ReScript fallback)
+      # NOTE (issue #48): npm is banned estate-wide (Deno is the JS vehicle)
+      # and Track A retired the ReScript parser in favour of AffineScript
+      # (src/parser/*.affine — no .res, no package.json). There is therefore
+      # no `npm install` step. The AffineScript compiler is not yet wired into
+      # CI, so this builds the parser only if an `affinescript` toolchain is on
+      # PATH; otherwise it skips and the (already-guarded) downstream steps skip
+      # on absent src/parser/Parser.mjs. The named .mjs test scripts are
+      # dependency-free (node: + relative imports only), so they run on the
+      # setup-node runtime without any package manager.
+      - name: Build parser (AffineScript, if a compiler is available)
         run: |
-          if [ -x node_modules/.bin/affinescript ]; then
+          if command -v affinescript >/dev/null 2>&1; then
             echo "Building with AffineScript..."
-            node_modules/.bin/affinescript build
-          elif [ -x node_modules/.bin/rescript ]; then
-            echo "Building with ReScript (migration fallback)..."
-            node_modules/.bin/rescript build
+            affinescript build
           else
-            echo "::warning::No parser compiler available — skipping build."
-            echo "::warning::Track A parser-migration is incomplete; see #48."
-            echo "::warning::Downstream smoke / aspect / property / benchmark"
-            echo "::warning::steps will skip if src/parser/Parser.mjs is absent."
+            echo "::warning::AffineScript compiler not on PATH — skipping parser build."
+            echo "::warning::Track A parser-migration (ReScript->AffineScript) is not yet wired into CI; see #48."
+            echo "::warning::Downstream smoke / property / benchmark steps skip if src/parser/Parser.mjs is absent."
           fi
 
       - name: Run smoke test (skip if parser artefacts absent)
