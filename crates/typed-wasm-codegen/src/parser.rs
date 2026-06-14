@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 //! Minimal .twasm text parser for codegen v0.
 //!
 //! This module provides a Rust-native parser for the typed-wasm surface syntax
-//! as a stopgap until the ReScript parser integration (ADR-0004, issue #127) lands.
+//! as a stopgap until the AffineScript front-end (ADR-0004, issue #127) lands.
 //! It is intentionally limited to the subset needed by paint-type schemas and
 //! example-01, not the full .twasm language.
 //!
-//! This parser does NOT duplicate the full ReScript parser — it only handles
+//! This parser does NOT duplicate the full AffineScript front-end — it only handles
 //! the specific schemas needed to unblock paint-type#39 and demonstrate the
-//! codegen path. Full .twasm parsing remains deferred to the ReScript front-end.
+//! codegen path. Full .twasm parsing remains deferred to the AffineScript front-end.
 
 use crate::{Field, FieldTy, Memory, Module, PtrKind, Region, Scalar, Wty};
 use std::collections::HashMap;
