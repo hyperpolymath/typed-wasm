@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Debug symbols via the wasm `name` section — Phase 1 deliverable 5 / #129
 // (first increment). The full offset -> source-line source map is gated on

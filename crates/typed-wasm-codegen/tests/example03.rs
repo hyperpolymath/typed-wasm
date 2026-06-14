@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Codegen coverage for examples/03-ownership-linearity.twasm — L7–L10
 // (Phase 1 deliverable 1 / #127).
