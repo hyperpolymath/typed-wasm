@@ -442,7 +442,7 @@ pub fn emit(module: &Module) -> Vec<u8> {
     }
     wasm.section(&exports);
     wasm.section(&code);
-    
+
     // Name section: function names for debugging (wasm name custom section)
     if !module.funcs.is_empty() {
         let mut names = NameSection::new();
@@ -453,7 +453,7 @@ pub fn emit(module: &Module) -> Vec<u8> {
         names.functions(&function_names);
         wasm.section(&names);
     }
-    
+
     // Carriers — each only when non-empty (an access-sites section without
     // a companion regions section is a verifier hard error).
     if !ownership_entries.is_empty() {

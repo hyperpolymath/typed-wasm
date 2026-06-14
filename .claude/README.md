@@ -17,14 +17,11 @@ Checked-in, team-shared configuration for Claude Code sessions on typed-wasm.
 
 ### Permissions (`permissions.allow`)
 
-A **non-destructive** allowlist that cuts permission prompts for the commands used routinely in
-this repo: read-only git inspection (`status/log/diff/fetch/show/ls-files/ls-tree/branch/
-rev-parse/merge-base/for-each-ref/check-attr`, `git bundle verify`/`list-heads`), the cargo
-dev loop (`cargo build/test/run/clippy`, `cargo fmt --check`, `cargo metadata/audit`) — which is
-non-destructive to the source tree (build artifacts land in `target/`; `tw build` writes only the
-`.wasm`/`.wat` you name), `diff -rq`, and `curl` **restricted to
-`https://raw.githubusercontent.com/`** (used to compare sibling-estate repos without a full
-clone). No push, no source-mutating, and no destructive commands are granted — those still
+A **read-only** allowlist that cuts permission prompts for the inspection commands used
+routinely in this repo: `git status/log/diff/fetch/show/ls-files/ls-tree/branch/rev-parse/
+merge-base/for-each-ref/check-attr`, `git bundle verify`/`list-heads`, `diff -rq`, and
+`curl` **restricted to `https://raw.githubusercontent.com/`** (used to compare sibling-estate
+repos without a full clone). No write, push, or destructive commands are granted — those still
 prompt.
 
 ### Hooks (`hooks.SessionStart`)

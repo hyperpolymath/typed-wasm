@@ -30,26 +30,14 @@ unstable-l2 = []
 # `FunctionCapabilities` + `verify_capabilities_from_module` (PR #109).
 # L15-C (per-call-site grants) is a separate proposal 0004 (`[draft]`).
 unstable-l15 = []
-# L13 cross-module region-imports carrier for typed-wasm proposal 0003
-# (`[draft]`, typed-wasm#140 refs #95). Implies `unstable-l2`: the import
-# table cross-references `typedwasm.regions` field entries via the
-# high-bit `target_region` convention. Enables:
-#   - `parse_region_imports_section_payload` /
-#     `build_region_imports_section_payload` +
-#     `RegionImportEntry` / `ImportedFieldEntry` + `IMPORT_TABLE_BASE`
-#   - `verify_region_imports_from_module` (this PR) — self-consistency
-#     only; cross-module schema agreement (`SchemaSub`) defers to a
-#     later `verify_link_graph` pass per proposal 0003 §"Open
-#     questions" #4 default option a.
-unstable-l13-imports = ["unstable-l2"]
 
 [dependencies]
 # Exact pins: wasmparser's 0.x line ships API breaks on every minor bump
 # (0.221 -> 0.250 reshaped the import iterator). Keep these locked so the
 # next dependabot bump shows up as a visible Cargo.toml diff and forces a
 # deliberate port rather than a silent lockfile move.
-wasmparser = "=0.251.0"
+wasmparser = "=0.252.0"
 thiserror = "2"
 
 [dev-dependencies]
-wasm-encoder = "=0.251.0"
+wasm-encoder = "=0.252.0"

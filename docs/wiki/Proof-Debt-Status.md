@@ -167,7 +167,7 @@ IDRIS2_PREFIX=$IDRIS2/0.8.0 idris2 --build src/abi/typed-wasm.ipkg
 # Run the proof regression
 PATH=$IDRIS2/0.8.0/bin:$PATH \
 IDRIS2_PREFIX=$IDRIS2/0.8.0 \
-  deno run --allow-read --allow-write --allow-run --allow-env --allow-sys tests/proof/regression.mjs --strict
+  node tests/proof/regression.mjs --strict
 # expects: 107 passed, 0 failed, 0 skipped
 
 # Verify no banned patterns
