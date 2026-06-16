@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
+
 # Proof Debt Status
 
 **What's mechanically proven in typed-wasm, what's outstanding, and what's blocked on prerequisites.**
@@ -127,6 +132,20 @@ The `composeWitnessLegacyAgree` lemma pins down: composing the legacy projection
 ## Outstanding long-tail items
 
 In rough decreasing priority:
+
+### Codegen→verified-wasm assurance ladder (the second axis) — ACTIVE
+
+**Status:** climbing (2026-06-16). This is a _second, complementary_ axis to the
+Idris-model proofs above: the assurance that the Rust producer's emitted bytes
+are what an independent verifier accepts and a wasm engine executes correctly.
+Full per-tier detail (T1…T5) lives in
+[`PROOF-NEEDS.md` §"RECONCILIATION 2026-06-16 (codegen climb)"](https://github.com/hyperpolymath/typed-wasm/blob/main/PROOF-NEEDS.md). Headline:
+
+- **T1 execution gate** — ✅ landed (`tests/execute_lowering.rs`, wasmi round-trip + no-clobber, non-vacuous by mutation). _Empirical stand-in for the byte-equality / WasmCert items below until those land._
+- **T2 verifier self-certification** — ✅ landed (`verify_access_typing_from_module` + `AccessTypingReport`): the verifier decodes the code section and checks each pinned access lands on a load/store of the field's exact type/width/offset, in-region. Closes proposal-0002's deferred `AccessSiteMisalignment`. Tests in `tests/access_typing.rs` (positive + 5 teeth + control, mutation-proven).
+- **T3 parser totality** — ⚠️ 3 pre-existing arithmetic panics remain (hardening PR pending).
+- **T4 layout-equivalence lemma** — ❌ `Layout/ABI.idr` offsets vs Rust `resolve_field`, unproven equal (next bridge).
+- **T5a verifier↔spec** — ◐ trusted-base via ADR-0005; **T5b WasmCert tie-back** — ❌ (same item as below).
 
 ### Verifier L1–L6 + L13–L16 coverage on emitted wasm (#34 / #35)
 
