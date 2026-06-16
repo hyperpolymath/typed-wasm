@@ -85,7 +85,7 @@ impl<'a> Parser<'a> {
         let start = self.pos;
         // Panic-safe: `get` returns None on an out-of-range / non-char-boundary
         // index instead of panicking on malformed or truncated input.
-        if self.src.get(start..).map_or(false, |rest| rest.starts_with(word)) {
+        if self.src.get(start..).is_some_and(|rest| rest.starts_with(word)) {
             let next_char = self.src.as_bytes().get(start + word.len());
             if next_char.is_none() || !next_char.unwrap().is_ascii_alphabetic() {
                 return true;
@@ -134,7 +134,7 @@ impl<'a> Parser<'a> {
 
     fn expect(&mut self, s: &str) -> Result<(), String> {
         self.skip_whitespace();
-        if self.src.get(self.pos..).map_or(false, |rest| rest.starts_with(s)) {
+        if self.src.get(self.pos..).is_some_and(|rest| rest.starts_with(s)) {
             self.pos += s.len();
             Ok(())
         } else {
@@ -169,13 +169,13 @@ impl<'a> Parser<'a> {
         let name = self.parse_ident();
         self.skip_whitespace();
 
-        // Parse optional array specifier: region Name[N]
-        let _cardinality = if self.peek_char('[') {
+        // Parse optional array specifier: region Name[N]. We don't yet track
+        // region cardinality, so the parsed size is discarded.
+        if self.peek_char('[') {
             self.expect("[")?;
             let _n: u64 = self.parse_number()?;
             self.expect("]")?;
-            // For now, we don't handle region arrays properly
-        };
+        }
 
         self.skip_whitespace();
         self.expect("{")?;
@@ -823,7 +823,7 @@ impl<'a> Parser<'a> {
     /// Non-erroring: consume literal `s` if present.
     fn try_str(&mut self, s: &str) -> bool {
         self.skip_whitespace();
-        if self.src.get(self.pos..).map_or(false, |r| r.starts_with(s)) {
+        if self.src.get(self.pos..).is_some_and(|r| r.starts_with(s)) {
             self.pos += s.len();
             true
         } else {
