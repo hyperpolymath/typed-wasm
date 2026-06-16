@@ -208,6 +208,21 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            // Check for a constraint block: `invariant { ... }` (and similar
+            // region-body annotation blocks). Skipped — the verifier checks
+            // the schema/carriers, not these source-level constraints.
+            if self.peek_word("invariant") {
+                self.expect("invariant")?;
+                self.skip_whitespace();
+                self.expect("{")?;
+                self.skip_to_brace_close();
+                self.skip_whitespace();
+                if self.peek_char(';') {
+                    self.expect(";")?;
+                }
+                continue;
+            }
+
             let field_name = self.parse_ident();
             self.skip_whitespace();
             self.expect(":")?;
@@ -275,7 +290,31 @@ impl<'a> Parser<'a> {
             self.expect("<")?;
             nullable = true;
         }
-        
+
+        // Check for ptr<Region> / unique<Region> / ref<Region> field pointer
+        // (e.g. `next: opt<ptr<FreeSlot>>`). Field-level region pointers, the
+        // `@Region` form's keyword-with-angle-brackets sibling.
+        if self.peek_word("ptr") || self.peek_word("unique") || self.peek_word("ref") {
+            let kw = self.parse_ident();
+            self.skip_whitespace();
+            self.expect("<")?;
+            self.skip_whitespace();
+            let region_name = self.parse_ident();
+            self.skip_whitespace();
+            self.expect(">")?;
+            if nullable {
+                self.skip_whitespace();
+                self.expect(">")?;
+            }
+            let kind = match kw.as_str() {
+                "unique" => PtrKind::Exclusive,
+                "ref" => PtrKind::Borrow,
+                _ => PtrKind::Owning,
+            };
+            let target = self.region_map.get(&region_name).copied().unwrap_or(0);
+            return Ok((FieldTy::Ptr { kind, target, nullable }, 1));
+        }
+
         // Check for @Region reference
         if self.peek_char('@') {
             self.expect("@")?;
@@ -529,11 +568,19 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // Parse parameter: name: type (skip name, just get type)
-            let _param_name = self.parse_ident();
+            // Parse optional parameter name. Params may be named (`p: &mut
+            // region<T>`, `dt: f32`) or unnamed (`&mut region<Particles>`,
+            // `i32`). Detect a `name:` prefix; if absent, rewind and parse the
+            // type directly.
+            let save = self.pos;
+            let maybe_name = self.parse_ident();
             self.skip_whitespace();
-            self.expect(":")?;
-            self.skip_whitespace();
+            if !maybe_name.is_empty() && self.peek_char(':') {
+                self.expect(":")?;
+                self.skip_whitespace();
+            } else {
+                self.pos = save;
+            }
 
             // Parse the type, which may include ownership qualifiers
             let (param_ty, _) = self.parse_param_type()?;
@@ -570,14 +617,27 @@ impl<'a> Parser<'a> {
 
         self.skip_whitespace();
         
-        // Skip effects annotation if present: effects { ... }
-        if self.peek_word("effects") {
-            self.expect("effects")?;
+        // Skip any annotation clauses before the body: `effects { ... }`,
+        // `cost_bound { ... }`, `requires { ... }`, etc. The body is the
+        // first `{` not preceded by an annotation keyword.
+        loop {
             self.skip_whitespace();
-            self.expect("{")?;
-            self.skip_to_brace_close();
+            if self.peek_char('{') {
+                break; // function body
+            }
+            let at = self.pos;
+            if at < self.src.len() && (self.src.as_bytes()[at] as char).is_ascii_alphabetic() {
+                let _annotation = self.parse_ident();
+                self.skip_whitespace();
+                if self.peek_char('{') {
+                    self.expect("{")?;
+                    self.skip_to_brace_close();
+                    continue;
+                }
+            }
+            break;
         }
-        
+
         self.expect("{")?;
 
         // Parse function body and emit placeholder ops
@@ -590,10 +650,15 @@ impl<'a> Parser<'a> {
             body.push(crate::Op::Drop);
         }
         
-        // If function returns a value, emit a constant 0
-        if !results.is_empty() {
-            // For now, assume i32 result
-            body.push(crate::Op::I32Const(0));
+        // If the function returns a value, emit a type-correct zero so the
+        // representative body type-checks against the declared result type.
+        if let Some(&rty) = results.first() {
+            body.push(match rty {
+                Wty::I32 => crate::Op::I32Const(0),
+                Wty::I64 => crate::Op::I64Const(0),
+                Wty::F32 => crate::Op::F32Const(0.0),
+                Wty::F64 => crate::Op::F64Const(0.0),
+            });
         }
         
         let accesses = Vec::new();
@@ -773,13 +838,34 @@ impl<'a> Parser<'a> {
 
     fn parse_import(&mut self) -> Result<(), String> {
         self.expect("import")?;
+        self.skip_whitespace();
+        // Optional `region` keyword: `import region Name from "module" ...`
+        if self.peek_word("region") {
+            self.expect("region")?;
+            self.skip_whitespace();
+        }
         let _name = self.parse_ident();
         self.skip_whitespace();
         self.expect("from")?;
         self.skip_whitespace();
-        let _module = self.parse_ident();
+        // Module source: a quoted string ("game_server") or a bare ident.
+        if self.peek_char('"') {
+            self.expect("\"")?;
+            while self.pos < self.src.len() && self.src.as_bytes()[self.pos] != b'"' {
+                self.pos += 1;
+            }
+            self.expect("\"")?;
+        } else {
+            let _module = self.parse_ident();
+        }
         self.skip_whitespace();
-        self.expect(";")?;
+        // Either a re-declaration body `{ ... }` (multi-module) or a `;`.
+        if self.peek_char('{') {
+            self.expect("{")?;
+            self.skip_to_brace_close();
+        } else if self.peek_char(';') {
+            self.expect(";")?;
+        }
         Ok(())
     }
 }

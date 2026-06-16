@@ -182,6 +182,9 @@ impl Wty {
 pub enum Op {
     LocalGet(u32),
     I32Const(i32),
+    I64Const(i64),
+    F32Const(f32),
+    F64Const(f64),
     I32Load {
         offset: u64,
     },
@@ -330,6 +333,9 @@ fn op_to_instruction(op: Op) -> Instruction<'static> {
     match op {
         Op::LocalGet(i) => Instruction::LocalGet(i),
         Op::I32Const(c) => Instruction::I32Const(c),
+        Op::I64Const(c) => Instruction::I64Const(c),
+        Op::F32Const(c) => Instruction::F32Const(c.into()),
+        Op::F64Const(c) => Instruction::F64Const(c.into()),
         Op::I32Load { offset } => Instruction::I32Load(memarg(offset, 2)),
         Op::I32Store { offset } => Instruction::I32Store(memarg(offset, 2)),
         Op::F32Load { offset } => Instruction::F32Load(memarg(offset, 2)),
