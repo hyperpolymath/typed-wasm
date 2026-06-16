@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // TYPED_WASM FFI Implementation
 //
@@ -44,13 +44,27 @@ pub const Result = enum(c_int) {
     null_pointer = 4,
 };
 
-/// Library handle (opaque to prevent direct access)
-pub const Handle = opaque {
-    // Internal state hidden from C
+/// Library handle: *truly* opaque to C — a pointer-only incomplete type
+/// (FILE*-style). zig 0.15 forbids fields on `opaque`, which is correct: an
+/// opaque type has no known size/alignment/layout, so it cannot carry fields.
+/// The real state lives in `HandleImpl`, hidden behind the pointer; C only
+/// ever holds a `*Handle` and never sees the implementation's size or fields.
+/// This preserves the original "opaque to prevent direct access" intent
+/// rather than downgrading to a plain struct.
+pub const Handle = opaque {};
+
+/// The concrete state behind a `*Handle`. Internal; never exposed across the
+/// C ABI. Conjured/recovered via `impl()`.
+const HandleImpl = struct {
     allocator: std.mem.Allocator,
     initialized: bool,
-    // Add your fields here
+    // Add further fields here.
 };
+
+/// Recover the implementation struct from an opaque handle pointer.
+inline fn impl(handle: *Handle) *HandleImpl {
+    return @ptrCast(@alignCast(handle));
+}
 
 //==============================================================================
 // Library Lifecycle
@@ -61,24 +75,24 @@ pub const Handle = opaque {
 export fn typed_wasm_init() ?*Handle {
     const allocator = std.heap.c_allocator;
 
-    const handle = allocator.create(Handle) catch {
+    const self = allocator.create(HandleImpl) catch {
         setError("Failed to allocate handle");
         return null;
     };
 
-    // Initialize handle
-    handle.* = .{
+    // Initialize state
+    self.* = .{
         .allocator = allocator,
         .initialized = true,
     };
 
     clearError();
-    return handle;
+    return @ptrCast(self);
 }
 
 /// Free the library handle
 export fn typed_wasm_free(handle: ?*Handle) void {
-    const h = handle orelse return;
+    const h = impl(handle orelse return);
     const allocator = h.allocator;
 
     // Clean up resources
@@ -94,10 +108,10 @@ export fn typed_wasm_free(handle: ?*Handle) void {
 
 /// Process data (example operation)
 export fn typed_wasm_process(handle: ?*Handle, input: u32) Result {
-    const h = handle orelse {
+    const h = impl(handle orelse {
         setError("Null handle");
         return .null_pointer;
-    };
+    });
 
     if (!h.initialized) {
         setError("Handle not initialized");
@@ -118,10 +132,10 @@ export fn typed_wasm_process(handle: ?*Handle, input: u32) Result {
 /// Get a string result (example)
 /// Caller must free the returned string
 export fn typed_wasm_get_string(handle: ?*Handle) ?[*:0]const u8 {
-    const h = handle orelse {
+    const h = impl(handle orelse {
         setError("Null handle");
         return null;
-    };
+    });
 
     if (!h.initialized) {
         setError("Handle not initialized");
@@ -157,10 +171,10 @@ export fn typed_wasm_process_array(
     buffer: ?[*]const u8,
     len: u32,
 ) Result {
-    const h = handle orelse {
+    const h = impl(handle orelse {
         setError("Null handle");
         return .null_pointer;
-    };
+    });
 
     const buf = buffer orelse {
         setError("Null buffer");
@@ -215,18 +229,19 @@ export fn typed_wasm_build_info() [*:0]const u8 {
 // Callback Support
 //==============================================================================
 
-/// Callback function type (C ABI)
-pub const Callback = *const fn (u64, u32) callconv(.C) u32;
+/// Callback function type (C ABI). zig 0.15 renamed the calling-convention
+/// tag `.C` to `.c` (CallingConvention became a union to carry per-CC params).
+pub const Callback = *const fn (u64, u32) callconv(.c) u32;
 
 /// Register a callback
 export fn typed_wasm_register_callback(
     handle: ?*Handle,
     callback: ?Callback,
 ) Result {
-    const h = handle orelse {
+    const h = impl(handle orelse {
         setError("Null handle");
         return .null_pointer;
-    };
+    });
 
     const cb = callback orelse {
         setError("Null callback");
@@ -251,7 +266,7 @@ export fn typed_wasm_register_callback(
 
 /// Check if handle is initialized
 export fn typed_wasm_is_initialized(handle: ?*Handle) u32 {
-    const h = handle orelse return 0;
+    const h = impl(handle orelse return 0);
     return if (h.initialized) 1 else 0;
 }
 
