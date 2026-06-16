@@ -24,6 +24,7 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.Tropical
         , TypedWasm.ABI.Epistemic
         , TypedWasm.ABI.Layout
+        , TypedWasm.ABI.PackedLayout
         , TypedWasm.ABI.Proofs
         , TypedWasm.ABI.VerifierSpec
         -- Cross-language layout contracts (aggregate library role, ADR-004).
