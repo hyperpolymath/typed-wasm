@@ -18,11 +18,11 @@ This page is for readers asking _"where is the theorem?"_ when faced with typed-
 - **0 `assert_smaller`** in the checked package
 - **`%default total`** everywhere
 
-Verified by `tests/proof/regression.mjs` (107 named-theorem grep assertions) and by `idris2 --build src/abi/typed-wasm.ipkg` (22/22 modules under Idris2 0.8.0).
+Verified by `tests/proof/regression.mjs` (107 named-theorem grep assertions) and by `idris2 --build src/abi/typed-wasm.ipkg` (24/24 modules under Idris2 0.8.0).
 
 ## The proof package
 
-22 Idris2 modules. Per-module status is in `LEVEL-STATUS.md` §"Proof inventory"; the headline:
+24 Idris2 modules. Per-module status is in `LEVEL-STATUS.md` §"Proof inventory"; the headline:
 
 | Module | Role |
 |---|---|
@@ -181,7 +181,7 @@ The agreement records introduced in PR #79 close the loop: a drift between the R
 ```bash
 # Build the proof package
 IDRIS2_PREFIX=$IDRIS2/0.8.0 idris2 --build src/abi/typed-wasm.ipkg
-# expects: 22/22 modules, rc=0
+# expects: 24/24 modules, rc=0
 
 # Run the proof regression
 PATH=$IDRIS2/0.8.0/bin:$PATH \
