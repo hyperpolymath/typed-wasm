@@ -12,14 +12,32 @@
 -- shared mutable state. In the database analogy, this is read consistency:
 -- a transaction sees a snapshot, not live mutations by other transactions.
 --
--- No existing WASM type system, and no existing shared-memory type system
--- we are aware of, provides epistemic safety at the type level.
+-- No WASM type system, and (outside this estate's own epistemic-types) no
+-- shared-memory type system we are aware of, provides this read-consistency
+-- discipline at the type level.
+--
+-- Estate cross-reference (audit 2026-06-16) — canonical repo: Agda
+-- hyperpolymath/epistemic-types @ 87ff8b4 (modules Base/Access/Warrant/
+-- ProofTransport/EchoBridge).  AUDITED: this file solves a DIFFERENT problem
+-- from the canonical repo and currently shares none of its abstractions.
+--   * canonical = standpoint-indexed epistemic MODALITY (E : K -> Set -> Set,
+--     Factive/Belief warrants, an accessibility Preorder with monotone
+--     transport, standpoint-indexed proof transport across trust boundaries,
+--     and a tropical Grade = finite|infinity with min-plus gradeMin).
+--   * this file = read-consistency of shared mutable memory (version-indexed
+--     Fresh/Stale/Sync over Nat versions).
+-- OPEN DESIGN QUESTION (owner): should this layer sit ON TOP of epistemic-
+-- types — versions-as-standpoints as a concrete AccessibleModality instance,
+-- versions re-typed as the canonical tropical Grade (infinity = never-synced)
+-- — or remain a deliberately separate domain?  Until adjudicated, treat the
+-- two as an IS-NOT pair, not as drift (estate boundary-erosion registry).
 
 module TypedWasm.ABI.Epistemic
 
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.MultiModule
 import TypedWasm.ABI.Levels
+import TypedWasm.ABI.Tropical
 import Data.Nat
 
 %default total
@@ -357,3 +375,50 @@ observedHasProvenance (Observed {oldVer} sync) = Just (oldVer ** sync)
 -- caller has supplied a real `FieldVersion`.  `Observed` likewise
 -- inherits the pin via its `Sync` argument.  No remaining
 -- constructor in this file admits an unfounded version claim.
+
+-- ============================================================================
+-- Tropical sync-grade layer (ADDITIVE — extant proofs untouched, A15 2026-06-16)
+-- ============================================================================
+--
+-- This layer is purely additive: it introduces NO new index on any existing
+-- type and re-proves nothing above.  The entire Nat-indexed Fresh/Stale/Sync
+-- core (A10–A14) is left exactly as is.
+--
+-- It reuses the sibling TypedWasm.ABI.Tropical grade (TropCost = min-plus, the
+-- estate's tropical irrecoverability semiring) rather than defining a parallel
+-- one — the canonical hyperpolymath/epistemic-types EchoBridge.agda ships the
+-- SAME min-plus Grade (finite Nat | infinity, gradeMin = min-plus).  This makes
+-- "never synced" representable as Infinity (infeasible / unreachable knowledge)
+-- and joins the estate cost vocabulary, addressing the audit's "ad-hoc Nat vs
+-- tropical grade" divergence WITHOUT re-indexing the read-consistency proofs.
+--
+-- NOTE (boundary, per Epistemic.idr header IS-NOT note): this file's read-
+-- consistency model is a DIFFERENT problem from epistemic-types' standpoint-
+-- indexed modality.  Adopting the shared grade is vocabulary alignment, NOT a
+-- claim that this layer instantiates the canonical AccessibleModality.
+
+||| The tropical sync-grade of a knowledge state, read as irrecoverability:
+||| never-observed (`Unknown`) relegates to `Infinity` (infeasible / unreachable
+||| knowledge); knowledge observed at version `v` has finite grade `Finite v`.
+public export
+syncGrade : {ver : Nat} -> Knowledge mod field ver -> TropCost
+syncGrade {ver} (Observed _) = Finite ver
+syncGrade Unknown            = Infinity
+
+||| Never-synced knowledge is infeasible (grade = Infinity).
+public export
+neverSyncedInfeasible : syncGrade {mod} {field} Unknown = Infinity
+neverSyncedInfeasible = Refl
+
+||| Observed knowledge has a finite (feasible) grade equal to its version.
+public export
+observedFeasible : (s : Sync mod field old ver) ->
+                   syncGrade (Observed {oldVer = old} s) = Finite ver
+observedFeasible _ = Refl
+
+||| Observed knowledge is never infeasible — the grade reflects provenance:
+||| having a Sync witness rules out the Infinity (never-synced) grade.
+public export
+observedNotInfeasible : (s : Sync mod field old ver) ->
+                        Not (syncGrade (Observed {oldVer = old} s) = Infinity)
+observedNotInfeasible _ Refl impossible

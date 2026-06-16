@@ -14,6 +14,29 @@
 -- without an explicit cost annotation acknowledging the expense.
 --
 -- The tropical semiring algebra is adapted from 007's TropicalSemiring.idr.
+--
+-- ----------------------------------------------------------------------------
+-- Estate cross-reference (audit 2026-06-16) — canonical axis: Lean4
+-- hyperpolymath/tropical-resource-typing @ 2e35229.
+--
+-- This module's (TropCost, tropAdd = min, tropMul = +, Infinity, Finite 0) is
+-- the Idris2 analogue of the canonical Resource.Instances.MinPlus instance,
+-- and the twelve axioms below correspond to the canonical ResourceSemiring
+-- fields.  It is a DELIBERATE Idris2 mirror, not a literal import: the
+-- canonical repo is Lean4/Isabelle and there is no Lean->Idris proof-transport
+-- path, so the algebra above is sourced from 007's TropicalSemiring.idr.
+--
+-- Mirrored:    min-plus semiring + Kleene/Floyd-Warshall all-pairs closure.
+-- NOT yet mirrored (debt, tracked for owner decision):
+--   * ResourceAlgebra/Ordered interface (the dioid order a |+| b = b),
+--   * parametric_resource_transport (one-shot law transport to all instances),
+--   * the MinMax / Bridge.hub_ceiling BOTTLENECK instance,
+--   * the MaxPlus worst-case-budget instance,
+--   * Resource.EchoBridge.ResidueMeasure (E -> R residue measure; would wire
+--     the sibling TypedWasm.ABI.Echo into this grade).
+-- typed-wasm holds one thing the canonical Lean axis lacks: the Kleene-closure
+-- matrix layer below (extend-upstream candidate; owner sign-off required).
+-- ----------------------------------------------------------------------------
 
 module TypedWasm.ABI.Tropical
 
@@ -22,6 +45,7 @@ import TypedWasm.ABI.Levels
 import Data.Nat
 import Data.Fin
 import Data.List
+import Data.List.Elem
 
 %default total
 
@@ -319,8 +343,10 @@ tropMulIdentity = tropMulLeftId
 -- This is the all-pairs shortest-path matrix under the min-plus semiring.
 --
 -- Mathematical foundation: the Isabelle proofs in
--- hyperpolymath/tropical-resource-typing (commit f6c5a6f, 2026-04-11) establish
--- for the dual max-plus semiring:
+-- hyperpolymath/tropical-resource-typing (commit 2e35229; the Kleene/matrix
+-- math lives in the Isabelle .thy files below, while the consumer-facing axis
+-- is now the Lean4 Resource.* interface — see the estate cross-reference at the
+-- top of this file) establish for the dual max-plus semiring:
 --   - Star equation:      A* = I ⊕ A · A*    (Tropical_Kleene.thy)
 --   - Least prefixpoint:  A* ≤ X for all X ≥ I ⊕ A · X  (Tropical_Kleene.thy)
 --   - Floyd-Warshall:     (I ⊕ A)^{n-1} = A* (under no_pos_cycle)
@@ -416,3 +442,258 @@ record Level11KleeneProof (n : Nat) where
   pathCost   : TropCost
   ||| Proof that the path cost respects the global bound.
   inBound    : EntryBounded pathCost (costs.pathBound)
+
+-- ============================================================================
+-- Ordered layer — the canonical dioid order  (Resource.Algebra.Ordered)
+-- ============================================================================
+--
+-- Mirrors hyperpolymath/tropical-resource-typing Resource/Algebra/Ordered.lean
+-- @ 2e35229.  The canonical resource order is the dioid order
+--   a |<=| b  :=  tropAdd a b = b      (canonical: a |+| b = b)
+-- For this MinPlus instance |+| = min, so the order is the REVERSE of numeric
+-- <=: Finite m |<=| Finite n  iff  n <= m, and Infinity (the additive zero /
+-- +inf) is the LEAST element.  Smaller cost sits higher.
+
+||| Structural minimum is idempotent.
+private
+tropMinIdem : (m : Nat) -> tropMin m m = m
+tropMinIdem Z = Refl
+tropMinIdem (S k) = cong S (tropMinIdem k)
+
+||| The canonical dioid order: a refines b iff combining them is b.
+public export
+tropLe : TropCost -> TropCost -> Type
+tropLe a b = tropAdd a b = b
+
+||| TropCost addition is idempotent (the dioid property).
+public export
+tropAddIdem : (a : TropCost) -> tropAdd a a = a
+tropAddIdem Infinity = Refl
+tropAddIdem (Finite n) = cong Finite (tropMinIdem n)
+
+||| |<=| is reflexive (canonical ResourceAlgebra.le_refl).
+public export
+tropLeRefl : (a : TropCost) -> tropLe a a
+tropLeRefl = tropAddIdem
+
+||| |<=| is transitive (canonical ResourceAlgebra.le_trans):
+||| a|+|c = a|+|(b|+|c) = (a|+|b)|+|c = b|+|c = c.
+public export
+tropLeTrans : {a, b, c : TropCost} -> tropLe a b -> tropLe b c -> tropLe a c
+tropLeTrans {a} {b} {c} ab bc =
+  rewrite sym bc in
+  rewrite tropAddAssoc a b c in
+  rewrite ab in Refl
+
+||| |+| is monotone in its right argument (canonical add_le_add_left):
+||| (c|+|a)|+|(c|+|b) = c|+|b  when  a|+|b = b.
+public export
+tropAddMonoR : {a, b : TropCost} -> (c : TropCost) ->
+               tropLe a b -> tropLe (tropAdd c a) (tropAdd c b)
+tropAddMonoR {a} {b} c ab =
+  let eMid : (tropAdd (tropAdd c a) c = tropAdd c a)
+      eMid = trans (sym (tropAddAssoc c a c))
+             (trans (cong (tropAdd c) (tropAddComm a c))
+             (trans (tropAddAssoc c c a)
+                    (cong (\x => tropAdd x a) (tropAddIdem c))))
+  in trans (tropAddAssoc (tropAdd c a) c b)
+     (trans (cong (\x => tropAdd x b) eMid)
+     (trans (sym (tropAddAssoc c a b))
+            (cong (tropAdd c) ab)))
+
+||| |x| is monotone in its right argument (canonical mul_le_mul_left):
+||| (c|x|a)|+|(c|x|b) = c|x|(a|+|b) = c|x|b.
+public export
+tropMulMonoR : {a, b : TropCost} -> (c : TropCost) ->
+               tropLe a b -> tropLe (tropMul c a) (tropMul c b)
+tropMulMonoR {a} {b} c ab =
+  rewrite sym (tropMulDistrib c a b) in cong (tropMul c) ab
+
+||| |x| is monotone in its left argument (canonical mul_le_mul_right).
+public export
+tropMulMonoL : {a, b : TropCost} -> (c : TropCost) ->
+               tropLe a b -> tropLe (tropMul a c) (tropMul b c)
+tropMulMonoL {a} {b} c ab =
+  rewrite sym (tropMulDistribR a b c) in cong (\x => tropMul x c) ab
+
+-- ============================================================================
+-- Min-max / bottleneck layer  (Resource.Instances.MinMax + Bridge.hub_ceiling)
+-- ============================================================================
+--
+-- Mirrors Resource/Instances/MinMax.lean + Resource/Bridge.lean @ 2e35229.
+-- The min-max (bottleneck) semiring shares the choice operation |+| = min
+-- (tropAdd) but composes sequentially by the WORST step (max) rather than by
+-- sum.  Memory fact: MinMax / hub_ceiling = the bottleneck axis; one shared hub
+-- caps fidelity.  Infinity (+inf) absorbs under max (an unreachable step makes
+-- the whole route unreachable).
+
+private
+natMax : Nat -> Nat -> Nat
+natMax Z n = n
+natMax (S m) Z = S m
+natMax (S m) (S n) = S (natMax m n)
+
+private
+natMaxComm : (m, n : Nat) -> natMax m n = natMax n m
+natMaxComm Z Z = Refl
+natMaxComm Z (S n) = Refl
+natMaxComm (S m) Z = Refl
+natMaxComm (S m) (S n) = cong S (natMaxComm m n)
+
+private
+tropMinZeroRight : (k : Nat) -> tropMin k Z = Z
+tropMinZeroRight Z = Refl
+tropMinZeroRight (S k) = Refl
+
+||| min (max m n) m = m : a lower bottleneck absorbs against the route max.
+private
+tropMinMaxAbsorbL : (m, n : Nat) -> tropMin (natMax m n) m = m
+tropMinMaxAbsorbL Z n = tropMinZeroRight n
+tropMinMaxAbsorbL (S m) Z = cong S (tropMinIdem m)
+tropMinMaxAbsorbL (S m) (S n) = cong S (tropMinMaxAbsorbL m n)
+
+||| Bottleneck sequential composition: the worse (bottleneck) step.  Infinity
+||| absorbs.  Mirrors canonical MinMax.mul (= max).
+public export
+tropMax : TropCost -> TropCost -> TropCost
+tropMax Infinity _ = Infinity
+tropMax _ Infinity = Infinity
+tropMax (Finite a) (Finite b) = Finite (natMax a b)
+
+||| Bottleneck composition is commutative.
+public export
+tropMaxComm : (a, b : TropCost) -> tropMax a b = tropMax b a
+tropMaxComm Infinity Infinity = Refl
+tropMaxComm Infinity (Finite n) = Refl
+tropMaxComm (Finite m) Infinity = Refl
+tropMaxComm (Finite m) (Finite n) = cong Finite (natMaxComm m n)
+
+||| The bottleneck of two grades is no better (in |<=|) than the left one.
+public export
+tropMaxUpperL : (a, b : TropCost) -> tropLe (tropMax a b) a
+tropMaxUpperL Infinity b = Refl
+tropMaxUpperL (Finite m) Infinity = Refl
+tropMaxUpperL (Finite m) (Finite n) = cong Finite (tropMinMaxAbsorbL m n)
+
+||| ...nor than the right one.
+public export
+tropMaxUpperR : (a, b : TropCost) -> tropLe (tropMax a b) b
+tropMaxUpperR a b = rewrite tropMaxComm a b in tropMaxUpperL b a
+
+||| The bottleneck grade of a path: the worst step along it (Infinity if any
+||| step is unreachable; Finite 0 for the empty path).
+public export
+pathBottleneck : List TropCost -> TropCost
+pathBottleneck []        = Finite 0
+pathBottleneck (x :: xs) = tropMax x (pathBottleneck xs)
+
+||| **hub_ceiling.**  A path's bottleneck grade is |<=| (no better than) the
+||| grade of every edge it routes through — one shared hub caps the fidelity of
+||| everything passing through it.  Mirrors canonical Bridge.hub_ceiling_le.
+public export
+hubCeiling : {edges : List TropCost} -> (e : TropCost) ->
+             Elem e edges -> tropLe (pathBottleneck edges) e
+hubCeiling {edges = (e :: xs)} e Here =
+  tropMaxUpperL e (pathBottleneck xs)
+hubCeiling {edges = (y :: xs)} e (There later) =
+  tropLeTrans (tropMaxUpperR y (pathBottleneck xs)) (hubCeiling e later)
+
+-- ============================================================================
+-- Residue measure — Echo residues measured into the tropical grade
+-- ============================================================================
+--
+-- Mirrors Resource/EchoBridge.lean @ 2e35229.  Direction is strictly E -> R:
+-- an opaque residue carrier E (the TypedWasm.ABI.Echo.EchoR residue carrier)
+-- is MEASURED into this resource algebra (TropCost) via its sequential-
+-- composition monoid (tropMul, Finite 0).  E is NOT a resource algebra; only
+-- TropCost is.  Estate semantics (see Echo.idr cross-ref): the measured grade
+-- IS the echo "structural irrecoverability" — loss accumulates by tropMul (+),
+-- the tropical product, exactly the canonical accumulation mu : D_r D_s ->
+-- D_{r+s}.
+
+public export
+record ResidueMeasure (E : Type) where
+  constructor MkResidueMeasure
+  ||| How two residues accumulate (the Echo-side operation, opaque here).
+  combine        : E -> E -> E
+  ||| The null residue.
+  empty          : E
+  ||| The measurement of a residue as a tropical grade.
+  measure        : E -> TropCost
+  ||| The empty residue measures as the multiplicative identity Finite 0.
+  measureEmpty   : measure empty = Finite 0
+  ||| Accumulating residues composes (tropMul) their grades.
+  measureCombine : (e1, e2 : E) ->
+                   measure (combine e1 e2) = tropMul (measure e1) (measure e2)
+
+||| Combining with the empty residue on the left is grade-neutral.
+public export
+measureCombineEmptyLeft : (rm : ResidueMeasure e) -> (x : e) ->
+                          rm.measure (rm.combine rm.empty x) = rm.measure x
+measureCombineEmptyLeft rm x =
+  rewrite rm.measureCombine rm.empty x in
+  rewrite rm.measureEmpty in
+  tropMulLeftId (rm.measure x)
+
+||| Combining with the empty residue on the right is grade-neutral.
+public export
+measureCombineEmptyRight : (rm : ResidueMeasure e) -> (x : e) ->
+                           rm.measure (rm.combine x rm.empty) = rm.measure x
+measureCombineEmptyRight rm x =
+  rewrite rm.measureCombine x rm.empty in
+  rewrite rm.measureEmpty in
+  tropMulRightId (rm.measure x)
+
+private
+lengthAppend' : (xs, ys : List a) -> length (xs ++ ys) = length xs + length ys
+lengthAppend' []        ys = Refl
+lengthAppend' (x :: xs) ys = cong S (lengthAppend' xs ys)
+
+||| A worked residue measure: count residue events into the tropical grade,
+||| accumulating sequentially (tropMul = +).  Mirrors canonical
+||| echoResidueAsMaxPlusCost (here over the min-plus carrier).  Proves the
+||| E -> R direction is genuinely inhabited; List Unit never becomes a resource
+||| algebra.
+public export
+echoResidueCost : ResidueMeasure (List Unit)
+echoResidueCost = MkResidueMeasure
+  (++)
+  []
+  (\l => Finite (length l))
+  Refl
+  (\e1, e2 => cong Finite (lengthAppend' e1 e2))
+
+-- ============================================================================
+-- Level 11 bottleneck obligation (wires hubCeiling into the L11 surface)
+-- ============================================================================
+--
+-- The min-max / bottleneck cost model as a Level-11 proof obligation,
+-- complementing Level11Proof (sequential sum, tropMul) and Level11KleeneProof
+-- (all-pairs shortest path).  This is the worst-step / hub_ceiling cost model
+-- (Resource.Instances.MinMax); it serves the bag-of-actions routing use case
+-- ("one shared hub caps fidelity").  Registered in the certificate aggregator
+-- via Proofs.attestL11_Bottleneck.
+
+||| A Level-11 bottleneck cost certificate: the worst step along an access path,
+||| proven to respect a declared bound.
+public export
+record Level11BottleneckProof where
+  constructor MkLevel11Bottleneck
+  ||| Per-edge access costs along the path.
+  edges        : List TropCost
+  ||| The certified worst-step (bottleneck) grade.
+  bottleneck   : TropCost
+  ||| The bottleneck is exactly the path's worst step.
+  isBottleneck : bottleneck = pathBottleneck edges
+  ||| Declared bound for this path.
+  bound        : Nat
+  ||| Proof the bottleneck respects the bound.
+  bounded      : CostBounded bottleneck bound
+
+||| hub_ceiling at the obligation level: every edge on a certified bottleneck
+||| path is |>=| the certified bottleneck grade (i.e. `tropLe bottleneck edge`).
+||| A direct consumer of `hubCeiling`.
+public export
+bottleneckCeilsEdges : (p : Level11BottleneckProof) -> (e : TropCost) ->
+                       Elem e p.edges -> tropLe p.bottleneck e
+bottleneckCeilsEdges p e el = rewrite p.isBottleneck in hubCeiling e el

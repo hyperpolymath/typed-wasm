@@ -49,13 +49,22 @@ Key capabilities delivered:
 * Example `.twasm` files for the checked core, plus draft higher-level examples
 * Whitepaper drafts (docs/WHITEPAPER.md + docs/arxiv/typed-wasm.tex) under audit
 * No unsound escape hatches in the checked Idris2 core (`believe_me`, `assert_total`)
+* Estate-axis accommodation (A15/A16, 2026-06-16): L11/L12/Echo now cross-document
+  and mirror the canonical estate repos -- `tropical-resource-typing` (Lean4
+  `Resource.*`: dioid order, MinMax/`hubCeiling` bottleneck, `ResidueMeasure`),
+  `echo-types` (Echo re-characterised as a tropically-graded loss modality;
+  `EchoR`/`echoToResidue`), `epistemic-types` (additive `syncGrade`). The min-plus
+  grade is one shared object across all three. See LEVEL-STATUS.md "Estate-axis
+  accommodation". Three upstream drafts prepped local/unpushed for owner review.
 
 Known audit constraints:
 
 * L11 (Tropical) and L12 (Epistemic) are in `typed-wasm.ipkg` since 2026-04-18
   (commit A1) and build clean under Idris2 0.8.0 (PROOF-NEEDS.md reconciliation
   2026-05-18). Treat them as research/draft for surface semantics, not for
-  ipkg membership.
+  ipkg membership. (A15/A16 2026-06-16 added the canonical estate cross-doc +
+  order/bottleneck/residue/sync-grade mirrors; the monad/comonad/adjunction
+  variance of the echo grade remains deferred to upstream `--safe` Agda.)
 * Release/build/container metadata still contains template residue
 * Benchmark and venue-facing paper claims require evidence cleanup before submission
 

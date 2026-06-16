@@ -23,6 +23,33 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
+## RECONCILIATION 2026-06-16 (A15/A16 — estate-axis accommodation)
+
+> L11/L12/Echo have been **cross-documented and mirrored to the canonical
+> estate repos** after an adversarially-verified audit found them
+> internally-sound but un-accommodated (sourced/ported from non-canonical
+> origins). New, machine-checked (idris2 0.8.0, full `typed-wasm.ipkg` green):
+>
+> - **Tropical.idr** — dioid order `tropLe` (refl/trans + add/mul monotonicity),
+>   MinMax bottleneck `tropMax` + `hubCeiling`, `ResidueMeasure`, and a new
+>   `Level11BottleneckProof` + `bottleneckCeilsEdges` wired into
+>   `Proofs.attestL11_Bottleneck`/`_Sound`. Mirrors `tropical-resource-typing`
+>   `Resource.{Algebra.Ordered, Instances.MinMax, Bridge, EchoBridge}` @ 2e35229.
+> - **Echo.idr** — `EchoR` + `echoToResidue` (mirrors `echo-types`
+>   `EchoResidue.agda` @ 2bbdb49); header re-characterised: an echo-type is a
+>   **tropically-graded modality of structured information loss** (grade = min-plus
+>   = `Tropical.TropCost`), exact-on-a-fiber recoverability — the
+>   monad/comonad/adjunction VARIANCE is deferred to upstream `--safe` Agda
+>   (RETRACTION R-2026-05-18 + experimental R0–R4), NOT asserted here.
+> - **Epistemic.idr** — ADDITIVE `syncGrade` (∞ = never-synced) reusing the
+>   sibling `Tropical.TropCost`; extant A10–A14 Nat-indexed proofs untouched.
+>   Header IS-NOT note: read-consistency is a *different* problem from canonical
+>   `epistemic-types`' standpoint-indexed modality.
+>
+> Three extend-upstream drafts prepped local/unpushed (Lean closure functor;
+> Agda re-sync liveness `AccessibleModality` instance; Agda `DispHom` packaging),
+> each verified by its own prover. See LEVEL-STATUS.md "Estate-axis accommodation".
+
 ## RECONCILIATION 2026-06-02 (audit-boundary half of post-A10 items 7 + 8 promoted to ADR-0005 — read this FIRST)
 
 > **The "Full proof bodies for `VerifierSpecAgreement` /

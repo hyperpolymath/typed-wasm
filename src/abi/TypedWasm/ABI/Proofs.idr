@@ -112,6 +112,13 @@ public export
 attestL11_CostBounded : {n : Nat} -> AllPairsCosts n -> LevelAttestation
 attestL11_CostBounded _ = MkAttestation 11 Proven
 
+||| Construct a Level 11 attestation from a bottleneck (min-max / hub_ceiling)
+||| cost certificate.  Complements attestL11_CostBounded with the worst-step
+||| cost model (Resource.Instances.MinMax); see Tropical.Level11BottleneckProof.
+public export
+attestL11_Bottleneck : Level11BottleneckProof -> LevelAttestation
+attestL11_Bottleneck _ = MkAttestation 11 Proven
+
 ||| Construct a Level 12 attestation from an epistemic freshness proof.
 ||| Requires a Level12Proof witnessing that the reader's knowledge is current.
 public export
@@ -812,6 +819,12 @@ attestL11_Sound : {n : Nat}
                -> (w : AllPairsCosts n)
                -> LevelAchievedIn 11 [attestL11_CostBounded w]
 attestL11_Sound _ = LAHere
+
+||| L11 (bottleneck): a `Level11BottleneckProof` witness proves level 11.
+public export
+attestL11_Bottleneck_Sound : (w : Level11BottleneckProof)
+               -> LevelAchievedIn 11 [attestL11_Bottleneck w]
+attestL11_Bottleneck_Sound _ = LAHere
 
 ||| L12: a `Level12Proof` epistemic-freshness witness proves level 12.
 public export
