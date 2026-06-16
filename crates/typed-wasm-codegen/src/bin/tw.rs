@@ -133,37 +133,13 @@ fn build(rest: &[String]) -> ExitCode {
             bytes
         }
         Err(e) => {
-            // Fall back to string-matching for hardcoded schemas
-            eprintln!("tw build: parsing failed ({}), falling back to v0 string-matching: {}", input, e);
-            let is_example01 = src.contains("region Players")
-                && src.contains("region Enemies")
-                && src.contains("memory game_memory");
-            let is_paint_type_tile = src.contains("region RGBA16F")
-                && src.contains("region TileHeader")
-                && src.contains("region Tile")
-                && src.contains("memory tile_memory");
-            let is_paint_type_layer = src.contains("region LayerName")
-                && src.contains("region Layer")
-                && src.contains("region LayerStack")
-                && src.contains("memory layer_memory");
-            
-            if is_example01 {
-                typed_wasm_codegen::emit_example01()
-            } else if is_paint_type_tile {
-                typed_wasm_codegen::emit_paint_type_tile()
-            } else if is_paint_type_layer {
-                typed_wasm_codegen::emit_paint_type_layer()
-            } else {
-                eprintln!(
-                    "tw build: codegen v0 only supports example-01, paint-type-tile, \
-                     or paint-type-layer schemas."
-                );
-                eprintln!(
-                    "           General .twasm front-end -> IR lowering is tracked \
-                     in ADR-0004 and issue #127."
-                );
-                return ExitCode::FAILURE;
-            }
+            // A parse failure is authoritative: report the diagnostic and exit
+            // non-zero. Previously this silently fell back to hardcoded-schema
+            // string-matching, which masked real parse errors with a confusing
+            // double message. The Rust parser now covers the example +
+            // paint-type schemas and general `.twasm`, so the fallback is gone.
+            eprintln!("tw build: parse error in '{input}': {e}");
+            return ExitCode::FAILURE;
         }
     };
     let base = output.unwrap_or_else(|| input.clone());
