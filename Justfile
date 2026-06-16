@@ -484,11 +484,11 @@ state-phase:
 
 # Enter Guix development shell (primary)
 guix-shell:
-    guix shell -D -f guix.scm
+    @if [ -f "guix.scm" ]; then guix shell -D -f guix.scm; else echo "No guix.scm (channel pin lives in .guix-channel)"; fi
 
 # Build with Guix
 guix-build:
-    guix build -f guix.scm
+    @if [ -f "guix.scm" ]; then guix build -f guix.scm; else echo "No guix.scm (channel pin lives in .guix-channel)"; fi
 
 # Enter Nix development shell (fallback)
 nix-shell:
