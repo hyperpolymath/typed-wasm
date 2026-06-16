@@ -256,7 +256,7 @@ impl<'a> Parser<'a> {
         // For now, we don't calculate byte_size - we'll need to compute it
         // based on field types. For the paint-type schemas, we can use
         // the hardcoded values.
-        let byte_size = self.compute_region_byte_size(&fields);
+        let byte_size = self.compute_region_byte_size(&fields)?;
 
         let region_index = self.regions.len();
         self.region_map.insert(name.clone(), region_index);
@@ -270,18 +270,25 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn compute_region_byte_size(&self, fields: &[Field]) -> u32 {
+    fn compute_region_byte_size(&self, fields: &[Field]) -> Result<u32, String> {
         let mut size = 0u32;
         for field in fields {
             let field_size = match field.ty {
                 FieldTy::Scalar(s) => scalar_byte_size(&s),
                 FieldTy::Ptr { .. } => 4, // Pointer is 4 bytes in wasm
             };
-            size += field_size * field.cardinality;
+            // Checked arithmetic: a pathological schema (a field, or running
+            // total, exceeding u32 bytes) is a parse error, never a panic.
+            let contribution = field_size
+                .checked_mul(field.cardinality)
+                .ok_or_else(|| format!("field '{}' size overflows u32", field.name))?;
+            size = size
+                .checked_add(contribution)
+                .ok_or_else(|| "region byte size overflows u32".to_string())?;
         }
         // Add padding if needed for alignment
         // For simplicity, we'll let the caller handle alignment
-        size
+        Ok(size)
     }
 
     fn parse_field_type(&mut self) -> Result<(FieldTy, u32), String> {
@@ -453,26 +460,40 @@ impl<'a> Parser<'a> {
         let left: u64 = self.parse_number()?;
         self.skip_whitespace();
         
-        // Parse operator
-        let op = self.src.as_bytes()[self.pos];
+        // Parse operator. Panic-safe index: truncated input after the left
+        // operand yields an Err, never an out-of-bounds index panic.
+        let Some(&op) = self.src.as_bytes().get(self.pos) else {
+            return Err(
+                "Expected operator in array size expression, found end of input".to_string(),
+            );
+        };
         if op != b'*' && op != b'+' && op != b'-' && op != b'/' {
             return Err(format!("Expected operator, found '{}'", op as char));
         }
         self.pos += 1;
-        
+
         self.skip_whitespace();
         let right: u64 = self.parse_number()?;
-        
-        // Evaluate the expression
-        let result = match op {
-            b'*' => left * right,
-            b'+' => left + right,
-            b'-' => left - right,
-            b'/' => left / right,
+
+        // Evaluate with checked arithmetic: a malformed expression (overflow,
+        // division by zero, underflow) is a parse error, never a panic.
+        let result: u64 = match op {
+            b'*' => left
+                .checked_mul(right)
+                .ok_or_else(|| format!("array size expression overflows: {left} * {right}"))?,
+            b'+' => left
+                .checked_add(right)
+                .ok_or_else(|| format!("array size expression overflows: {left} + {right}"))?,
+            b'-' => left
+                .checked_sub(right)
+                .ok_or_else(|| format!("array size expression underflows: {left} - {right}"))?,
+            b'/' => left
+                .checked_div(right)
+                .ok_or_else(|| format!("array size expression divides by zero: {left} / {right}"))?,
             _ => return Err(format!("Unknown operator: {}", op as char)),
         };
-        
-        Ok(result as u32)
+
+        u32::try_from(result).map_err(|_| format!("array size {result} does not fit in u32"))
     }
 
     fn peek_char(&mut self, c: char) -> bool {
@@ -985,7 +1006,10 @@ impl<'a> Parser<'a> {
                 FieldTy::Scalar(s) => scalar_byte_size(&s),
                 FieldTy::Ptr { .. } => 4,
             };
-            offset += size * f.cardinality;
+            // Checked: a region whose fields overrun u32 cannot yield a sane
+            // offset, so treat it as unresolvable (caller falls back to the
+            // stub) rather than panicking on overflow.
+            offset = offset.checked_add(size.checked_mul(f.cardinality)?)?;
         }
         None
     }
@@ -1264,5 +1288,99 @@ fn scalar_store_op(s: &Scalar, offset: u64) -> crate::Op {
         Scalar::I64 | Scalar::U64 => I64Store { offset },
         Scalar::F32 => F32Store { offset },
         Scalar::F64 => F64Store { offset },
+    }
+}
+
+#[cfg(test)]
+mod totality_tests {
+    use super::*;
+
+    // T3 — parser totality: the three previously-panicking arithmetic sites
+    // (array-size expression, region byte size, field offset) now degrade to
+    // an error / `None` on malformed or pathological input, never a panic.
+    // Each negative test is paired with a well-formed control so it is the
+    // fault being rejected, not the path being broken.
+
+    #[test]
+    fn array_size_div_by_zero_is_err_not_panic() {
+        let mut p = Parser::new("4 / 0");
+        assert!(p.parse_array_size_expr().is_err());
+    }
+
+    #[test]
+    fn array_size_overflow_is_err_not_panic() {
+        // 1e10 * 1e10 = 1e20 overflows u64 -> checked_mul None -> Err.
+        let mut p = Parser::new("10000000000 * 10000000000");
+        assert!(p.parse_array_size_expr().is_err());
+    }
+
+    #[test]
+    fn array_size_u32_overflow_is_err_not_panic() {
+        // Fits in u64 but not u32 -> try_from Err, not a silent truncation.
+        let mut p = Parser::new("100000 * 100000");
+        assert!(p.parse_array_size_expr().is_err());
+    }
+
+    #[test]
+    fn array_size_underflow_is_err_not_panic() {
+        let mut p = Parser::new("1 - 2");
+        assert!(p.parse_array_size_expr().is_err());
+    }
+
+    #[test]
+    fn array_size_truncated_after_operand_is_err_not_panic() {
+        // No operator byte after the operand: was an out-of-bounds index panic.
+        let mut p = Parser::new("5");
+        assert!(p.parse_array_size_expr().is_err());
+    }
+
+    #[test]
+    fn array_size_well_formed_still_evaluates() {
+        let mut p = Parser::new("64 * 64");
+        assert_eq!(p.parse_array_size_expr(), Ok(4096));
+    }
+
+    #[test]
+    fn region_byte_size_overflow_is_err_not_panic() {
+        let p = Parser::new("");
+        let fields = vec![
+            Field::array("a", Scalar::U8, 3_000_000_000),
+            Field::array("b", Scalar::U8, 3_000_000_000), // sum 6e9 > u32::MAX
+        ];
+        assert!(p.compute_region_byte_size(&fields).is_err());
+    }
+
+    #[test]
+    fn region_byte_size_normal_is_ok() {
+        let p = Parser::new("");
+        let fields = vec![Field::scalar("a", Scalar::I32), Field::scalar("b", Scalar::U8)];
+        assert_eq!(p.compute_region_byte_size(&fields), Ok(5));
+    }
+
+    #[test]
+    fn resolve_field_offset_overflow_is_none_not_panic() {
+        let mut p = Parser::new("");
+        p.regions.push(Region {
+            name: "R".into(),
+            fields: vec![
+                Field::array("pad", Scalar::U8, 4_000_000_000),
+                Field::array("pad2", Scalar::U8, 4_000_000_000), // offset 8e9 > u32::MAX
+                Field::scalar("target", Scalar::I32),
+            ],
+            byte_size: 0,
+        });
+        assert!(p.resolve_field(0, "target").is_none());
+    }
+
+    #[test]
+    fn resolve_field_normal_offsets_resolve() {
+        let mut p = Parser::new("");
+        p.regions.push(Region {
+            name: "R".into(),
+            fields: vec![Field::scalar("a", Scalar::I32), Field::scalar("b", Scalar::U8)],
+            byte_size: 5,
+        });
+        // 'b' sits at offset 4 (after the i32).
+        assert!(matches!(p.resolve_field(0, "b"), Some((1, 4, Scalar::U8))));
     }
 }
