@@ -153,6 +153,29 @@ fn parsed_paint_type_schemas_round_trip() {
     assert_round_trips(&ex01_module);
 }
 
+/// Round-trip the full example corpus: every `examples/NN-*.twasm` must parse,
+/// emit valid wasm, and pass the verifier. This is the v1.0 end-to-end
+/// soundness gate (#130) over the canonical six real `.twasm` sources — not
+/// just paint-type / example-01. Extending the front-end (ptr<T> fields,
+/// unnamed/borrow fn params, annotation clauses, import-region, invariant
+/// blocks) took this corpus from 2/6 to 6/6.
+#[test]
+fn parsed_example_corpus_round_trips() {
+    let corpus: [(&str, &str); 6] = [
+        ("01-single-module", include_str!("../../../examples/01-single-module.twasm")),
+        ("02-multi-module", include_str!("../../../examples/02-multi-module.twasm")),
+        ("03-ownership-linearity", include_str!("../../../examples/03-ownership-linearity.twasm")),
+        ("04-ecs-game", include_str!("../../../examples/04-ecs-game.twasm")),
+        ("05-tropical-cost", include_str!("../../../examples/05-tropical-cost.twasm")),
+        ("06-epistemic-sync", include_str!("../../../examples/06-epistemic-sync.twasm")),
+    ];
+    for (name, src) in corpus {
+        let module =
+            parser::parse_module(src).unwrap_or_else(|e| panic!("{name}.twasm must parse: {e}"));
+        assert_round_trips(&module);
+    }
+}
+
 #[test]
 fn generated_corpus_round_trips() {
     for seed in 0..512u64 {
