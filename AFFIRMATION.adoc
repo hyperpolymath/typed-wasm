@@ -1,0 +1,380 @@
+// SPDX-License-Identifier: MPL-2.0 OR CC-BY-SA-4.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= AFFIRMATION — typed-wasm, as of 2026-06-16
+:toc: macro
+:toclevels: 2
+
+_the No-Bullshit file: what we affirm was true and checkable at this moment_
+
+[NOTE]
+====
+*Genre.* An *affirmation* is a solemn declaration of the truth of a statement,
+made by someone who _declines to swear an oath_. That is exactly what this is:
+our truth-as-best-believed at a stamped instant — binding on our honesty, not a
+claim of infallibility. It is not the README and not the EXPLAINME:
+
+[cols="1,3,2",options="header"]
+|===
+| File | Answers | Tense
+| `README`      | _Where is this going, and why?_ — steering, vision | future / aspirational
+| `EXPLAINME`   | _How is it built, and what's the evidence?_ — engineering | descriptive / mechanism
+| *`AFFIRMATION`* (this file) | _What can we honestly affirm was *true and checkable* at a stamped moment?_ | a frozen instant, falsifiable
+|===
+
+It is deliberately small, dated, and signed, so a reader can hold us to exactly
+what we affirmed, when we affirmed it.
+====
+
+toc::[]
+
+== What this is, and how it is designed to work
+
+*What it is.* A short, dated, jointly-signed snapshot of what we can _honestly
+and verifiably_ claim about this repo at one exact commit. Nothing here is
+marketing and nothing is a promise about the future — those live in the README.
+This file is the receipt.
+
+*How it is designed to work.* Three moving parts make it trustworthy:
+
+. *Ground truth, not memory.* Every claim below was produced by _running the tool
+  in the session that wrote this file_ (the Idris2 proof build, the Rust test
+  suites, the end-to-end script, and the Zig FFI build). Where a status doc,
+  memory, or a companion doc said otherwise, the live run wins and we flag it.
+. *A frozen anchor.* The file names the exact commit SHA, branch, UTC timestamp,
+  and toolchain (see <<Verifiable anchor>>); "true" always means "true _at this
+  point_". Move the SHA and the file becomes a draft until re-run.
+. *A real signature.* It is landed by a *signed git commit*; that signature over
+  this content at the anchored SHA is what makes the affirmation tamper-evident,
+  not the prose alone.
+
+*We are fallible.* We can be wrong, stale, or mistaken about our own work. This
+is our best honest belief, not a proof of its own correctness. Treat it as a
+falsifiable claim, not gospel.
+
+== The epistemic contract (read this before you trust _or_ attack)
+
+This document records our *best joint belief* at the timestamp below. It is *not
+a guarantee of correctness.* We may be wrong. We may have missed something — a
+hole, a stale doc, a proof that checks a _model_ we then fail to match in the
+_implementation_.
+
+*No intentional overclaim.* That is the only guarantee here: we have not
+_knowingly_ inflated anything. Where something is tested-but-not-proved, we say
+so. Where a proof covers an idealised model and _not_ the production Rust, we say
+so. Where a feature is architectural-but-not-exercised, we say so. Where a
+component is named in a companion doc but does _not currently build_, we say so.
+
+*Standing invitation to refute.* You are _invited_ to bulldoze any claim here.
+The fair form of the attack is:
+
+. Read this file at the stamped commit.
+. Reproduce (or fail to reproduce) the checks in <<reproduce,Reproduce it yourself>>.
+. _Then_ tell us where the discrepancy is, against the artefact as it stood at
+  this moment — so we can justify it or concede it on the record.
+
+An attack that skips steps 1–2 is attacking a strawman of a different date.
+
+*No fights before the facts are cleared up.* We will not dispute a claim until
+the discrepancy has actually been checked against the artefact at this commit and
+we have had the chance to justify or concede it on the record. Good faith both
+ways: bring a reproducible discrepancy and we fix the claim, the doc, or the code
+— promptly and without defensiveness. The goal is a corrected record, not a won
+argument.
+
+== Verifiable anchor
+
+[cols="1,3"]
+|===
+| *Repo*        | `hyperpolymath/typed-wasm`
+| *Branch*      | `docs/twasm-affirmation` (same commit as `main`)
+| *Commit (HEAD)* | `fe8644470599da288870bed6f2fddf18f747fd30`
+| *Permalink*   | https://github.com/hyperpolymath/typed-wasm/tree/fe8644470599da288870bed6f2fddf18f747fd30
+| *Verified (UTC)* | 2026-06-16T12:31:25Z
+| *Working-tree delta at verification* | Clean except this file (`AFFIRMATION.adoc`, untracked/parked). The results below are HEAD itself.
+| *Toolchain*   | Idris2 0.8.0 · cargo 1.95.0 · rustc 1.95.0 · zig 0.15.2
+|===
+
+[IMPORTANT]
+If you are reading this at a _later_ commit, the claims may have drifted. Re-run
+<<reproduce>> and write a fresh affirmation; do not trust a stale one. A sibling
+branch `chore/twasm-verify-collapsible-match` (commit `14076e7`) carries one
+clippy fix that is *not* on this HEAD — see <<state,Outstanding>>.
+
+== Companion documents and repo metadata (cross-check)
+
+Read this against the repo's own public claims; where they drift from what we
+verified, we say so rather than leave you to find out.
+
+* *`README.adoc`* — link:README.adoc[] present (canonical; no `README.md`). Sells
+  the vision; this file is its receipt for one moment. Honestly, the README
+  _already_ flags ("surface semantics remain research-grade — the parser, Zig
+  FFI and downstream …") that the Zig FFI is research-grade — consistent with
+  what we found below.
+* *`EXPLAINME.adoc`* — link:EXPLAINME.adoc[] present. *Drift we must flag:*
+  EXPLAINME's "Honest Assessment" says _"the checked L1-L10 ABI core and Zig FFI
+  are in place"_ and lists _"Zig FFI layer (C-compatible, tested)"_. Our live
+  `zig build` and `zig build test` *both FAIL to compile* under zig 0.15.2 (see
+  <<failures>>). "In place / tested" overstates the Zig FFI's buildable state at
+  this commit; that EXPLAINME line is stale and should be corrected.
+* *Living ledgers* — `PROOF-NEEDS.md` and `TEST-NEEDS.md` are present; this
+  affirmation is a signed snapshot of their ground-truthed state, not a
+  replacement.
+* *GitHub repo description* — _"Idris2-proved progressive type safety for
+  WebAssembly linear memory (regions are tables, loads are queries) — and the
+  verified convergence ABI that independent WasmGC languages agree on."_ Honest
+  caveats: *"Idris2-proved"* is true of the _model_ (24 proof modules, green this
+  session); the Rust producer/verifier are a _trusted base tested_ against it,
+  **not proved to refine it** (see <<nuance>>). *"verified convergence ABI that
+  independent WasmGC languages agree on"* is aspirational at the end-to-end
+  level: the carrier sections and cross-module checks exist and are tested, but
+  no two real languages have been driven through a shared-memory boundary yet.
+* *GitHub topics* — `dependent-types`, `formal-verification`, `memory-safety`,
+  `type-safety`, `wasm`, `zig`, `abi`, `language-interoperability`. Cross-check:
+  `formal-verification` is _earned_ (24 green Idris2 modules, no escape hatches);
+  `zig` is present as a topic but the Zig FFI _does not build_ at this commit
+  (see <<failures>>); `abi` / `language-interoperability` are _aspirational
+  end-to-end_ — the ABI is defined and partly verifier-backed, not yet exercised
+  between two real producers.
+
+== The honest state (one breath)
+
+*typed-wasm is a pre-alpha research toolchain with a genuinely working,
+machine-checked vertical slice: a typed-region schema compiles to real
+WebAssembly with typed loads/stores, an independent zero-trust verifier confirms
+each access is correctly typed/sized/in-region, and a wasm engine runs it with
+the right semantics — all backed by a green Idris2 proof corpus (24 modules) and
+152 passing Rust tests — yet the proofs verify a *model* the Rust implementation
+is only *tested* (not proved) to match, the Zig FFI layer does *not currently
+compile* under zig 0.15.2, there is no real-language front-end (only a stopgap
+parser), and the headline cross-language feature is built but not yet exercised
+end-to-end.*
+
+[#solid]
+=== What is solid (and how we checked)
+
+* *The Idris2 ABI proof corpus builds green, this moment.* A clean rebuild —
+  `idris2 --clean typed-wasm.ipkg` then `idris2 --build typed-wasm.ipkg` in
+  `src/abi/` → *exit 0, 24 `.ttc` modules produced*, with *zero* `believe_me` /
+  `assert_total` / `postulate` / `sorry` / `Admitted` / `assert_smaller` (every
+  scanner hit is a `--`/`|||` disclaimer line, not code) and `%default total`
+  present in all 24 source files. Covers the 10-level model, the L11/L12 axis
+  (`Tropical.idr` = Level 11, `Epistemic.idr` = Level 12, both green this
+  session), `Choreography.idr`, the `fullCert12` whole-stack certificate in
+  `Proofs.idr`, the packed-layout spec, the access-typing spec, and a
+  decidable/extractable access-typing checker.
+* *The producer → verifier → engine slice runs and is tested green.* `cargo test`
+  across both crates (all features) → *152 passed, 0 failed, 0 ignored*. In
+  particular:
+** *Execution gate* (`tests/execute_lowering.rs`, *1 passed*): the emitted typed
+   loads/stores are instantiated in **wasmi** and proven to _compute_ the right
+   memory semantics — every scalar width, narrow-field sign/zero-extension, and a
+   narrow store touching only its own bytes. Mutation-tested in development so the
+   gate has teeth.
+** *Zero-trust access typing* (`tests/access_typing.rs`, *8 passed*): the verifier
+   decodes the code section and confirms each pinned access is a load/store of the
+   field's exact type/width/offset, in-region — with five fault "teeth" each
+   rejected (wrong width/offset, non-memory op, index/region out of range).
+** *Round-trip + cross-compat* (corpus 15, cross_compat 10, cross_compat_real 5,
+   ownership lib 77, …): the emitted modules validate as real wasm and the
+   verifier's ownership/access passes behave as specified.
+* *Formal bridges landed (green this session):* the packed-layout lemma
+  (`packedFieldsInBounds`: a packed-computed region can never trip the verifier's
+  out-of-region check), the verifier↔spec link (`AccessTypingSpec`, with the
+  trust boundary _named_), and the decidable-checker kernel (`decAccessTypingClean`).
+* *Parser totality:* the `.twasm` parser no longer panics on malformed
+  array-size / region-size arithmetic (10 totality unit tests, each paired with a
+  well-formed control).
+* *End-to-end structural checks mostly pass.* `tests/e2e.sh` → *48 passed, 1
+  failed, 6 skipped* (exit 1). The single failure is the Zig FFI build (see
+  <<failures>>); the Idris2 build step _inside_ e2e PASSES, every
+  spec/example/ABI file is present, and the 6 skips are un-built parser artifacts
+  plus an obsolete `.res` SPDX check (the parser is now `.affine`, not `.res`).
+
+[#nuance]
+=== The honest nuance you must not lose
+
+The Idris2 corpus proves properties of an *idealised model*. It does *not* prove
+that the Rust producer (`crates/typed-wasm-codegen`) and verifier
+(`crates/typed-wasm-verify`) _refine_ that model. The link is a *documented
+transliteration* (the Idris `PackedLayout` mirrors the Rust `resolve_field`
+line-for-line) plus *one explicitly-named assumption* — decode-faithfulness, the
+`TypedAccessFixture` trust-injection / ADR-0005 trusted base: we assume the Rust
+verifier decodes the wasm operator stream the way the model reasons about it.
+There is *no extraction* and *no mechanised wasm operational-semantics
+(WasmCert) tie-back*. "Proved model" + "tested implementation" with an explicitly
+bounded bridge is exactly that — two things. *Anyone claiming "typed-wasm is
+proven correct" full-stop is overclaiming.*
+
+[#failures]
+=== Loud failures (fenced, not buried)
+
+[WARNING]
+====
+*The Zig FFI layer does not compile at this commit.* `zig build` (in `ffi/zig/`)
+fails with *4 compile errors*, and `zig build test` fails with *6*. Captured this
+session under zig 0.15.2:
+
+----
+src/main.zig:50:5: error: opaque types cannot have fields
+    allocator: std.mem.Allocator,
+... plus: dependency on libc must be explicitly specified in the build command
+          (malloc / free / posix_memalign), and
+          "C allocator is only available when linking against libc"
+----
+
+Root cause is a *zig 0.15 breaking change*: `opaque {}` types may no longer
+carry fields, and the C allocator now requires explicit libc linking. This is a
+toolchain-drift breakage in `ffi/zig/src/main.zig`, not a proof or verifier
+defect — the Idris2 corpus and the Rust slice are independent of it and are
+green. But the Zig FFI is *not* a working component at this SHA, contrary to the
+EXPLAINME "tested / in place" wording.
+====
+
+=== Scope limits, honestly fenced (not silent gaps)
+
+* *Front-end is a stopgap.* The `.twasm` parser (ADR-0004 still _Proposed_)
+  handles only the example and paint-type schemas — region declarations plus
+  trivial field accessors. There is *no general language and no real programs*;
+  you cannot yet point AffineScript/ephapax at it. It degrades to an error on
+  unsupported input, it does not miscompile.
+* *Verifier coverage is a subset on real bytes.* L2 access-typing + bounds,
+  L7/L10 ownership, L13 isolation, and L15 capabilities (unstable) are checked on
+  emitted wasm; the full ten levels are modelled in Idris but not all deeply
+  re-checked on bytes.
+
+[#state]
+=== Outstanding / weak / open (no spin)
+
+* *The Zig FFI does not build* (see <<failures>>) — the single biggest outstanding
+  item; needs a port to zig 0.15's no-fields-on-`opaque` + explicit-libc rules.
+* *The killer feature is built, not demonstrated.* Cross-language shared-memory
+  type safety has the machinery (in-band carrier sections, cross-module checks)
+  but has *not* been driven end-to-end by two real languages sharing memory.
+* *T5 frontier is open (multi-week):* full extraction (so the _running_ checker
+  is the extracted decision procedure) and the WasmCert operational-semantics
+  tie-back. The decidable-checker kernel is the verified core, not the whole.
+* *Known representative inconsistency:* `example01::move_player` emits an
+  `f32.store` into a `u8[]` field. It is carried as *declared-only* — honestly
+  _not_ type-checked — not silently passed.
+* *One `clippy::collapsible_match` lint is still open* in `verify.rs`'s
+  `verify_from_module` (`Payload::MemorySection` arm). Confirmed present at THIS
+  HEAD this session (`cargo clippy -p typed-wasm-verify` emits exactly one
+  `collapsible_match` warning). A fix exists on the separate branch
+  `chore/twasm-verify-collapsible-match` (commit `14076e7`), but that branch is
+  *not* merged into this HEAD — so the lint remains outstanding here.
+
+== How the README / ROADMAP is working out (discoveries since)
+
+The plan held in broad shape — the codegen→verified-wasm slice landed roughly as
+the roadmap intended — but two discoveries this session are worth recording so
+the README's "Idris2-proved" framing does not drift from reality.
+
+=== What turned out "magical" — a belief we had to ground (a reset, not a crash)
+
+We had been carrying _"Idris2-proved type safety"_ as if the proof corpus covered
+the running system. The formal-bridge work showed it covered _less than assumed_,
+in two linked ways:
+
+* The Idris layout model and the Rust implementation were using *different
+  layouts* — the model is _aligned_ with `WBool` = 4 bytes; the producer/verifier
+  _pack_ tightly with `Bool` = 1 byte. The model we had been proving properties
+  about did not match what the code emits. (Surfaced by attempting the
+  layout-equivalence lemma; resolved by making the *packed* layout the canonical
+  region spec and proving against _that_ — `PackedLayout.idr`.)
+* More broadly, "proved" meant *proved-a-model*, with the implementation linked
+  only by a documented transliteration plus one named assumption
+  (decode-faithfulness).
+
+Nothing broke, but both reset an over-broad belief. The honest move was to narrow
+the claim and add the missing spec — not to keep implying the system was proven.
+This is the mild, grounding-correction flavour of "a thing we thought was the
+answer was less than we thought."
+
+A third, blunter one this session: *"the Zig FFI is in place / tested"* (the
+EXPLAINME wording). Running `zig build` showed it does *not compile* under the
+current toolchain (zig 0.15.2 — `opaque` types may no longer carry fields). The
+honest move is to demote that line from "tested" to
+"present-but-not-building-pending-a-zig-0.15-port", which this affirmation does.
+
+=== What a proof made newly doable (not formalised before, doable now)
+
+* Proving the access-typing spec *decidable* (`decAccessTypingClean`) made a
+  correct-by-construction, *extractable* checker newly concrete — you cannot
+  formalise "extract the checker" before you have a decidable spec; now you can.
+* Formalising the *determine-vs-bound* asymmetry turned "what is assumed vs what
+  is proved" into an actual object (`TypedAccessFixture` + the named trust
+  boundary) instead of hand-waving — the boundary is precisely statable for the
+  first time.
+* The packed-layout lemma (`packedFieldsInBounds`) made "the verifier's
+  out-of-region check can never fire on a packed-computed region" a _stated
+  theorem_, not an assumption.
+
+Each is real: the Idris2 corpus carrying these built green this session (see
+<<reproduce>>).
+
+[#reproduce]
+== Reproduce it yourself
+
+From the repo root, at the commit above:
+
+[source,sh]
+----
+# Idris2 proof corpus — expect: exit 0, 24 .ttc modules, no escape hatches
+( cd src/abi && idris2 --clean typed-wasm.ipkg && idris2 --build typed-wasm.ipkg )
+( cd src/abi && find build -name '*.ttc' | wc -l )      # expect: 24
+
+# Rust producer + verifier slice — expect: 152 passed, 0 failed
+CARGO_INCREMENTAL=0 cargo test -p typed-wasm-codegen -p typed-wasm-verify --all-features
+
+# The execution gate specifically (wasmi runs the emitted memory ops) — expect: 1 passed
+CARGO_INCREMENTAL=0 cargo test -p typed-wasm-codegen --all-features --test execute_lowering
+
+# The zero-trust access-typing teeth — expect: 8 passed
+CARGO_INCREMENTAL=0 cargo test -p typed-wasm-codegen --all-features --test access_typing
+
+# End-to-end structural script — expect: 48 passed, 1 failed, 6 skipped (exit 1)
+bash tests/e2e.sh                                        # the 1 failure is the Zig FFI build
+
+# Zig FFI — expect: FAILS to compile under zig 0.15.2 (opaque-with-fields + libc)
+( cd ffi/zig && zig build )
+----
+
+(`CARGO_INCREMENTAL=0` avoids a known rustc 1.95 incremental ICE on this tree.)
+
+== One-line characterisation (quote this)
+
+[quote]
+____
+"A pre-alpha research toolchain with a working, machine-checked vertical slice —
+typed memory schemas compile to real WebAssembly, an independent zero-trust
+verifier confirms each access is correctly typed, and an engine runs it correctly,
+backed by 24 green Idris2 proof modules and 152 passing Rust tests — but the proofs
+verify a _model_ the Rust implementation is only _tested_ (not proved) to match,
+the Zig FFI layer does not compile under the current zig toolchain, there's no
+real-language front-end yet, and the cross-language feature is built but not
+exercised. A serious research artifact, not a usable product. No intentional
+overclaim."
+____
+
+== Joint attestation
+
+We, the undersigned, assert that *to the best of our joint belief at the
+timestamp above, every claim in this file is true and was checked as described* —
+with no intentional overclaim, and with the open gaps stated rather than hidden.
+
+* *Engineering party (AI):* Claude Opus 4.8 (`claude-opus-4-8[1m]`) — ran the
+  Idris2 proof build, the Rust test suites, the end-to-end script, and the Zig
+  FFI build recorded here on 2026-06-16T12:31:25Z and stands behind the wording
+  above as a faithful report of those runs.
+* *Owner / maintainer:* Jonathan D.A. Jewell — _signs by committing this file
+  with `-S` (`id_ed25519_signing`); the git commit signature over this content,
+  at the commit SHA recorded above, is the cryptographic form of this
+  affirmation._
++
+Signed-off-date: 2026-06-16
+
+[TIP]
+The authoritative, tamper-evident signature is the *signed git commit* that lands
+this file. If the SHA in <<Verifiable anchor>> matches the parent of that commit
+and the commit verifies, this affirmation is anchored. If they don't match, treat
+the file as a draft.
