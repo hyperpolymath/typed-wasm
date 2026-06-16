@@ -176,6 +176,37 @@ fn parsed_example_corpus_round_trips() {
     }
 }
 
+/// Reinforce: a malformed or truncated `.twasm` must yield `Ok`/`Err`, never a
+/// panic. Feeds char-boundary truncations of every example plus adversarial
+/// fragments (unbalanced delimiters, UTF-8, partial type forms) through the
+/// parser; the test fails if any input panics (out-of-bounds slice, etc.).
+#[test]
+fn parser_never_panics_on_malformed_input() {
+    let examples: [&str; 6] = [
+        include_str!("../../../examples/01-single-module.twasm"),
+        include_str!("../../../examples/02-multi-module.twasm"),
+        include_str!("../../../examples/03-ownership-linearity.twasm"),
+        include_str!("../../../examples/04-ecs-game.twasm"),
+        include_str!("../../../examples/05-tropical-cost.twasm"),
+        include_str!("../../../examples/06-epistemic-sync.twasm"),
+    ];
+    for src in examples {
+        for cut in (0..src.len()).step_by(7) {
+            if src.is_char_boundary(cut) {
+                let _ = parser::parse_module(&src[..cut]); // must not panic
+            }
+        }
+    }
+    for frag in [
+        "", "region", "region X", "region X {", "region X { f: ",
+        "region X { f: i32", "fn", "fn f(", "fn f(&mut region<",
+        "fn f() -> ", "import region", "import region X from \"",
+        "opt<ptr<", "区域 region", "{{{{{", "<<<<<", "region X { invariant {",
+    ] {
+        let _ = parser::parse_module(frag); // must not panic
+    }
+}
+
 #[test]
 fn generated_corpus_round_trips() {
     for seed in 0..512u64 {

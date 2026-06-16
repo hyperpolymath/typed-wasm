@@ -83,7 +83,9 @@ impl<'a> Parser<'a> {
 
     fn peek_word(&mut self, word: &str) -> bool {
         let start = self.pos;
-        if self.src[start..].starts_with(word) {
+        // Panic-safe: `get` returns None on an out-of-range / non-char-boundary
+        // index instead of panicking on malformed or truncated input.
+        if self.src.get(start..).map_or(false, |rest| rest.starts_with(word)) {
             let next_char = self.src.as_bytes().get(start + word.len());
             if next_char.is_none() || !next_char.unwrap().is_ascii_alphabetic() {
                 return true;
@@ -132,15 +134,18 @@ impl<'a> Parser<'a> {
 
     fn expect(&mut self, s: &str) -> Result<(), String> {
         self.skip_whitespace();
-        if self.src[self.pos..].starts_with(s) {
+        if self.src.get(self.pos..).map_or(false, |rest| rest.starts_with(s)) {
             self.pos += s.len();
             Ok(())
         } else {
+            // Panic-safe error context: clamp to the end of input and fall back
+            // if the window straddles a UTF-8 boundary, so malformed/truncated
+            // input yields an Err, never an out-of-bounds slice panic.
+            let end = (self.pos + 20).min(self.src.len());
+            let found = self.src.get(self.pos..end).unwrap_or("<end-of-input>");
             Err(format!(
                 "Expected '{}' at position {}, found '{}'",
-                s,
-                self.pos,
-                &self.src[self.pos..self.pos + 20]
+                s, self.pos, found
             ))
         }
     }
