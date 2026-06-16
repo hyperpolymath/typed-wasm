@@ -49,6 +49,57 @@ const SCALARS: [Scalar; 8] = [
     Scalar::I16,
 ];
 
+/// Scalar type names as they appear in `.twasm` source text.
+const SCALAR_NAMES: [&str; 11] = [
+    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool",
+];
+
+/// Generate syntactically-valid `.twasm` SOURCE TEXT within the v0-supported
+/// subset: random regions of random scalar fields (some arrays, optional
+/// `align`), plus simple named-param functions. Exercises the parser on
+/// arbitrary schemas, not just the six hand-written examples.
+fn gen_twasm_source(seed: u64) -> String {
+    let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(7));
+    let mut s = String::new();
+    let n_regions = 1 + rng.upto(3);
+    for r in 0..n_regions {
+        s.push_str(&format!("region R{r} {{\n"));
+        let n_fields = 1 + rng.upto(6);
+        for fi in 0..n_fields {
+            let ty = SCALAR_NAMES[rng.upto(SCALAR_NAMES.len() as u32) as usize];
+            if rng.upto(4) == 0 {
+                s.push_str(&format!("    f{fi}: {ty}[{}];\n", 1 + rng.upto(16)));
+            } else {
+                s.push_str(&format!("    f{fi}: {ty};\n"));
+            }
+        }
+        if rng.upto(2) == 0 {
+            let aligns = [1u32, 2, 4, 8, 16];
+            s.push_str(&format!("    align {};\n", aligns[rng.upto(5) as usize]));
+        }
+        s.push_str("}\n\n");
+    }
+    for k in 0..rng.upto(4) {
+        let n_params = rng.upto(4);
+        let params: Vec<String> = (0..n_params)
+            .map(|pi| {
+                let ty = SCALAR_NAMES[rng.upto(SCALAR_NAMES.len() as u32) as usize];
+                format!("p{pi}: {ty}")
+            })
+            .collect();
+        let ret = if rng.upto(2) == 0 {
+            format!(
+                " -> {}",
+                SCALAR_NAMES[rng.upto(SCALAR_NAMES.len() as u32) as usize]
+            )
+        } else {
+            String::new()
+        };
+        s.push_str(&format!("fn fn{k}({}){} {{\n}}\n\n", params.join(", "), ret));
+    }
+    s
+}
+
 /// Generate a well-formed module: random scalar regions + functions
 /// that use LocalGet/Drop to maintain stack balance.
 fn gen_valid(seed: u64) -> Module {
@@ -204,6 +255,22 @@ fn parser_never_panics_on_malformed_input() {
         "opt<ptr<", "区域 region", "{{{{{", "<<<<<", "region X { invariant {",
     ] {
         let _ = parser::parse_module(frag); // must not panic
+    }
+}
+
+/// Broaden: arbitrary generated `.twasm` SOURCE (not just the six examples)
+/// must parse, emit valid wasm, and round-trip through the verifier — surfaces
+/// front-end gaps on schema combinations the hand-written corpus misses.
+#[test]
+fn generated_twasm_source_round_trips() {
+    for seed in 0..256u64 {
+        let src = gen_twasm_source(seed);
+        match parser::parse_module(&src) {
+            Ok(m) => assert_round_trips(&m),
+            Err(e) => panic!(
+                "generated .twasm failed to parse (seed {seed}): {e}\n--- source ---\n{src}"
+            ),
+        }
     }
 }
 
