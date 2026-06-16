@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MPL-2.0
+# Bustfile (A2ML Canonical)
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath)
+
+@abstract:
+Design aetiology for Typed Wasm — the "busts": recognised causal stories behind
+breakages, near-hits, and toolchain-discipline conformances. A Bustfile records
+WHY, not a bandaid. Entries are to be RECOGNISED and learned from, not
+necessarily "fixed": a near-hit is a latent unsoundness a change exposed and
+that we conformed to — not an open defect. Each entry carries its aetiology, our
+response, the implication, and the counterfactual (what going the wrong way
+would have cost).
+@end
+
+@bust-scope: repo
+@bust-kinds: [near-hit, conformance, drift, aetiology]
+@bust-stance: conform-to-type-discipline-not-work-around
+
+## Near-hits and conformances
+
+### zig-0.15-opaque-no-fields  (RECOGNISE — not an issue to fix)
+- kind: near-hit + toolchain-discipline conformance
+- date: 2026-06-16
+- surface: ffi/zig (the C-ABI FFI handle scaffold; pre-alpha skeleton)
+- event: under Zig 0.15.2 the FFI stopped compiling on three points — `opaque {}` may no longer carry fields (`src/main.zig` `Handle`), `std.heap.c_allocator` now requires explicit `link_libc`, and `callconv(.C)` was renamed `callconv(.c)`. Caught at the `tests/e2e.sh` gate (48 pass / 1 fail / 6 skip; the 1 fail was `zig build`), and recorded in AFFIRMATION.adoc.
+- aetiology: NOT a Zig regression and nothing to fix upstream — the scaffold was the unsound party. `opaque` means "a type whose size, alignment, and layout are unknown to the compiler" (FILE*-style handles you only ever hold a pointer to). A field declares a known offset and contributes to a known layout, so `opaque { allocator, initialized }` was a contradiction in terms: "no known layout, and here is its layout." `opaque` may legitimately hold declarations (consts, methods) but never fields. 0.15.2 enforces what `opaque` always meant; the earlier compiler merely tolerated the unsoundness. The c_allocator/libc change is the same family — you are now forced to declare the libc dependency you actually have. `callconv(.C)`→`(.c)` is the lone bit of plain rename-churn.
+- why-a-near-hit: a latent unsoundness in the FFI handle template, exposed by a toolchain tightening. It never reached a shipped consumer (the FFI is a pre-alpha skeleton), and the formal core (Idris2 corpus, 24 modules) plus the Rust producer/verifier slice (152 tests) are wholly independent of it and stayed green. Blast radius: one scaffold file, surfaced by our own e2e gate and the affirmation's ground-truth pass.
+- response: conform, do not work around. Adopted the genuine opaque-handle idiom — `Handle = opaque {}` (truly opaque to C) + internal `HandleImpl` struct + `@ptrCast` recovery — rather than downgrading to a plain struct (which would discard the original "opaque to prevent direct access" intent). Declared `link_libc = true` (truthful: we depend on libc, and a C caller's `free()` must match our `malloc`). Renamed `callconv(.c)`. Decoupled the aspirational `echidna_oracle_test` (which needs an unbuilt region runtime) into its own `oracle` step, parked-with-note — not stubbed, not deleted. Result: `zig build` + `zig build test` green; e2e 49/0/6.
+- implication: treat a type-system tightening that removes an unsoundness as LOAD-BEARING SAFETY to conform to — not churn to revert or paper over. This is the very discipline typed-wasm itself embodies (the type system stops you doing the unsound thing); when our own scaffold leaned on a pre-0.15 leniency, the right move was to conform.
+- counterfactual: had we "fixed" it by pinning pre-0.15 Zig, or by `--no-verify` / stubbing the types, we would have PRESERVED the unsoundness and hidden the signal. The lesson of the near-hit is that the e2e gate + the affirmation surfaced it honestly, and conforming made the code more correct, not less.
+- residual (separate, not this bust): the FFI is a pre-alpha C-ABI skeleton; the region runtime the oracle suite targets (`RegionSchema`/`FieldDescriptor`/`RegionError`) is unbuilt — tracked elsewhere, drift to re-sync when the runtime lands.
+- status: recognised. No further action required for this entry.
