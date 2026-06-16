@@ -303,6 +303,308 @@ fn reader_body_is_lowered_to_real_load() {
     assert_round_trips(&m);
 }
 
+/// Climb Step 2: a single-statement field writer (`region.set $p .field, v;`)
+/// must lower to a REAL typed store, not a representative stub — covering a
+/// matching-typed param value, a bool/int literal, and the i64/f64 widths added
+/// to the `Op` set. A wide field reader (`-> i64`) must now lower to `i64.load`
+/// rather than falling back to the stub. The fixture is a self-contained
+/// `.twasm` source: no clean single-statement writer exists in the example
+/// corpus (their setters sit inside `if`/`while`/arithmetic, which correctly
+/// stay on the stub path).
+#[test]
+fn writer_and_wide_reader_bodies_are_lowered_to_real_memory_ops() {
+    // pos_x: f32 @0 (f0), vel_x: f32 @4 (f1), lifetime: i64 @8 (f2),
+    // is_alive: bool @16 (f3).
+    let src = r#"
+        region Particle {
+            pos_x: f32;
+            vel_x: f32;
+            lifetime: i64;
+            is_alive: bool;
+        }
+        memory mem { initial: 1; }
+
+        fn set_vel(p: &mut region<Particle>, v: f32) {
+            region.set $p .vel_x, v;
+        }
+        fn set_life(p: &mut region<Particle>, t: i64) {
+            region.set $p .lifetime, t;
+        }
+        fn reset_life(p: &mut region<Particle>) {
+            region.set $p .lifetime, 0;
+        }
+        fn kill(p: &mut region<Particle>) {
+            region.set $p .is_alive, false;
+        }
+        fn read_life(p: &region<Particle>) -> i64 {
+            region.get $p .lifetime -> x;
+            return x;
+        }
+    "#;
+    let m = parser::parse_module(src).expect("writer fixture must parse");
+    let by = |name: &str| {
+        m.funcs
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("{name} present"))
+    };
+
+    // param value -> [local.get p, local.get v, f32.store]
+    let set_vel = by("set_vel");
+    assert!(
+        matches!(
+            set_vel.body.as_slice(),
+            [Op::LocalGet(0), Op::LocalGet(1), Op::F32Store { .. }]
+        ),
+        "expected real f32.store writer, got {:?}",
+        set_vel.body
+    );
+    assert_eq!(set_vel.accesses.len(), 1, "writer must record one access-site");
+
+    // i64 param value -> [local.get p, local.get t, i64.store]
+    assert!(
+        matches!(
+            by("set_life").body.as_slice(),
+            [Op::LocalGet(0), Op::LocalGet(1), Op::I64Store { .. }]
+        ),
+        "expected i64.store writer, got {:?}",
+        by("set_life").body
+    );
+
+    // int literal -> [local.get p, i64.const 0, i64.store]
+    assert!(
+        matches!(
+            by("reset_life").body.as_slice(),
+            [Op::LocalGet(0), Op::I64Const(0), Op::I64Store { .. }]
+        ),
+        "expected i64.const literal writer, got {:?}",
+        by("reset_life").body
+    );
+
+    // bool literal -> [local.get p, i32.const 0, i32.store8] — a 1-byte field
+    // uses a 1-byte store, NOT a 4-byte i32.store that would over-run the region.
+    assert!(
+        matches!(
+            by("kill").body.as_slice(),
+            [Op::LocalGet(0), Op::I32Const(0), Op::I32Store8 { .. }]
+        ),
+        "expected bool-literal i32.store8 writer, got {:?}",
+        by("kill").body
+    );
+
+    // wide reader -> [local.get p, i64.load]
+    assert!(
+        matches!(
+            by("read_life").body.as_slice(),
+            [Op::LocalGet(0), Op::I64Load { .. }]
+        ),
+        "expected i64.load reader, got {:?}",
+        by("read_life").body
+    );
+
+    assert_round_trips(&m);
+}
+
+/// A `region.set` whose value is a compound expression (not a lone param or
+/// literal) must NOT be mistaken for a writer — it falls back to the stub, so
+/// the module still round-trips and contains no spurious store.
+#[test]
+fn compound_set_value_falls_back_to_stub() {
+    let src = r#"
+        region Particle {
+            pos_x: f32;
+            vel_x: f32;
+        }
+        memory mem { initial: 1; }
+        fn step(p: &mut region<Particle>, dt: f32) {
+            region.set $p .pos_x, pos_x + vel_x * dt;
+        }
+    "#;
+    let m = parser::parse_module(src).expect("compound-set fixture must parse");
+    let step = m
+        .funcs
+        .iter()
+        .find(|f| f.name == "step")
+        .expect("step present");
+    assert!(
+        !step
+            .body
+            .iter()
+            .any(|op| matches!(op, Op::F32Store { .. } | Op::I32Store { .. })),
+        "compound expression must not lower to a store, got {:?}",
+        step.body
+    );
+    assert_round_trips(&m);
+}
+
+/// Narrow scalar fields (1/2-byte) must lower to sub-width ops so a write
+/// touches ONLY its own bytes — never the adjacent packed field, never past the
+/// region. A full-width i32.store/i32.load would corrupt/over-read the neighbour
+/// (validates clean, so the verifier can't catch it — caught here instead).
+#[test]
+fn narrow_fields_use_subwidth_ops_and_do_not_clobber_neighbours() {
+    // flags: bool @0 (1 byte, f0), hp: i32 @1 (f1). A naive i32.store of flags
+    // at offset 0 would write bytes 0..4, clobbering 3 bytes of hp at 1..5.
+    let src = r#"
+        region E {
+            flags: bool;
+            hp: i32;
+            small: u16;
+            tiny: i8;
+        }
+        memory mem { initial: 1; }
+        fn set_flags(p: &mut region<E>, v: u32) { region.set $p .flags, v; }
+        fn set_small(p: &mut region<E>, v: u32) { region.set $p .small, v; }
+        fn get_flags(p: &region<E>) -> i32 { region.get $p .flags -> x; return x; }
+        fn get_tiny(p: &region<E>) -> i32 { region.get $p .tiny -> x; return x; }
+        fn get_small(p: &region<E>) -> i32 { region.get $p .small -> x; return x; }
+    "#;
+    let m = parser::parse_module(src).expect("narrow-field fixture must parse");
+    let by = |name: &str| {
+        m.funcs
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("{name} present"))
+    };
+
+    // 1-byte store -> store8 (not store) so hp at offset 1 is untouched.
+    assert!(
+        matches!(
+            by("set_flags").body.as_slice(),
+            [Op::LocalGet(0), Op::LocalGet(1), Op::I32Store8 { .. }]
+        ),
+        "bool field must store8, got {:?}",
+        by("set_flags").body
+    );
+    // 2-byte store -> store16.
+    assert!(
+        matches!(
+            by("set_small").body.as_slice(),
+            [Op::LocalGet(0), Op::LocalGet(1), Op::I32Store16 { .. }]
+        ),
+        "u16 field must store16, got {:?}",
+        by("set_small").body
+    );
+    // unsigned narrow load -> zero-extend; signed narrow load -> sign-extend.
+    assert!(
+        matches!(by("get_flags").body.as_slice(), [Op::LocalGet(0), Op::I32Load8U { .. }]),
+        "bool field must load8_u, got {:?}",
+        by("get_flags").body
+    );
+    assert!(
+        matches!(by("get_tiny").body.as_slice(), [Op::LocalGet(0), Op::I32Load8S { .. }]),
+        "i8 field must load8_s, got {:?}",
+        by("get_tiny").body
+    );
+    assert!(
+        matches!(by("get_small").body.as_slice(), [Op::LocalGet(0), Op::I32Load16U { .. }]),
+        "u16 field must load16_u, got {:?}",
+        by("get_small").body
+    );
+    assert_round_trips(&m);
+}
+
+/// A region-handle parameter must NOT be accepted as the stored scalar value
+/// (both are i32 on the wasm stack, but storing a pointer into a scalar field is
+/// type confusion). It falls back to the stub instead of emitting a store.
+#[test]
+fn region_handle_is_not_laundered_into_a_scalar_field() {
+    let src = r#"
+        region R { flag: i32; }
+        memory mem { initial: 1; }
+        fn copy_handle(p: &mut region<R>, q: &region<R>) { region.set $p .flag, q; }
+    "#;
+    let m = parser::parse_module(src).expect("handle-as-value fixture must parse");
+    let f = m.funcs.iter().find(|f| f.name == "copy_handle").expect("present");
+    assert!(
+        !f.body.iter().any(|op| matches!(op, Op::I32Store { .. })),
+        "a region handle must not be stored as a scalar value, got {:?}",
+        f.body
+    );
+    assert_round_trips(&m);
+}
+
+/// An integer literal outside the field's wasm width must NOT silently wrap
+/// (`4294967296 as i32 == 0`); it falls back to the stub. In-range bit patterns
+/// (incl. 0xFFFFFFFF -> -1) still lower.
+#[test]
+fn out_of_range_int_literal_falls_back_to_stub() {
+    let src = r#"
+        region R { x: i32; }
+        memory mem { initial: 1; }
+        fn over(p: &mut region<R>) { region.set $p .x, 4294967296; }
+        fn inrange(p: &mut region<R>) { region.set $p .x, 0xFFFFFFFF; }
+    "#;
+    let m = parser::parse_module(src).expect("literal-range fixture must parse");
+    let by = |name: &str| m.funcs.iter().find(|f| f.name == name).unwrap();
+    assert!(
+        !by("over").body.iter().any(|op| matches!(op, Op::I32Store { .. })),
+        "2^32 must not wrap to a stored i32.const, got {:?}",
+        by("over").body
+    );
+    // 0xFFFFFFFF fits u32 -> stored as i32.const(-1).
+    assert!(
+        matches!(
+            by("inrange").body.as_slice(),
+            [Op::LocalGet(0), Op::I32Const(-1), Op::I32Store { .. }]
+        ),
+        "0xFFFFFFFF must store as i32.const(-1), got {:?}",
+        by("inrange").body
+    );
+    assert_round_trips(&m);
+}
+
+/// A finite float literal whose magnitude overflows f32 to ±inf must NOT be
+/// stored as `f32.const inf` (silent value change); it falls back to the stub.
+#[test]
+fn f32_overflow_literal_falls_back_to_stub() {
+    // ~4e38 > f32::MAX (~3.4e38), written without an exponent per the grammar.
+    let src = r#"
+        region R { x: f32; }
+        memory mem { initial: 1; }
+        fn huge(p: &mut region<R>) { region.set $p .x, 400000000000000000000000000000000000000.0; }
+        fn ok(p: &mut region<R>) { region.set $p .x, 1.5; }
+    "#;
+    let m = parser::parse_module(src).expect("f32-overflow fixture must parse");
+    let by = |name: &str| m.funcs.iter().find(|f| f.name == name).unwrap();
+    assert!(
+        !by("huge").body.iter().any(|op| matches!(op, Op::F32Store { .. })),
+        "overflowing float must not store as f32.const inf, got {:?}",
+        by("huge").body
+    );
+    assert!(
+        matches!(
+            by("ok").body.as_slice(),
+            [Op::LocalGet(0), Op::F32Const(_), Op::F32Store { .. }]
+        ),
+        "in-range float must lower, got {:?}",
+        by("ok").body
+    );
+    assert_round_trips(&m);
+}
+
+/// A synthesised memory (module declares none) must be large enough to cover the
+/// accessed region, so a real store/load offset can't point past linear memory
+/// and trap at runtime.
+#[test]
+fn synthesised_memory_covers_a_large_region() {
+    // pad: u8[100000] pushes x to byte offset 100000 (> one 64 KiB page).
+    let src = r#"
+        region Big { pad: u8[100000]; x: i32; }
+        fn set_x(p: &mut region<Big>, v: i32) { region.set $p .x, v; }
+    "#;
+    let m = parser::parse_module(src).expect("large-region fixture must parse");
+    let mem = m.memory.expect("a memory must be synthesised for the store");
+    // x is at offset 100000; the store reaches bytes 100000..100004, so memory
+    // must span at least that many bytes (>= 2 pages).
+    assert!(
+        mem.min_pages * 65536 >= 100004,
+        "synthesised memory ({} pages) must cover offset 100000, ",
+        mem.min_pages
+    );
+    assert_round_trips(&m);
+}
+
 fn one_func_module(kind: Ownership, body: Vec<Op>) -> Module {
     Module {
         regions: vec![],
