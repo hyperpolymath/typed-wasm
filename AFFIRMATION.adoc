@@ -166,10 +166,10 @@ end-to-end.*
   across both crates (all features) → *152 passed, 0 failed, 0 ignored*. In
   particular:
 ** *Execution gate* (`tests/execute_lowering.rs`, *1 passed*): the emitted typed
-   loads/stores are instantiated in **wasmi** and proven to _compute_ the right
-   memory semantics — every scalar width, narrow-field sign/zero-extension, and a
-   narrow store touching only its own bytes. Mutation-tested in development so the
-   gate has teeth.
+   loads/stores are instantiated in **wasmi** and _tested by execution_ to compute
+   the right memory semantics — every scalar width, narrow-field sign/zero-extension,
+   and a narrow store touching only its own bytes. This is a passing test, not a
+   formal proof. Mutation-tested in development so the gate has teeth.
 ** *Zero-trust access typing* (`tests/access_typing.rs`, *8 passed*): the verifier
    decodes the code section and confirms each pinned access is a load/store of the
    field's exact type/width/offset, in-region — with five fault "teeth" each
