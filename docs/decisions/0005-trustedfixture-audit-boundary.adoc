@@ -237,7 +237,7 @@ voids `I2` and therefore voids the `MkTrustedFixture`.
 
 ## Future work — when this ADR is superseded
 
-The two paths that would supersede this ADR by collapsing the audit
+The three paths that would supersede this ADR by collapsing the audit
 boundary into a constructive proof:
 
 . **WasmCert-Isabelle tie-back** — port the Rust verifier's
@@ -252,10 +252,50 @@ boundary into a constructive proof:
   be checked in the same CI run. The Idris2 side would then receive
   the verifier-soundness theorem and absorb the differential
   constructor into `VAStructural`.
+. **Extraction from the decidable spec** — the access-typing spec is
+  now *decidable* (`AccessTypingSpec.decAccessTypingClean`, a
+  correct-by-construction checker; see the addendum below). Extracting
+  that decision procedure to the running checker would make the
+  *running* verifier the verified one, collapsing all typing-**logic**
+  trust. Note this **relocates** rather than eliminates the boundary:
+  the residual trust becomes the byte→operator *decode* faithfulness
+  (which is then the named bound, and where path 1's WasmCert tie-back
+  would attach). Owner-ratified 2026-06-16 as the named future collapse
+  for the L2 access-typing pass; this ADR remains the trusted base until
+  it lands.
 
-Either upgrade would land its own ADR that supersedes this one. Until
-then, the audit boundary is `MkTrustedFixture` and the inspection
-invariants are I1/I2/I3.
+Any of these upgrades would land its own ADR that supersedes this one.
+Until then, the audit boundary is `MkTrustedFixture` (ownership) /
+`MkTypedAccessFixture` (access typing) and the inspection invariants are
+I1/I2/I3.
+
+## Addendum 2026-06-16 — the access-typing boundary and determine-vs-bound
+
+This ADR (2026-06-02) predates the L2 access-*typing* verifier pass
+(`verify_access_typing_from_module`) and its spec-of-record
+link:../../src/abi/TypedWasm/ABI/AccessTypingSpec.idr[`AccessTypingSpec.idr`]
+(T5a). The same audit-boundary design extends to it, unchanged in spirit:
+
+* **`MkTypedAccessFixture` is the access-typing analogue of
+  `MkTrustedFixture`.** Constructing one is the trust-injection moment for
+  the access-typing pass; grep `MkTypedAccessFixture` to enumerate them.
+* **The named hypothesis is _decode-faithfulness_:** that the Rust
+  verifier decodes the wasm operator stream the way the Idris model
+  reasons about it. The Idris spec cannot see the bytes, so this is named
+  here, not proven.
+
+**Why naming the bound is principled, not a deferral of convenience
+(determine-vs-bound).** The spec predicate `SiteWellTyped` is the
+*determinable* side — fixed entirely by the schema (op kind, width,
+packed offset, in-region), and it holds *by construction*. A verifier's
+own *soundness*, by contrast, depends on a checker that sits *outside the
+spec's sight*, so it can only ever be a *bound conditional on that
+checker*. Extraction (path 3) does not remove that asymmetry; it *moves*
+the checker inside the spec's sight and exposes a new frontier one step
+further out (the decode). Naming the bound crisply is therefore the
+correct stance for the trusted base, not a stopgap — and the spec being
+*decidable* is exactly what makes the eventual extraction collapse
+available.
 
 ## Cross-references
 

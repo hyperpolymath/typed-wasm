@@ -320,10 +320,8 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
                     }
                 }
             }
-            Payload::MemorySection(reader) => {
-                if reader.count() > 0 {
-                    has_own_memory = true;
-                }
+            Payload::MemorySection(reader) if reader.count() > 0 => {
+                has_own_memory = true;
             }
             Payload::CustomSection(reader) if reader.name() == OWNERSHIP_SECTION_NAME => {
                 ownership_payload = Some(reader.data().to_vec());
