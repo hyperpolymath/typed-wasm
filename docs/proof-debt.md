@@ -12,7 +12,7 @@ Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 
 **Zero soundness-relevant escape hatches** in this repo as of 2026-05-26;
 **re-confirmed 2026-06-16** (`idris2 --build src/abi/typed-wasm.ipkg` → exit 0,
-22/22 modules; marker grep for `believe_me` / `assert_total` / `postulate` /
+24/24 modules; marker grep for `believe_me` / `assert_total` / `postulate` /
 `sorry` / `Admitted` / `assert_smaller` / holes returns only docstring
 disclaimers).
 

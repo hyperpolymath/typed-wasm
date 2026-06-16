@@ -2,7 +2,6 @@
 # CODEOWNERS - Define code review assignments
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 #
-# Replace hyperpolymath with your GitHub username or team
 
 # Default owners for everything
 * @hyperpolymath
