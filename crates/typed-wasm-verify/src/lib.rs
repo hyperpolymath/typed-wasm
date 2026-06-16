@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // typed-wasm post-codegen verifier.
 //
@@ -28,7 +29,7 @@ pub use verify::{count_uses_range, verify_function};
 #[cfg(feature = "unstable-l2")]
 pub use section::{
     build_regions_section_payload, parse_regions_section_payload, FieldEntry, FieldKind,
-    Nullability, RegionEntry, WasmTy, REGIONS_SECTION_VERSION,
+    Nullability, RegionEntry, WasmTy, ACCESS_SITE_UNPINNED, REGIONS_SECTION_VERSION,
 };
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
@@ -203,6 +204,100 @@ pub enum AccessSiteError {
     },
 }
 
+/// L2 access-*typing* violation — the deep per-site check that decodes
+/// the function body and confirms a pinned access lands on a load/store
+/// of the target field's exact type, width, and offset, in-region.
+/// This is the obligation proposal 0002 deferred as
+/// `AccessSiteMisalignment`; here it is discharged at decode time.
+///
+/// Bounds errors (func/region/field id out of range) are the province of
+/// [`AccessSiteError`]; this enum assumes a resolvable entry and reports
+/// only the typing-layer faults. An entry that cannot be resolved is
+/// reported as [`AccessTypingError::UnresolvableEntry`] and skipped.
+#[cfg(feature = "unstable-l2")]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum AccessTypingError {
+    /// The entry's func/region/field id is out of range, or the pinned
+    /// function is an import with no body — the typing pass cannot resolve
+    /// what to check. (The bounds detail is [`AccessSiteError`]'s job.)
+    #[error("Level 2 access-typing: entry {entry_idx} is unresolvable for typing ({reason})")]
+    UnresolvableEntry { entry_idx: u32, reason: String },
+
+    /// The pinned instruction index is past the end of the function's
+    /// operator stream.
+    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins instruction index {instruction_index}, but the body has only {op_count} operators")]
+    AccessSiteIndexOutOfRange {
+        entry_idx: u32,
+        func_idx: u32,
+        instruction_index: u32,
+        op_count: u32,
+    },
+
+    /// The pinned instruction is not a memory load/store at all.
+    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins instruction index {instruction_index}, which is `{found}` — not a typed memory load/store")]
+    AccessSiteNotAMemoryOp {
+        entry_idx: u32,
+        func_idx: u32,
+        instruction_index: u32,
+        found: String,
+    },
+
+    /// The pinned instruction is a memory op, but of the wrong width/type
+    /// for the field it claims to access (e.g. `i32.load` into a `u8`
+    /// field, or `i64.store` into an `f64` field).
+    #[error("Level 2 access-typing: entry {entry_idx}: field {region_id}.{field_id} has type {expected}, but the pinned instruction is `{found}`")]
+    AccessTypeMismatch {
+        entry_idx: u32,
+        region_id: u32,
+        field_id: u32,
+        expected: String,
+        found: String,
+    },
+
+    /// The memory op's static offset immediate does not equal the field's
+    /// computed byte offset within its region.
+    #[error("Level 2 access-typing: entry {entry_idx}: field {region_id}.{field_id} is at byte offset {expected_offset}, but the pinned instruction uses memarg offset {found_offset}")]
+    AccessOffsetMismatch {
+        entry_idx: u32,
+        region_id: u32,
+        field_id: u32,
+        expected_offset: u32,
+        found_offset: u64,
+    },
+
+    /// The field's `[offset, offset+width)` extent runs past the
+    /// producer-declared region byte size.
+    #[error("Level 2 access-typing: entry {entry_idx}: field {region_id}.{field_id} spans bytes [{field_offset}, {field_offset}+{field_width}) which exceeds region byte size {region_byte_size}")]
+    AccessOutOfRegionBounds {
+        entry_idx: u32,
+        region_id: u32,
+        field_id: u32,
+        field_offset: u32,
+        field_width: u32,
+        region_byte_size: u32,
+    },
+}
+
+/// The outcome of the L2 access-typing pass. `type_verified` and
+/// `declared_only` partition the access sites the pass examined;
+/// `errors` is empty iff every pinned site type-checked. This is the
+/// "knowable what was actually checked" artifact: a caller (or
+/// `tw-verify`) can report `N type-verified, M declared-only` so a
+/// reader knows which sites carry a machine-checked typing guarantee and
+/// which are merely asserted by the producer.
+#[cfg(feature = "unstable-l2")]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AccessTypingReport {
+    /// Pinned sites whose pinned instruction matched the field's
+    /// type/width/offset and stayed in-region — machine-checked.
+    pub type_verified: u32,
+    /// Sites the producer carried as declared-only (unpinned): asserted,
+    /// not checked here.
+    pub declared_only: u32,
+    /// Typing faults found among the pinned sites.
+    pub errors: Vec<AccessTypingError>,
+}
+
 // ----------------------------------------------------------------------
 // Public entry points (stubbed in C1; implementations land in C2-C4).
 // ----------------------------------------------------------------------
@@ -258,6 +353,26 @@ pub fn verify_access_sites_from_module(
     wasm_bytes: &[u8],
 ) -> Result<Vec<AccessSiteError>, VerifyError> {
     verify::verify_access_sites_from_module(wasm_bytes)
+}
+
+/// Verify the L2 access-*typing* constraints: for every pinned
+/// access-site, decode the function body, take the pinned instruction,
+/// and confirm it is a memory load/store of the target field's exact
+/// type and width, whose static offset equals the field's byte offset,
+/// and whose extent stays within the region. Declared-only (unpinned)
+/// sites are counted but not checked.
+///
+/// Returns an [`AccessTypingReport`]; `report.errors.is_empty()` iff
+/// every pinned site type-checked. Modules without an access-sites
+/// section return an empty report (nothing claimed). This is strictly
+/// deeper than [`verify_access_sites_from_module`], which checks only
+/// that the id fields are in range and never decodes the code section —
+/// run both: bounds first, then typing.
+#[cfg(feature = "unstable-l2")]
+pub fn verify_access_typing_from_module(
+    wasm_bytes: &[u8],
+) -> Result<AccessTypingReport, VerifyError> {
+    verify::verify_access_typing_from_module(wasm_bytes)
 }
 
 /// Ownership-annotated signature for one exported function.

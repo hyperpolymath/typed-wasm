@@ -23,6 +23,53 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
+## RECONCILIATION 2026-06-16 (codegen climb — the second assurance axis: T1 execution gate landed, T2 in progress)
+
+> **The honest summary above concerns the _Idris-model_ axis ("where is the
+> theorem?"). This block introduces the _codegen→verified-wasm_ axis — the
+> assurance that the Rust producer's emitted bytes are what an independent
+> verifier accepts and a wasm engine executes correctly. The two axes are
+> complementary: the Idris ABI proves the _protocol_; the climb proves the
+> _running implementation honours it_. (Module count is now 22, not the
+> "eleven" of the 2026-04-13 summary — later reconciliations supersede it.)**
+>
+> **The assurance ladder (`.twasm` source → IR → emitted wasm → verified):**
+>
+> | Tier | Obligation | Status (2026-06-16) |
+> |---|---|---|
+> | **T1** Execution gate | emitted store/load bodies _compute_ the intended memory semantics (width, offset, sign/zero-extension, no-clobber) | ✅ **landed** — `crates/typed-wasm-codegen/tests/execute_lowering.rs` instantiates the lowered module in **wasmi** (pure-Rust, runs in CI without a system wasmtime) and round-trips every scalar width + proves a narrow store touches **only** its own bytes. Proven non-vacuous by mutation (reintroducing a narrow-width bug fails the gate). |
+> | **T2** Verifier self-certification | the verifier independently _decodes the code section_ and checks each pinned access lands on a load/store of the field's exact type/width/offset, in-region | 🟡 **in progress** (this session). Producer half: access sites pinned to a body-instruction index (`AccessSite.instr_index: Option<usize>`; the hand-built `example01` / paint-type representative sites are carried **declared-only**, honestly _not_ type-checked). Verifier half: `verify_access_typing_from_module` + `AccessTypingReport { type_verified, declared_only, errors }`, surfaced by `tw-verify`. Closes proposal-0002's deferred `AccessSiteMisalignment`. |
+> | **T3** Parser totality | the `.twasm` parser never panics on any input | ⚠️ **partial** — v0 hardened against malformed/truncated input (PR #168), but **3 pre-existing arithmetic panics remain** (div-by-zero / overflow in `parse_array_size_expr` + `compute_region_byte_size`). Deferred to a hardening PR. |
+> | **T4** Layout-equivalence lemma | `Layout/ABI.idr` field offsets **=** Rust `resolve_field` offsets | ❌ **open** — two independent implementations of the same field-offset arithmetic, with no proof they agree. The next formal bridge. |
+> | **T5a** Verifier↔spec link | the Rust verifier _refines_ `VerifierSpec.idr` | ◐ **trusted-base** — ADR-0005 pins audit invariants (I1 provenance / I2 witness fidelity / I3 module shape) at the `MkTrustedFixture` boundary; the Rust verifier remains the trusted base. Constructive soundness (path 2) and WasmCert tie-back (path 1) are future superseding ADRs. |
+> | **T5b** Wasm-semantics tie-back | emitted bytes mean what we claim under a mechanised wasm semantics (WasmCert-Isabelle/Coq) | ❌ **open** — multi-week external dependency. T1's execution gate is the empirical stand-in. |
+>
+> **Climb position.** Front-end staircase (languages → typed-region IR) is
+> stop-gapped by the `.twasm` parser seam (ADR-0004 _Proposed_; real
+> AffineScript/ephapax AST bridge deferred). Back-end staircase (IR → verified
+> wasm) is where the climb is: Steps 1 (field readers, #169) + 2 (field writers
+> + width-exact scalar accesses, #171) merged; the T1 gate landed alongside;
+> T2 self-certification is the active work, then the T4 layout lemma, then the
+> T5a verifier↔spec link.
+>
+> **Ground truth re-verified 2026-06-16:** `idris2 --build src/abi/typed-wasm.ipkg`
+> → exit 0, **22/22 modules**; zero `believe_me` / `postulate` / `sorry` /
+> `Admitted` / `assert_total` / holes (every scanner hit is a docstring
+> disclaimer). The `docs/proof-debt.md` zero-debt invariant holds.
+>
+> **Governance note.** The whole `crates/typed-wasm-verify/src/` (`verify.rs`,
+> `section.rs`, `lib.rs`) carried the SPDX tag but was **missing the literal
+> owner `Copyright` line** — invisible drift that trips the strict pre-commit
+> hook on any commit touching those files (so T2's verifier half was
+> commit-blocked). Surfaced and corrected under a one-time owner authorisation
+> this session; the hook is kept strict.
+>
+> **No `believe_me` / `assert_total` / `postulate` / `sorry` / `assert_smaller`
+> introduced; `%default total` preserved. T1 is an executable test, not a proof
+> obligation; T2 is a decode-time check _inside_ the (trusted-base) Rust
+> verifier — it strengthens the trusted base's self-consistency, it does not
+> reduce the trusted base.**
+
 ## RECONCILIATION 2026-06-16 (A15/A16 — estate-axis accommodation)
 
 > L11/L12/Echo have been **cross-documented and mirrored to the canonical

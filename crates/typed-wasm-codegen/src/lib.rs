@@ -35,7 +35,7 @@
 //!   v0 emits type-correct representative bodies, not the full lowering.
 
 use typed_wasm_verify::section::{
-    build_access_sites_section_payload, AccessSiteEntry, NO_TARGET_REGION,
+    build_access_sites_section_payload, AccessSiteEntry, ACCESS_SITE_UNPINNED, NO_TARGET_REGION,
 };
 use typed_wasm_verify::{
     build_ownership_section_payload, build_regions_section_payload, CrossError, FieldEntry, FieldKind,
@@ -269,18 +269,22 @@ pub struct Import {
     pub results: Vec<Wty>,
 }
 
-/// A typed access site: the load/store at `offset` (bytes into the function
-/// body) reaches `region`'s `field`. Recorded into `typedwasm.access-sites`.
+/// A typed access site: a load/store reaching `region`'s `field`,
+/// recorded into `typedwasm.access-sites`.
 #[derive(Debug, Clone, Copy)]
 pub struct AccessSite {
     /// Index into [`Module::regions`].
     pub region: usize,
     /// Index into the target region's field list.
     pub field: usize,
-    /// Instruction byte offset within the function body. v0 uses
-    /// representative offsets; the verifier does not check offset
-    /// alignment (proposal 0002 defers `AccessSiteMisalignment`).
-    pub offset: u32,
+    /// The 0-based instruction index (operator position) in the function
+    /// body that this site pins — the load/store the verifier's L2
+    /// access-typing pass checks against the field's type/width/offset.
+    /// `None` = declared-only: the producer asserts the field is reached
+    /// but does not pin a concrete instruction (representative /
+    /// hand-written bodies). Emitted as [`ACCESS_SITE_UNPINNED`] on the
+    /// wire. Closes proposal 0002's deferred `AccessSiteMisalignment`.
+    pub instr_index: Option<usize>,
 }
 
 /// A function: a typed signature, a body, and the typed access sites its
@@ -444,7 +448,12 @@ pub fn emit(module: &Module) -> Vec<u8> {
         for site in &func.accesses {
             access_entries.push(AccessSiteEntry {
                 func_idx: global_idx,
-                instruction_byte_offset: site.offset,
+                // The wire slot carries the pinned instruction index, or
+                // the unpinned sentinel for declared-only sites.
+                instruction_byte_offset: site
+                    .instr_index
+                    .map(|k| k as u32)
+                    .unwrap_or(ACCESS_SITE_UNPINNED),
                 region_id: site.region as u32,
                 field_id: site.field as u32,
             });
@@ -582,7 +591,7 @@ pub fn example01() -> Module {
             accesses: vec![AccessSite {
                 region: 1,
                 field: 0,
-                offset: 6,
+                instr_index: None,
             }],
             export: true,
         },
@@ -595,7 +604,7 @@ pub fn example01() -> Module {
             accesses: vec![AccessSite {
                 region: 1,
                 field: 0,
-                offset: 6,
+                instr_index: None,
             }],
             export: true,
         },
@@ -610,12 +619,12 @@ pub fn example01() -> Module {
                 AccessSite {
                     region: 2,
                     field: 2,
-                    offset: 6,
+                    instr_index: None,
                 }, // Enemies.target
                 AccessSite {
                     region: 1,
                     field: 0,
-                    offset: 9,
+                    instr_index: None,
                 }, // Players.hp
             ],
             export: true,
@@ -629,7 +638,7 @@ pub fn example01() -> Module {
             accesses: vec![AccessSite {
                 region: 2,
                 field: 4,
-                offset: 2,
+                instr_index: None,
             }],
             export: true,
         },
@@ -646,7 +655,7 @@ pub fn example01() -> Module {
             accesses: vec![AccessSite {
                 region: 1,
                 field: 2,
-                offset: 6,
+                instr_index: None,
             }],
             export: true,
         },
@@ -745,7 +754,7 @@ pub fn paint_type_tile() -> Module {
                 Op::LocalGet(4), Op::Drop,
             ],
             accesses: vec![
-                AccessSite { region: 2, field: 1, offset: 0 },
+                AccessSite { region: 2, field: 1, instr_index: None },
             ],
             export: true,
         },
@@ -761,7 +770,7 @@ pub fn paint_type_tile() -> Module {
                 Op::I32Const(0),
             ],
             accesses: vec![
-                AccessSite { region: 2, field: 1, offset: 0 },
+                AccessSite { region: 2, field: 1, instr_index: None },
             ],
             export: true,
         },
@@ -781,7 +790,7 @@ pub fn paint_type_tile() -> Module {
                 Op::LocalGet(6), Op::Drop,
             ],
             accesses: vec![
-                AccessSite { region: 2, field: 1, offset: 0 },
+                AccessSite { region: 2, field: 1, instr_index: None },
             ],
             export: true,
         },
@@ -796,7 +805,7 @@ pub fn paint_type_tile() -> Module {
                 Op::LocalGet(1), Op::Drop,
             ],
             accesses: vec![
-                AccessSite { region: 2, field: 1, offset: 0 },
+                AccessSite { region: 2, field: 1, instr_index: None },
             ],
             export: true,
         },
@@ -888,9 +897,9 @@ pub fn paint_type_layer() -> Module {
                 Op::I32Const(0),
             ],
             accesses: vec![
-                AccessSite { region: 2, field: 0, offset: 0 },
-                AccessSite { region: 2, field: 1, offset: 0 },
-                AccessSite { region: 2, field: 2, offset: 0 },
+                AccessSite { region: 2, field: 0, instr_index: None },
+                AccessSite { region: 2, field: 1, instr_index: None },
+                AccessSite { region: 2, field: 2, instr_index: None },
             ],
             export: true,
         },
@@ -905,7 +914,7 @@ pub fn paint_type_layer() -> Module {
                 Op::I32Const(0),
             ],
             accesses: vec![
-                AccessSite { region: 2, field: 1, offset: 0 },
+                AccessSite { region: 2, field: 1, instr_index: None },
             ],
             export: true,
         },
@@ -921,7 +930,7 @@ pub fn paint_type_layer() -> Module {
                 Op::I32Const(0),
             ],
             accesses: vec![
-                AccessSite { region: 2, field: 1, offset: 0 },
+                AccessSite { region: 2, field: 1, instr_index: None },
             ],
             export: true,
         },

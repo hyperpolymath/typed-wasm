@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Intra-function L7+L10 verifier.
 //
@@ -917,9 +918,15 @@ pub fn verify_capabilities_from_module(
 // ----------------------------------------------------------------------
 
 #[cfg(feature = "unstable-l2")]
-use crate::section::{parse_access_sites_section_payload, parse_regions_section_payload};
+use crate::section::{
+    parse_access_sites_section_payload, parse_regions_section_payload, FieldEntry, RegionEntry,
+    WasmTy, ACCESS_SITE_UNPINNED,
+};
 #[cfg(feature = "unstable-l2")]
-use crate::{AccessSiteError, ACCESS_SITES_SECTION_NAME, REGIONS_SECTION_NAME};
+use crate::{
+    AccessSiteError, AccessTypingError, AccessTypingReport, ACCESS_SITES_SECTION_NAME,
+    REGIONS_SECTION_NAME,
+};
 
 #[cfg(feature = "unstable-l2")]
 pub fn verify_access_sites_from_module(
@@ -998,6 +1005,360 @@ pub fn verify_access_sites_from_module(
         }
     }
     Ok(errors)
+}
+
+// ----------------------------------------------------------------------
+// L2 access-TYPING verifier pass (proposal 0002 `AccessSiteMisalignment`,
+// discharged at decode time)
+// ----------------------------------------------------------------------
+
+/// Canonical tag for the typed memory load/store opcodes the producer
+/// emits. Lets the typing check compare an instruction against a field
+/// type without re-matching every `wasmparser::Operator` variant.
+#[cfg(feature = "unstable-l2")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MemOp {
+    I32Load,
+    I32Store,
+    I32Load8U,
+    I32Load8S,
+    I32Store8,
+    I32Load16U,
+    I32Load16S,
+    I32Store16,
+    I64Load,
+    I64Store,
+    F32Load,
+    F32Store,
+    F64Load,
+    F64Store,
+}
+
+#[cfg(feature = "unstable-l2")]
+impl MemOp {
+    fn name(self) -> &'static str {
+        match self {
+            MemOp::I32Load => "i32.load",
+            MemOp::I32Store => "i32.store",
+            MemOp::I32Load8U => "i32.load8_u",
+            MemOp::I32Load8S => "i32.load8_s",
+            MemOp::I32Store8 => "i32.store8",
+            MemOp::I32Load16U => "i32.load16_u",
+            MemOp::I32Load16S => "i32.load16_s",
+            MemOp::I32Store16 => "i32.store16",
+            MemOp::I64Load => "i64.load",
+            MemOp::I64Store => "i64.store",
+            MemOp::F32Load => "f32.load",
+            MemOp::F32Store => "f32.store",
+            MemOp::F64Load => "f64.load",
+            MemOp::F64Store => "f64.store",
+        }
+    }
+}
+
+/// Classify an operator as a typed memory op, returning its tag and
+/// static memarg offset. `None` for any non-memory operator.
+#[cfg(feature = "unstable-l2")]
+fn classify_mem_op(op: &Operator<'_>) -> Option<(MemOp, u64)> {
+    use wasmparser::Operator as O;
+    let pair = match op {
+        O::I32Load { memarg } => (MemOp::I32Load, memarg.offset),
+        O::I32Store { memarg } => (MemOp::I32Store, memarg.offset),
+        O::I32Load8U { memarg } => (MemOp::I32Load8U, memarg.offset),
+        O::I32Load8S { memarg } => (MemOp::I32Load8S, memarg.offset),
+        O::I32Load16U { memarg } => (MemOp::I32Load16U, memarg.offset),
+        O::I32Load16S { memarg } => (MemOp::I32Load16S, memarg.offset),
+        O::I32Store8 { memarg } => (MemOp::I32Store8, memarg.offset),
+        O::I32Store16 { memarg } => (MemOp::I32Store16, memarg.offset),
+        O::I64Load { memarg } => (MemOp::I64Load, memarg.offset),
+        O::I64Store { memarg } => (MemOp::I64Store, memarg.offset),
+        O::F32Load { memarg } => (MemOp::F32Load, memarg.offset),
+        O::F32Store { memarg } => (MemOp::F32Store, memarg.offset),
+        O::F64Load { memarg } => (MemOp::F64Load, memarg.offset),
+        O::F64Store { memarg } => (MemOp::F64Store, memarg.offset),
+        _ => return None,
+    };
+    Some(pair)
+}
+
+/// A short token naming an operator, for error messages. Memory ops use
+/// their canonical wasm name; others use the leading word of the Debug
+/// form (e.g. `LocalGet`, `I32Const`, `Drop`).
+#[cfg(feature = "unstable-l2")]
+fn operator_token(op: &Operator<'_>) -> String {
+    if let Some((m, _)) = classify_mem_op(op) {
+        return m.name().to_string();
+    }
+    let dbg = format!("{op:?}");
+    dbg.split([' ', '(', '{'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("<op>")
+        .to_string()
+}
+
+/// Is `m` a legal load OR store for a field of type `wty`? Loads carry
+/// signedness (so an `i8` field demands `load8_s`, a `u8` field
+/// `load8_u`); stores collapse signedness (only `store8` / `store16`
+/// exist). Mirrors the producer's `scalar_load_op` / `scalar_store_op`.
+#[cfg(feature = "unstable-l2")]
+fn mem_op_matches_field(m: MemOp, wty: WasmTy) -> bool {
+    use MemOp::*;
+    let allowed: &[MemOp] = match wty {
+        WasmTy::U8 | WasmTy::WBool => &[I32Load8U, I32Store8],
+        WasmTy::I8 => &[I32Load8S, I32Store8],
+        WasmTy::U16 => &[I32Load16U, I32Store16],
+        WasmTy::I16 => &[I32Load16S, I32Store16],
+        WasmTy::U32 | WasmTy::I32 => &[I32Load, I32Store],
+        WasmTy::U64 | WasmTy::I64 => &[I64Load, I64Store],
+        WasmTy::F32 => &[F32Load, F32Store],
+        WasmTy::F64 => &[F64Load, F64Store],
+        WasmTy::NotApplicable => &[],
+    };
+    allowed.contains(&m)
+}
+
+/// Byte size of a field's storage: a scalar's natural width, or a 4-byte
+/// handle for a pointer field. Mirrors the producer's `resolve_field`
+/// sizing so the two offset computations agree.
+#[cfg(feature = "unstable-l2")]
+fn field_byte_size(f: &FieldEntry) -> u32 {
+    f.wasm_ty.byte_width().unwrap_or(4)
+}
+
+/// The byte offset of `field_id` within `region`: the saturating sum of
+/// the sizes (× cardinality) of the fields before it. Same arithmetic as
+/// the producer's `resolve_field`; the T4 layout-equivalence lemma will
+/// prove these two implementations agree.
+#[cfg(feature = "unstable-l2")]
+fn field_byte_offset(region: &RegionEntry, field_id: usize) -> u32 {
+    let mut off: u32 = 0;
+    for f in region.fields.iter().take(field_id) {
+        off = off.saturating_add(field_byte_size(f).saturating_mul(f.cardinality));
+    }
+    off
+}
+
+/// What the decode found at a pinned instruction index.
+#[cfg(feature = "unstable-l2")]
+struct OpProbe {
+    /// Total operator count in the body (incl. the terminating `End`).
+    op_count: u32,
+    /// `true` iff the pinned index is within the operator stream.
+    present: bool,
+    /// `Some((tag, memarg_offset))` iff the pinned op is a memory op.
+    mem: Option<(MemOp, u64)>,
+    /// Short token of the pinned op (empty if the index was past the end).
+    token: String,
+}
+
+/// Decode `body` and report the operator at `index`. Streams once; does
+/// not allocate the operator list.
+#[cfg(feature = "unstable-l2")]
+fn probe_op_at(body: FunctionBody<'_>, index: usize) -> Result<OpProbe, BinaryReaderError> {
+    let reader = body.get_operators_reader()?;
+    let mut op_count: u32 = 0;
+    let mut mem: Option<(MemOp, u64)> = None;
+    let mut token = String::new();
+    let mut present = false;
+    for (i, op_result) in reader.into_iter().enumerate() {
+        let op = op_result?;
+        if i == index {
+            present = true;
+            mem = classify_mem_op(&op);
+            token = operator_token(&op);
+        }
+        op_count += 1;
+    }
+    Ok(OpProbe {
+        op_count,
+        present,
+        mem,
+        token,
+    })
+}
+
+#[cfg(feature = "unstable-l2")]
+pub fn verify_access_typing_from_module(
+    wasm_bytes: &[u8],
+) -> Result<AccessTypingReport, VerifyError> {
+    // Single pass: both carrier payloads, every function body, and the
+    // import count (to map a global func index to a body index).
+    let parser = Parser::new(0);
+    let mut access_payload: Option<Vec<u8>> = None;
+    let mut regions_payload: Option<Vec<u8>> = None;
+    let mut bodies: Vec<FunctionBody<'_>> = Vec::new();
+    let mut import_count: u32 = 0;
+    for payload in parser.parse_all(wasm_bytes) {
+        match payload? {
+            Payload::ImportSection(reader) => {
+                for import in reader.into_imports() {
+                    if matches!(import?.ty, wasmparser::TypeRef::Func(_)) {
+                        import_count += 1;
+                    }
+                }
+            }
+            Payload::CustomSection(reader) => match reader.name() {
+                ACCESS_SITES_SECTION_NAME => access_payload = Some(reader.data().to_vec()),
+                REGIONS_SECTION_NAME => regions_payload = Some(reader.data().to_vec()),
+                _ => {}
+            },
+            Payload::CodeSectionEntry(body) => bodies.push(body),
+            _ => {}
+        }
+    }
+
+    let mut report = AccessTypingReport::default();
+
+    // No access-sites section ⇒ no claim made ⇒ empty report. Without a
+    // regions companion we cannot resolve field types, so there is
+    // nothing to type-check (the bounds pass reports the missing-carrier
+    // hard error separately).
+    let (Some(access_payload), Some(regions_bytes)) = (access_payload, regions_payload) else {
+        return Ok(report);
+    };
+    let (Some(regions), Some(entries)) = (
+        parse_regions_section_payload(&regions_bytes),
+        parse_access_sites_section_payload(&access_payload),
+    ) else {
+        return Ok(report);
+    };
+
+    let region_count = regions.len() as u32;
+
+    for (entry_idx, e) in entries.iter().enumerate() {
+        let entry_idx = entry_idx as u32;
+
+        // Declared-only sites are counted, not checked.
+        if e.instruction_byte_offset == ACCESS_SITE_UNPINNED {
+            report.declared_only += 1;
+            continue;
+        }
+        let instruction_index = e.instruction_byte_offset;
+
+        // Resolve region + field (typing can't proceed without them).
+        if e.region_id >= region_count {
+            report.errors.push(AccessTypingError::UnresolvableEntry {
+                entry_idx,
+                reason: format!(
+                    "region_id {} out of range (region_count = {region_count})",
+                    e.region_id
+                ),
+            });
+            continue;
+        }
+        let region = &regions[e.region_id as usize];
+        let field_count = region.fields.len() as u32;
+        if e.field_id >= field_count {
+            report.errors.push(AccessTypingError::UnresolvableEntry {
+                entry_idx,
+                reason: format!(
+                    "field_id {} out of range for region {} (field_count = {field_count})",
+                    e.field_id, e.region_id
+                ),
+            });
+            continue;
+        }
+        let field = &region.fields[e.field_id as usize];
+
+        // Resolve the function body (imports are opaque — skip).
+        let Some(body_idx) = e.func_idx.checked_sub(import_count) else {
+            report.errors.push(AccessTypingError::UnresolvableEntry {
+                entry_idx,
+                reason: format!(
+                    "func_idx {} is an imported function (no body to inspect)",
+                    e.func_idx
+                ),
+            });
+            continue;
+        };
+        let body_idx = body_idx as usize;
+        if body_idx >= bodies.len() {
+            report.errors.push(AccessTypingError::UnresolvableEntry {
+                entry_idx,
+                reason: format!("func_idx {} has no local body", e.func_idx),
+            });
+            continue;
+        }
+
+        let expected_wty = field.wasm_ty;
+        let field_offset = field_byte_offset(region, e.field_id as usize);
+
+        // A scalar field has a width; a pointer field does not — a pinned
+        // scalar access into a pointer field is a producer error.
+        let Some(field_width) = expected_wty.byte_width() else {
+            report.errors.push(AccessTypingError::AccessTypeMismatch {
+                entry_idx,
+                region_id: e.region_id,
+                field_id: e.field_id,
+                expected: format!("{:?} (pointer field — not a scalar access)", field.kind),
+                found: "pinned scalar load/store".to_string(),
+            });
+            continue;
+        };
+
+        // Field extent must stay inside the declared region size.
+        if field_offset.saturating_add(field_width) > region.region_byte_size {
+            report.errors.push(AccessTypingError::AccessOutOfRegionBounds {
+                entry_idx,
+                region_id: e.region_id,
+                field_id: e.field_id,
+                field_offset,
+                field_width,
+                region_byte_size: region.region_byte_size,
+            });
+            continue;
+        }
+
+        // Decode the pinned instruction.
+        let probe = probe_op_at(bodies[body_idx].clone(), instruction_index as usize)?;
+        if !probe.present {
+            report.errors.push(AccessTypingError::AccessSiteIndexOutOfRange {
+                entry_idx,
+                func_idx: e.func_idx,
+                instruction_index,
+                op_count: probe.op_count,
+            });
+            continue;
+        }
+        let Some((mem_op, memarg_offset)) = probe.mem else {
+            report.errors.push(AccessTypingError::AccessSiteNotAMemoryOp {
+                entry_idx,
+                func_idx: e.func_idx,
+                instruction_index,
+                found: probe.token,
+            });
+            continue;
+        };
+
+        // Width / type agreement.
+        if !mem_op_matches_field(mem_op, expected_wty) {
+            report.errors.push(AccessTypingError::AccessTypeMismatch {
+                entry_idx,
+                region_id: e.region_id,
+                field_id: e.field_id,
+                expected: format!("{expected_wty:?}"),
+                found: mem_op.name().to_string(),
+            });
+            continue;
+        }
+
+        // Static offset agreement.
+        if memarg_offset != field_offset as u64 {
+            report.errors.push(AccessTypingError::AccessOffsetMismatch {
+                entry_idx,
+                region_id: e.region_id,
+                field_id: e.field_id,
+                expected_offset: field_offset,
+                found_offset: memarg_offset,
+            });
+            continue;
+        }
+
+        report.type_verified += 1;
+    }
+
+    Ok(report)
 }
 
 // ----------------------------------------------------------------------

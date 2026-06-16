@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // `typedwasm.ownership` custom-section codec.
 //
@@ -350,6 +351,20 @@ impl WasmTy {
 
     pub fn to_byte(self) -> u8 {
         self as u8
+    }
+
+    /// The natural byte width of a scalar storage type. `None` for
+    /// `NotApplicable` (pointer fields carry no scalar width — their
+    /// handle size is the producer's concern, recomputed as 4 bytes by
+    /// the access-typing pass). Mirrors the producer's `scalar_byte_size`.
+    pub fn byte_width(self) -> Option<u32> {
+        match self {
+            WasmTy::U8 | WasmTy::I8 | WasmTy::WBool => Some(1),
+            WasmTy::U16 | WasmTy::I16 => Some(2),
+            WasmTy::U32 | WasmTy::I32 | WasmTy::F32 => Some(4),
+            WasmTy::U64 | WasmTy::I64 | WasmTy::F64 => Some(8),
+            WasmTy::NotApplicable => None,
+        }
     }
 }
 
@@ -943,10 +958,28 @@ mod capabilities_tests {
 #[cfg(feature = "unstable-l2")]
 pub const ACCESS_SITES_SECTION_VERSION: u16 = 1;
 
+/// Sentinel in the `instruction_byte_offset` slot meaning "this site is
+/// declared-only" — the producer asserts the (region, field) is reached
+/// somewhere in the function but does NOT pin a concrete instruction for
+/// the access-typing pass to check. Representative / hand-written IR sites
+/// use this; real lowered reader/writer bodies pin a concrete index.
+///
+/// Wire-format note: in v1 the `instruction_byte_offset` slot carries an
+/// *instruction index* (0-based position in the function's operator
+/// stream), not a byte offset — the index is what the producer can pin
+/// deterministically from its `Vec<Op>` body without re-simulating the
+/// encoder. The field name is retained for wire/back-compat stability.
+#[cfg(feature = "unstable-l2")]
+pub const ACCESS_SITE_UNPINNED: u32 = u32::MAX;
+
 #[cfg(feature = "unstable-l2")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AccessSiteEntry {
     pub func_idx: u32,
+    /// v1: the 0-based instruction index (operator position) of the typed
+    /// load/store this site pins, or [`ACCESS_SITE_UNPINNED`] for a
+    /// declared-only site. (Name retained from the pre-v1 byte-offset
+    /// interpretation for wire/source stability.)
     pub instruction_byte_offset: u32,
     pub region_id: u32,
     pub field_id: u32,
