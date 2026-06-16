@@ -191,10 +191,44 @@ pub enum Op {
     I32Store {
         offset: u64,
     },
+    /// Sub-width integer accesses for 1- and 2-byte fields. The value on the
+    /// wasm stack is i32; load8/load16 sign- (`S`) or zero- (`U`) extend, and
+    /// store8/store16 write only the low byte(s) — so a narrow field touches
+    /// exactly its own bytes, never the neighbour's.
+    I32Load8U {
+        offset: u64,
+    },
+    I32Load8S {
+        offset: u64,
+    },
+    I32Load16U {
+        offset: u64,
+    },
+    I32Load16S {
+        offset: u64,
+    },
+    I32Store8 {
+        offset: u64,
+    },
+    I32Store16 {
+        offset: u64,
+    },
+    I64Load {
+        offset: u64,
+    },
+    I64Store {
+        offset: u64,
+    },
     F32Load {
         offset: u64,
     },
     F32Store {
+        offset: u64,
+    },
+    F64Load {
+        offset: u64,
+    },
+    F64Store {
         offset: u64,
     },
     /// Call the function at the given global index (imports occupy the
@@ -338,8 +372,18 @@ fn op_to_instruction(op: Op) -> Instruction<'static> {
         Op::F64Const(c) => Instruction::F64Const(c.into()),
         Op::I32Load { offset } => Instruction::I32Load(memarg(offset, 2)),
         Op::I32Store { offset } => Instruction::I32Store(memarg(offset, 2)),
+        Op::I32Load8U { offset } => Instruction::I32Load8U(memarg(offset, 0)),
+        Op::I32Load8S { offset } => Instruction::I32Load8S(memarg(offset, 0)),
+        Op::I32Load16U { offset } => Instruction::I32Load16U(memarg(offset, 1)),
+        Op::I32Load16S { offset } => Instruction::I32Load16S(memarg(offset, 1)),
+        Op::I32Store8 { offset } => Instruction::I32Store8(memarg(offset, 0)),
+        Op::I32Store16 { offset } => Instruction::I32Store16(memarg(offset, 1)),
+        Op::I64Load { offset } => Instruction::I64Load(memarg(offset, 3)),
+        Op::I64Store { offset } => Instruction::I64Store(memarg(offset, 3)),
         Op::F32Load { offset } => Instruction::F32Load(memarg(offset, 2)),
         Op::F32Store { offset } => Instruction::F32Store(memarg(offset, 2)),
+        Op::F64Load { offset } => Instruction::F64Load(memarg(offset, 3)),
+        Op::F64Store { offset } => Instruction::F64Store(memarg(offset, 3)),
         Op::Call(i) => Instruction::Call(i),
         Op::Drop => Instruction::Drop,
     }

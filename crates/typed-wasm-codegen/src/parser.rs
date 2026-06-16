@@ -652,12 +652,17 @@ impl<'a> Parser<'a> {
 
         self.expect("{")?;
 
-        // Step 1 body lowering: try to lower a simple field-reader body to a
-        // real typed load; fall back to a representative stub otherwise. The
-        // reader path consumes through the closing `}`; the stub path restores
-        // the cursor and skips the body.
+        // Step 1/2 body lowering: try to lower a simple field-reader (load) or
+        // field-writer (store) body to real typed memory ops; fall back to a
+        // representative stub otherwise. Each `try_lower_*` consumes through the
+        // closing `}` on success; on a None it leaves the cursor unspecified, so
+        // we restore `body_start` before the next attempt and before the stub.
         let body_start = self.pos;
-        let (body, accesses) = match self.try_lower_reader(&param_meta, &results) {
+        let lowered = self.try_lower_reader(&param_meta, &results).or_else(|| {
+            self.pos = body_start;
+            self.try_lower_writer(&params, &param_meta, &results)
+        });
+        let (body, accesses) = match lowered {
             Some((body, accesses)) => (body, accesses),
             None => {
                 self.pos = body_start;
@@ -748,25 +753,12 @@ impl<'a> Parser<'a> {
         if results.first() != Some(&wty) {
             return None; // result type must match the loaded field type
         }
-        let load = match wty {
-            Wty::I32 => crate::Op::I32Load {
-                offset: offset as u64,
-            },
-            Wty::F32 => crate::Op::F32Load {
-                offset: offset as u64,
-            },
-            // i64/f64 loads are not in the v0 Op set yet — leave to the stub.
-            _ => return None,
-        };
+        // Exact-width load (narrow fields sign/zero-extend, never over-read).
+        let load = scalar_load_op(&scalar, offset as u64);
 
-        // A load needs a memory to target; synthesise a default one if the
-        // module declared none (examples 02-06 don't).
-        if self.memory.is_none() {
-            self.memory = Some(Memory {
-                min_pages: 1,
-                max_pages: None,
-            });
-        }
+        // A load needs a memory to target; synthesise one big enough for the
+        // accessed region if the module declared none (examples 02-06 don't).
+        self.ensure_memory_for_region(region);
 
         let body = vec![crate::Op::LocalGet(p_idx as u32), load];
         let accesses = vec![crate::AccessSite {
@@ -775,6 +767,204 @@ impl<'a> Parser<'a> {
             offset: 0, // verifier does not check the byte offset (see verify.rs)
         }];
         Some((body, accesses))
+    }
+
+    /// Try to lower a single-statement field writer of the exact shape
+    ///   region.set $p .field , <value> ; [return ;] }
+    /// to a real typed store + access-site, where `<value>` is either a
+    /// parameter of the matching wasm type or a numeric/bool literal. Returns
+    /// None (for the stub fallback) on any other body shape — including a value
+    /// that is a compound expression (`px + vx * dt`), which the trailing `;`
+    /// guard rejects so it falls through to the stub. The caller restores the
+    /// cursor on None.
+    ///
+    /// Stack order matches `example01::damage_player`: address (the region
+    /// handle) is pushed first, then the value, then the store consumes both.
+    fn try_lower_writer(
+        &mut self,
+        params: &[Wty],
+        param_meta: &[(String, Option<usize>)],
+        results: &[Wty],
+    ) -> Option<(Vec<crate::Op>, Vec<crate::AccessSite>)> {
+        // A setter returns nothing; a `-> T` here is some other shape.
+        if !results.is_empty() {
+            return None;
+        }
+        if !self.try_keyword("region") {
+            return None;
+        }
+        if !self.try_char('.') {
+            return None;
+        }
+        if !self.try_keyword("set") {
+            return None;
+        }
+        if !self.try_char('$') {
+            return None;
+        }
+        let pname = self.parse_ident();
+        if !self.try_char('.') {
+            return None;
+        }
+        let field = self.parse_ident();
+        if !self.try_char(',') {
+            return None;
+        }
+
+        // Resolve the destination first so we know the field's wasm type, which
+        // the value must match.
+        if pname.is_empty() || field.is_empty() {
+            return None;
+        }
+        let p_idx = param_meta.iter().position(|(n, _)| n == &pname)?;
+        let region = param_meta[p_idx].1?;
+        let (field_idx, offset, scalar) = self.resolve_field(region, &field)?;
+        let wty = wty_from_scalar(&scalar);
+
+        // Parse the value to push: a matching-typed param, or a literal.
+        let push = self.parse_store_value(params, param_meta, wty)?;
+
+        if !self.try_char(';') {
+            return None; // compound expr / extra statements -> stub
+        }
+        // An optional bare `return;` may close a setter.
+        self.skip_whitespace();
+        if self.try_keyword("return") && !self.try_char(';') {
+            return None;
+        }
+        if !self.try_char('}') {
+            return None;
+        }
+
+        // Exact-width store (narrow fields use store8/store16, never clobber).
+        let store = scalar_store_op(&scalar, offset as u64);
+
+        // A store needs a memory to target; synthesise one big enough for the
+        // accessed region if the module declared none (examples 02-06 don't).
+        self.ensure_memory_for_region(region);
+
+        let body = vec![crate::Op::LocalGet(p_idx as u32), push, store];
+        let accesses = vec![crate::AccessSite {
+            region,
+            field: field_idx,
+            offset: 0, // verifier does not check the byte offset (see verify.rs)
+        }];
+        Some((body, accesses))
+    }
+
+    /// Parse the right-hand side of a `region.set` as a single value op whose
+    /// wasm type is `field_wty`: a parameter of that type (`local.get i`), a
+    /// `true`/`false` (i32 0/1), or a numeric literal (typed const). Returns
+    /// None on a type mismatch or a non-trivial expression, leaving the cursor
+    /// for the caller to discard.
+    fn parse_store_value(
+        &mut self,
+        params: &[Wty],
+        param_meta: &[(String, Option<usize>)],
+        field_wty: Wty,
+    ) -> Option<crate::Op> {
+        self.skip_whitespace();
+        let &b = self.src.as_bytes().get(self.pos)?;
+
+        // Numeric literal (optionally signed): float if it carries a '.',
+        // otherwise an integer (decimal or `0x` hex bit pattern).
+        if b == b'-' || b.is_ascii_digit() {
+            return self.parse_numeric_store_value(field_wty);
+        }
+
+        // Identifier: a bool literal or a parameter name.
+        let save = self.pos;
+        let ident = self.parse_ident();
+        match ident.as_str() {
+            "true" if field_wty == Wty::I32 => return Some(crate::Op::I32Const(1)),
+            "false" if field_wty == Wty::I32 => return Some(crate::Op::I32Const(0)),
+            _ => {}
+        }
+        if let Some(i) = param_meta.iter().position(|(n, _)| n == &ident) {
+            // The param must match the field's wasm type AND be a plain scalar,
+            // not a region handle — both are i32 on the wasm stack, so without
+            // the `.1.is_none()` guard a pointer would be laundered into a
+            // scalar field. A handle-as-value falls through to the stub.
+            if params.get(i) == Some(&field_wty) && param_meta[i].1.is_none() {
+                return Some(crate::Op::LocalGet(i as u32));
+            }
+        }
+        self.pos = save;
+        None
+    }
+
+    /// Parse a lone numeric literal as a typed const matching `field_wty`.
+    /// Decimal/hex integers map to I32/I64; a literal with a `.` maps to
+    /// F32/F64. None on a kind/type mismatch.
+    fn parse_numeric_store_value(&mut self, field_wty: Wty) -> Option<crate::Op> {
+        self.skip_whitespace();
+        let start = self.pos;
+        if self.pos < self.src.len() && self.src.as_bytes()[self.pos] == b'-' {
+            self.pos += 1;
+        }
+        let mut is_float = false;
+        while self.pos < self.src.len() {
+            let c = self.src.as_bytes()[self.pos];
+            if c == b'.' {
+                is_float = true;
+                self.pos += 1;
+            } else if c.is_ascii_alphanumeric() || c == b'_' {
+                // covers digits, the `x` in `0x..`, and hex digits a-f
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        let tok = self.src.get(start..self.pos)?;
+        if is_float {
+            let v: f64 = tok.parse().ok()?;
+            return match field_wty {
+                Wty::F32 => {
+                    // Reject a finite literal whose magnitude overflows f32 to
+                    // ±inf — that would silently store a wrong value. Falls back
+                    // to the stub rather than emitting `f32.const inf`.
+                    let f = v as f32;
+                    if f.is_infinite() && v.is_finite() {
+                        None
+                    } else {
+                        Some(crate::Op::F32Const(f))
+                    }
+                }
+                Wty::F64 => Some(crate::Op::F64Const(v)),
+                _ => None,
+            };
+        }
+        // Integer: parse the bit pattern, allowing `0x` hex.
+        let value: i64 = if let Some(hex) = tok.strip_prefix("0x").or_else(|| tok.strip_prefix("0X")) {
+            u64::from_str_radix(hex, 16).ok()? as i64
+        } else {
+            tok.parse::<i64>().ok()?
+        };
+        match field_wty {
+            // Accept the full signed-or-unsigned 32-bit range; reject anything
+            // wider (e.g. 4294967296, 0x1FFFFFFFF) rather than silently wrapping
+            // via `as i32`. Out-of-range literals fall back to the stub.
+            Wty::I32 => i32::try_from(value)
+                .or_else(|_| u32::try_from(value).map(|u| u as i32))
+                .ok()
+                .map(crate::Op::I32Const),
+            Wty::I64 => Some(crate::Op::I64Const(value)),
+            _ => None,
+        }
+    }
+
+    /// Ensure a linear memory exists that covers the given region's bytes, so a
+    /// synthesised store/load offset (the field's byte-offset, < region size)
+    /// cannot point past the declared memory and trap at runtime. Only fills in
+    /// a memory when the module declared none; a declared memory is the author's.
+    fn ensure_memory_for_region(&mut self, region: usize) {
+        if self.memory.is_none() {
+            let bytes = self.regions.get(region).map_or(0, |r| r.byte_size as u64);
+            self.memory = Some(Memory {
+                min_pages: bytes.div_ceil(65536).max(1),
+                max_pages: None,
+            });
+        }
     }
 
     /// Resolve a field name within a region to (field index, byte offset,
@@ -1040,5 +1230,37 @@ fn wty_from_scalar(s: &Scalar) -> Wty {
         Scalar::F32 => Wty::F32,
         Scalar::F64 => Wty::F64,
         _ => Wty::I32, // Default for i8, i16, u8, u16, bool
+    }
+}
+
+/// The exact-width load op for a scalar field at `offset`. Narrow integers use
+/// sub-width loads (sign-extending for signed, zero-extending for unsigned/bool)
+/// so a 1- or 2-byte field reads exactly its own bytes — never the neighbour's.
+fn scalar_load_op(s: &Scalar, offset: u64) -> crate::Op {
+    use crate::Op::*;
+    match s {
+        Scalar::I8 => I32Load8S { offset },
+        Scalar::U8 | Scalar::Bool => I32Load8U { offset },
+        Scalar::I16 => I32Load16S { offset },
+        Scalar::U16 => I32Load16U { offset },
+        Scalar::I32 | Scalar::U32 => I32Load { offset },
+        Scalar::I64 | Scalar::U64 => I64Load { offset },
+        Scalar::F32 => F32Load { offset },
+        Scalar::F64 => F64Load { offset },
+    }
+}
+
+/// The exact-width store op for a scalar field at `offset`. Narrow integers use
+/// store8/store16, writing only the field's own bytes (no clobber of the
+/// adjacent field, no over-run past the region).
+fn scalar_store_op(s: &Scalar, offset: u64) -> crate::Op {
+    use crate::Op::*;
+    match s {
+        Scalar::I8 | Scalar::U8 | Scalar::Bool => I32Store8 { offset },
+        Scalar::I16 | Scalar::U16 => I32Store16 { offset },
+        Scalar::I32 | Scalar::U32 => I32Store { offset },
+        Scalar::I64 | Scalar::U64 => I64Store { offset },
+        Scalar::F32 => F32Store { offset },
+        Scalar::F64 => F64Store { offset },
     }
 }
