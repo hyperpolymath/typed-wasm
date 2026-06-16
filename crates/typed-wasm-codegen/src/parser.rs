@@ -566,6 +566,9 @@ impl<'a> Parser<'a> {
 
         self.expect("(")?;
         let mut params = Vec::new();
+        // Per-param (name, region-index) for body lowering: a region-typed
+        // param records the region it points at; scalar params record None.
+        let mut param_meta: Vec<(String, Option<usize>)> = Vec::new();
         loop {
             self.skip_whitespace();
             if self.peek_char(')') {
@@ -580,23 +583,27 @@ impl<'a> Parser<'a> {
             let save = self.pos;
             let maybe_name = self.parse_ident();
             self.skip_whitespace();
-            if !maybe_name.is_empty() && self.peek_char(':') {
+            let pname = if !maybe_name.is_empty() && self.peek_char(':') {
                 self.expect(":")?;
                 self.skip_whitespace();
+                maybe_name
             } else {
                 self.pos = save;
-            }
+                String::new()
+            };
 
             // Parse the type, which may include ownership qualifiers
             let (param_ty, _) = self.parse_param_type()?;
-            
-            // Map field type to Wty for parameters
-            let wty = match param_ty {
-                FieldTy::Scalar(s) => wty_from_scalar(&s),
-                FieldTy::Ptr { .. } => Wty::I32, // Pointers are passed as i32 indices
+
+            // Map field type to Wty; remember the region a region-typed param
+            // points at (for `region.get $p` lowering).
+            let (wty, region) = match param_ty {
+                FieldTy::Scalar(s) => (wty_from_scalar(&s), None),
+                FieldTy::Ptr { target, .. } => (Wty::I32, Some(target)),
             };
 
             params.push(wty);
+            param_meta.push((pname, region));
 
             if self.peek_char(',') {
                 self.expect(",")?;
@@ -645,31 +652,33 @@ impl<'a> Parser<'a> {
 
         self.expect("{")?;
 
-        // Parse function body and emit placeholder ops
-        // For v0, we emit: drop all params, then i32.const 0 if there are results
-        let mut body = Vec::new();
-        
-        // Emit placeholder: drop all parameters
-        for i in 0..params.len() as u32 {
-            body.push(crate::Op::LocalGet(i));
-            body.push(crate::Op::Drop);
-        }
-        
-        // If the function returns a value, emit a type-correct zero so the
-        // representative body type-checks against the declared result type.
-        if let Some(&rty) = results.first() {
-            body.push(match rty {
-                Wty::I32 => crate::Op::I32Const(0),
-                Wty::I64 => crate::Op::I64Const(0),
-                Wty::F32 => crate::Op::F32Const(0.0),
-                Wty::F64 => crate::Op::F64Const(0.0),
-            });
-        }
-        
-        let accesses = Vec::new();
-        
-        // Skip the actual function body in the source
-        self.skip_to_brace_close();
+        // Step 1 body lowering: try to lower a simple field-reader body to a
+        // real typed load; fall back to a representative stub otherwise. The
+        // reader path consumes through the closing `}`; the stub path restores
+        // the cursor and skips the body.
+        let body_start = self.pos;
+        let (body, accesses) = match self.try_lower_reader(&param_meta, &results) {
+            Some((body, accesses)) => (body, accesses),
+            None => {
+                self.pos = body_start;
+                let mut body = Vec::new();
+                // Representative stub: drop all params, push a typed zero result.
+                for i in 0..params.len() as u32 {
+                    body.push(crate::Op::LocalGet(i));
+                    body.push(crate::Op::Drop);
+                }
+                if let Some(&rty) = results.first() {
+                    body.push(match rty {
+                        Wty::I32 => crate::Op::I32Const(0),
+                        Wty::I64 => crate::Op::I64Const(0),
+                        Wty::F32 => crate::Op::F32Const(0.0),
+                        Wty::F64 => crate::Op::F64Const(0.0),
+                    });
+                }
+                self.skip_to_brace_close();
+                (body, Vec::new())
+            }
+        };
 
         self.funcs.push(crate::Func {
             name,
@@ -681,6 +690,145 @@ impl<'a> Parser<'a> {
         });
 
         Ok(())
+    }
+
+    /// Try to lower a single-statement field reader of the exact shape
+    ///   region.get $p .field -> x ; return x ; }
+    /// to a real typed load + access-site. Returns None (for the stub fallback)
+    /// on any other body shape; the caller restores the cursor in that case.
+    fn try_lower_reader(
+        &mut self,
+        param_meta: &[(String, Option<usize>)],
+        results: &[Wty],
+    ) -> Option<(Vec<crate::Op>, Vec<crate::AccessSite>)> {
+        if !self.try_keyword("region") {
+            return None;
+        }
+        if !self.try_char('.') {
+            return None;
+        }
+        if !self.try_keyword("get") {
+            return None;
+        }
+        if !self.try_char('$') {
+            return None;
+        }
+        let pname = self.parse_ident();
+        if !self.try_char('.') {
+            return None;
+        }
+        let field = self.parse_ident();
+        if !self.try_str("->") {
+            return None;
+        }
+        let xname = self.parse_ident();
+        if !self.try_char(';') {
+            return None;
+        }
+        if !self.try_keyword("return") {
+            return None;
+        }
+        self.try_char('$'); // optional `$` on the returned handle
+        let retname = self.parse_ident();
+        if !self.try_char(';') {
+            return None;
+        }
+        if !self.try_char('}') {
+            return None;
+        }
+        if retname != xname || pname.is_empty() || field.is_empty() {
+            return None;
+        }
+
+        // Resolve the param to a region and the field to (index, offset, type).
+        let p_idx = param_meta.iter().position(|(n, _)| n == &pname)?;
+        let region = param_meta[p_idx].1?;
+        let (field_idx, offset, scalar) = self.resolve_field(region, &field)?;
+        let wty = wty_from_scalar(&scalar);
+        if results.first() != Some(&wty) {
+            return None; // result type must match the loaded field type
+        }
+        let load = match wty {
+            Wty::I32 => crate::Op::I32Load {
+                offset: offset as u64,
+            },
+            Wty::F32 => crate::Op::F32Load {
+                offset: offset as u64,
+            },
+            // i64/f64 loads are not in the v0 Op set yet — leave to the stub.
+            _ => return None,
+        };
+
+        // A load needs a memory to target; synthesise a default one if the
+        // module declared none (examples 02-06 don't).
+        if self.memory.is_none() {
+            self.memory = Some(Memory {
+                min_pages: 1,
+                max_pages: None,
+            });
+        }
+
+        let body = vec![crate::Op::LocalGet(p_idx as u32), load];
+        let accesses = vec![crate::AccessSite {
+            region,
+            field: field_idx,
+            offset: 0, // verifier does not check the byte offset (see verify.rs)
+        }];
+        Some((body, accesses))
+    }
+
+    /// Resolve a field name within a region to (field index, byte offset,
+    /// scalar type). None for unknown or non-scalar (pointer) fields.
+    fn resolve_field(&self, region_idx: usize, field_name: &str) -> Option<(usize, u32, Scalar)> {
+        let region = self.regions.get(region_idx)?;
+        let mut offset = 0u32;
+        for (i, f) in region.fields.iter().enumerate() {
+            if f.name == field_name {
+                return match f.ty {
+                    FieldTy::Scalar(s) => Some((i, offset, s)),
+                    FieldTy::Ptr { .. } => None,
+                };
+            }
+            let size = match f.ty {
+                FieldTy::Scalar(s) => scalar_byte_size(&s),
+                FieldTy::Ptr { .. } => 4,
+            };
+            offset += size * f.cardinality;
+        }
+        None
+    }
+
+    /// Non-erroring: consume `c` if present at the cursor (skips leading ws).
+    fn try_char(&mut self, c: char) -> bool {
+        self.skip_whitespace();
+        if self.pos < self.src.len() && self.src.as_bytes()[self.pos] == c as u8 {
+            self.pos += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Non-erroring: consume whole keyword `kw` if present.
+    fn try_keyword(&mut self, kw: &str) -> bool {
+        self.skip_whitespace();
+        if self.peek_word(kw) {
+            self.pos += kw.len();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Non-erroring: consume literal `s` if present.
+    fn try_str(&mut self, s: &str) -> bool {
+        self.skip_whitespace();
+        if self.src.get(self.pos..).map_or(false, |r| r.starts_with(s)) {
+            self.pos += s.len();
+            true
+        } else {
+            false
+        }
     }
 
     /// Parse a parameter type which may include ownership qualifiers like 'own', '&', '&mut'
