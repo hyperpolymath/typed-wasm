@@ -214,6 +214,28 @@ fn generated_corpus_round_trips() {
     }
 }
 
+/// Climb Step 1: a simple field reader (`region.get $p .field -> x; return x;`)
+/// must lower to a REAL typed load, not a representative stub. example03's
+/// `read_particle_pos` reads `pos_x: f32` (offset 0) → `[local.get 0,
+/// f32.load]` + one access-site, and the module still round-trips.
+#[test]
+fn reader_body_is_lowered_to_real_load() {
+    let src = include_str!("../../../examples/03-ownership-linearity.twasm");
+    let m = parser::parse_module(src).expect("03-ownership-linearity.twasm must parse");
+    let f = m
+        .funcs
+        .iter()
+        .find(|f| f.name == "read_particle_pos")
+        .expect("read_particle_pos present");
+    assert!(
+        matches!(f.body.as_slice(), [Op::LocalGet(0), Op::F32Load { .. }]),
+        "expected real f32.load reader body, got {:?}",
+        f.body
+    );
+    assert_eq!(f.accesses.len(), 1, "reader must record one access-site");
+    assert_round_trips(&m);
+}
+
 fn one_func_module(kind: Ownership, body: Vec<Op>) -> Module {
     Module {
         regions: vec![],
