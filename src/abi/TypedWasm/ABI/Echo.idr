@@ -1,16 +1,57 @@
 -- SPDX-License-Identifier: MPL-2.0
 -- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 --
--- Echo.idr — Echo types (displayed types / fibrations) over a base
+-- Echo.idr — Echo types: a tropically-graded modality of information loss
 --
--- An echo type over B is a type family P : B -> Type; equivalently a
--- fibration presented by its fibers.  Every dependent family P : B -> Type
--- is an echo type in this sense.  The fiber-of-a-map construction below
--- is the canonical way to build one.
+-- WHAT AN ECHO TYPE IS (accurate characterisation, 2026-06-16).  An echo type
+-- is a tropically-graded modality of *structured information loss*: a min-plus-
+-- graded (lax monoidal) endofunctor family D_r on the type category, where the
+-- grade semiring is the tropical semiring (Nat union {inf}, min, +) read as
+-- structural IRRECOVERABILITY, equipped with a section/retraction pair whose
+-- round-trip is EXACT on a homotopy fiber (a recoverable subobject) rather than
+-- over-approximating or complement-storing.  In the grading / coeffect
+-- landscape (Katsumata; Fujii-Katsumata-Mellies; Orchard-Petricek) it is the
+-- LOSS-valued sibling of the resource-graded modalities, distinguished by the
+-- tropical (worst-case, non-probabilistic) grade and by carrying recoverability
+-- as fiber-level rather than complement-level structure.
 --
--- Ported from ~/Desktop/EchoFibers.agda and generalised to the
--- displayed-type view.  The slice-category morphism structure
--- (HomOver, echoMap, echoMapSquare) and its functor laws are preserved.
+-- TWO HONEST CAVEATS (do not overclaim):
+--   1. The structure is NOT novel — graded (co)monads and their adjunction
+--      resolutions are established machinery; the accurate phrasing is "an
+--      instance of graded-modal machinery over the min-plus loss semiring", not
+--      "a new structure".
+--   2. The VARIANCE is the live question.  Loss accumulation is monadic
+--      (mu : D_r (D_s A) -> D_{r+s} A), so whether the right word is graded
+--      comonad, graded monad, or graded adjunction (section as unit/counit) is
+--      being resolved in --safe Agda upstream, NOT asserted here.  cf. the
+--      echo-types RETRACTION R-2026-05-18 (read EchoGraded as a loss-graded
+--      REINDEXING modality, thin-poset action) and the echo-additive R0-R4
+--      adjunction-discriminator line (F_r |- U_r, "monad-is-the-home").
+--
+-- One-line (sayable to a mathematician without overclaiming): an echo type is a
+-- tropically-graded modality of structured information loss — an instance of
+-- graded-(co)monad machinery over the min-plus semiring, with exact-on-a-fiber
+-- recoverability — whose monad/comonad/adjunction status is being pinned down
+-- formally.
+--
+-- Estate cross-reference (audit 2026-06-16) — canonical axis: Agda
+-- hyperpolymath/echo-types @ 2bbdb49 (proofs/agda/{Echo,EchoResidue,EchoGraded,
+-- EchoGradedComonadInterface}.agda; experimental/ for the R0-R4 variance line).
+-- The min-plus grade IS the sibling TypedWasm.ABI.Tropical.TropCost; the loss
+-- of an echo residue is MEASURED into it via Tropical.ResidueMeasure
+-- (accumulation mu = tropMul = +).
+--
+-- WHAT THIS FILE MIRRORS (the SETTLED, machine-checked core):
+--   * the exact-on-a-fiber recoverable subobject: Echo (= Sigma-fiber),
+--     echoIntro, and the slice/fibration functorial structure HomOver / echoMap
+--     / echoMapId / echoMapCompose / echoMapSquare / Displayed / DispHom
+--     (~ Agda Echo.agda map-over / map-over-id / map-over-comp / map-square);
+--   * the irreversible-relegation step: EchoR + echoToResidue
+--     (~ EchoResidue.agda EchoR / echo-to-residue) — an attestation is exactly
+--     a retained residue of a forgotten witness.
+-- WHAT IT DEFERS: the numeric min-plus graded CARRIER and the (co)monad /
+--   adjunction laws are live research in echo-types/experimental and are NOT
+--   reproduced here (deferring per caveat 2; do not bake in a variance).
 --
 -- Why typed-wasm wants this:
 --   * Every level's witness type is already an echo type over its index
@@ -214,3 +255,43 @@ fromHomOver :
   -> HomOver f f'
   -> DispHom (EchoOf f) (EchoOf f') (\b => b)
 fromHomOver h = MkDispHom (\e => echoMap h e)
+
+-- ============================================================================
+-- Echo residues (weakened echo) — attested verdict = retained residue
+-- ============================================================================
+--
+-- Mirrors echo-types proofs/agda/EchoResidue.agda @ 2bbdb49.  A residue echo
+-- keeps an opaque residue `r : C` plus a certification `Cert r y` to the
+-- visible target `y`, having forgotten the full preimage witness.  This is the
+-- estate's "attested verdict = retained residue of irreversible relegation":
+-- a typed-wasm attestation is exactly such a residue — you cannot recover the
+-- consumed witness, only the certified residue.  The residue carrier `C` is the
+-- type that plugs into the sibling TypedWasm.ABI.Tropical.ResidueMeasure
+-- (the E -> R obligation->cost bridge).
+
+||| A residue echo over `y`: a residue value together with a certification
+||| relating it to the visible target.  Mirrors Agda `EchoR C Cert y =
+||| Σ C (λ r → Cert r y)`.
+public export
+record EchoR {0 B : Type} (C : Type) (Cert : C -> B -> Type) (y : B) where
+  constructor MkEchoR
+  ||| The retained residue token (the full witness has been forgotten).
+  residue : C
+  ||| Certification that the residue genuinely attests to `y`.
+  cert    : Cert residue y
+
+||| Lower a full echo to a residue echo, given a residue extractor `kappa` and
+||| a soundness proof that the extracted residue certifies the image.  Mirrors
+||| Agda `echo-to-residue f κ Cert sound (x , p) = κ x , subst (Cert (κ x)) p
+||| (sound x)`.  This is the irreversible relegation step: the preimage `x` is
+||| dropped, only `kappa x` and its certificate survive.
+public export
+echoToResidue :
+     {0 A, B : Type} -> {0 C : Type} -> {0 Cert : C -> B -> Type}
+  -> (f : A -> B)
+  -> (kappa : A -> C)
+  -> (sound : (x : A) -> Cert (kappa x) (f x))
+  -> {0 y : B}
+  -> Echo f y -> EchoR C Cert y
+echoToResidue f kappa sound (MkEcho x pf) =
+  MkEchoR (kappa x) (replace {p = \v => Cert (kappa x) v} pf (sound x))
