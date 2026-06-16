@@ -41,6 +41,7 @@ import TypedWasm.ABI.PackedLayout
 import Data.Nat
 import Data.List
 import Data.List.Quantifiers
+import Decidable.Equality
 
 %default total
 
@@ -241,3 +242,43 @@ typedVerifierIsComplete _ (MkTypedSpecAccepts w) = TVAStructural w
 export
 specAcceptsWitness : TypedSpecAccepts sites -> AccessTypingClean sites
 specAcceptsWitness (MkTypedSpecAccepts w) = w
+
+-- ============================================================================
+-- T5-proper kernel: the spec acceptance criterion is an EXECUTABLE checker
+-- ============================================================================
+--
+-- `SiteWellTyped` is decidable (each of its three conjuncts is: a Bool
+-- equality, a Nat equality, and an LTE), so `AccessTypingClean` is too.
+-- The spec's acceptance predicate is therefore not merely "holds by
+-- construction" — it is COMPUTABLE: `decAccessTypingClean` is a
+-- correct-by-construction checker derivable from the spec itself, whose
+-- `Yes` carries the full acceptance proof and whose `No` carries a refutation.
+--
+-- This is the concrete sense in which the typing checker can be "moved
+-- inside the spec's sight" (collapsing the determine-vs-bound BOUND on the
+-- typing LOGIC): the decision procedure IS a verifier, verified. After this,
+-- the residual trust is decode-faithfulness ALONE — producing the `SpecSite`
+-- data from wasm bytes — with no trust remaining in the typing decision. Full
+-- extraction-to-Rust and the wasm operational-semantics (WasmCert) tie-back
+-- remain the open, multi-week T5 tail; this is its verified kernel.
+
+||| The spec's per-site acceptance is decidable: a `Yes` builds the
+||| `SiteWellTyped` witness, a `No` refutes one of its three conjuncts.
+export
+decSiteWellTyped : (s : SpecSite) -> Dec (SiteWellTyped s)
+decSiteWellTyped s =
+  case decEq (opMatchesField (siteOp s) (siteField s)) True of
+    No nm => No (\(MkSiteWellTyped m _ _) => nm m)
+    Yes m => case decEq (siteOffset s) (siteFieldOff s) of
+      No no => No (\(MkSiteWellTyped _ o _) => no o)
+      Yes o =>
+        case isLTE (siteFieldOff s + packedScalarSize (siteField s)) (siteRegionSz s) of
+          No nl => No (\(MkSiteWellTyped _ _ l) => nl l)
+          Yes l => Yes (MkSiteWellTyped m o l)
+
+||| The whole-list acceptance criterion is decidable — the verified,
+||| extractable access-typing checker. Running it on the sites the Rust
+||| pass decodes is the data-level cross-check the bound reduces to.
+export
+decAccessTypingClean : (sites : List SpecSite) -> Dec (AccessTypingClean sites)
+decAccessTypingClean = all decSiteWellTyped
