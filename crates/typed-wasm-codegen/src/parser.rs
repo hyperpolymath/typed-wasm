@@ -764,7 +764,8 @@ impl<'a> Parser<'a> {
         let accesses = vec![crate::AccessSite {
             region,
             field: field_idx,
-            offset: 0, // verifier does not check the byte offset (see verify.rs)
+            // Body is [LocalGet, load]: the typed load is instruction index 1.
+            instr_index: Some(1),
         }];
         Some((body, accesses))
     }
@@ -847,7 +848,8 @@ impl<'a> Parser<'a> {
         let accesses = vec![crate::AccessSite {
             region,
             field: field_idx,
-            offset: 0, // verifier does not check the byte offset (see verify.rs)
+            // Body is [LocalGet, push, store]: the typed store is index 2.
+            instr_index: Some(2),
         }];
         Some((body, accesses))
     }

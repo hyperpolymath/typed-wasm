@@ -7,6 +7,8 @@
 //   1. structural wasm validation (wasmparser `Validator`)
 //   2. L7/L10/L13 ownership verification (`verify_from_module`)
 //   3. L2 access-site verification (feature `unstable-l2`)
+//   3b. L2 access-typing verification — decode-time per-site type/width/
+//       offset check; reports type-verified vs declared-only counts
 //   4. L15 capability verification (feature `unstable-l15`)
 //
 // Exit codes: 0 = verified, 1 = a check failed, 2 = usage / I/O error.
@@ -83,6 +85,38 @@ fn main() -> ExitCode {
         }
         Err(e) => {
             eprintln!("tw-verify: access-site verify error: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
+
+    // 3b. L2 access-TYPING: decode each pinned site and confirm it lands
+    //     on a load/store of the field's exact type / width / offset,
+    //     in-region. This is what makes the assurance mode knowable — the
+    //     line reports how many sites carry a machine-checked typing
+    //     guarantee vs. how many are merely producer-asserted
+    //     (declared-only / unpinned).
+    #[cfg(feature = "unstable-l2")]
+    match typed_wasm_verify::verify_access_typing_from_module(&bytes) {
+        Ok(report) if report.errors.is_empty() => {
+            println!(
+                "ok  L2 access typing: {} type-verified, {} declared-only",
+                report.type_verified, report.declared_only
+            );
+        }
+        Ok(report) => {
+            eprintln!(
+                "FAIL L2 access typing ({} type-verified, {} declared-only, {} error(s)):",
+                report.type_verified,
+                report.declared_only,
+                report.errors.len()
+            );
+            for e in &report.errors {
+                eprintln!("  - {e}");
+            }
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("tw-verify: access-typing verify error: {e}");
             return ExitCode::FAILURE;
         }
     }
