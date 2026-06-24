@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = typed-wasm Audit 2026-03-30
 :revdate: 2026-03-30
 
