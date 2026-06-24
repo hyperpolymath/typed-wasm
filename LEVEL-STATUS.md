@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: CC-BY-SA-4.0
 # typed-wasm Level Achievement Status
 
 ## Versioning Scheme (revised 2026-04-13 — typed-wasm-first rollout)
