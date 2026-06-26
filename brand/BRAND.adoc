@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= typed-wasm Brand Pack
+:toc:
+
+== Mark
+
+The typed-wasm mark is a grid of memory cells — the schemaless linear-memory
+byte array — laid out behind a single violet *schema bracket* that binds the
+cells into a typed *region*. Two cells glow as typed fields; the rest stay
+faint, still untyped bytes. One linear cell carries an exactly-once tick. The
+glyph states the whole idea in one image: a schema (region) drawn over a
+schemaless database (WASM linear memory), so every load and store is checked
+against the type before it runs.
+
+The name is the symbolism: WebAssembly's linear memory is an untyped byte
+array; *typed-wasm* puts TypeLL's progressive type safety over it — regions
+are tables, loads are SELECT, stores are UPDATE, and the Idris2 prover verifies
+each access at compile time.
+
+|===
+| File | Use
+
+| `icon.svg` | Primary mark with dark background (rounded corners). README, docs, about screens.
+| `icon-square.svg` | Transparent background mark. Favicon, app icon, overlay on custom backgrounds.
+| `social-preview.svg` | GitHub / Open Graph social preview (1280x640). "typed-wasm" wordmark + mark.
+| `marr-levels.svg` | Explainer: the project at David Marr's three levels of analysis.
+| `sandler-submarine.svg` | Impact / case-making: the seven sealed compartments of adoption.
+|===
+
+== Colours
+
+[cols="1,1,2"]
+|===
+| Name | Hex | Use
+
+| WASM Violet | `#a371f7` | Primary brand colour. The schema bracket, typed cells, active states, headings.
+| Schema Indigo | `#8957e5` | Secondary. Untyped-cell outlines, the region grid, muted accents.
+| Background | `#0d1117` | Dark surfaces. GitHub-dark compatible.
+| Foreground | `#e6edf3` | Text on dark background.
+| Glow | `#1d1233` | Radial background glow behind the mark.
+|===
+
+== Typography
+
+Wordmark uses the system font stack: `system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif` at weight 300 (light), lowercase. The subtitle is set at the same stack, weight 300.
+
+No custom font is required. All text is set in the SVG, not a separate font file.
+
+== Rules
+
+- The mark always shows the memory-cell grid with the schema bracket binding a typed region over it. Never draw the typed cells without the faint untyped cells — that would deny the core insight (a schema *over* a schemaless byte array).
+- The violet must be `#a371f7` — do not approximate with other violets/purples.
+- The wordmark is always lowercase `typed-wasm`.
+- On light backgrounds, invert: violet `#6f42c1` strokes and `#1b1f24` text on white/light grey.
+- The subtitle ("regions over a schemaless byte array") is the etymology of the idea, not a marketing strapline; it may appear on repository assets. Sales/marketing straplines never appear on repository assets.
+- Claims on assets stay inside the checked envelope: the L1-L10 core is checked (0 `believe_me`); L11-L12 are draft. Do not put "all levels verified" on any asset (ADR-003).
+
+== Generating raster assets
+
+[source,shell]
+----
+# Requires Inkscape or rsvg-convert (librsvg)
+
+# Favicon (64x64 PNG)
+rsvg-convert -w 64 -h 64 icon-square.svg > favicon-64.png
+
+# App icon (512x512 PNG)
+rsvg-convert -w 512 -h 512 icon.svg > icon-512.png
+
+# Social preview (1280x640 PNG for GitHub)
+rsvg-convert -w 1280 -h 640 social-preview.svg > social-preview.png
+----

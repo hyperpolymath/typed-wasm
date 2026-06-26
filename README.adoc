@@ -11,6 +11,8 @@ image:https://img.shields.io/badge/OpenSSF-Best_Practices-green?logo=opensources
 image:https://img.shields.io/badge/believe__me-0-brightgreen[believe_me: 0]
 image:https://img.shields.io/badge/Levels-L1--10_checked_core_(L11--12_draft)-blue[Levels: checked core]
 
+image::brand/social-preview.svg[typed-wasm,align="center"]
+
 [NOTE]
 .typed-wasm is a meeting point for two unrelated languages
 ====
