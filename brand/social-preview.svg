@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="circle-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="text-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="bg-glow" cx="50%" cy="38%" r="52%">
+      <stop offset="0%" stop-color="#1d1233"/>
+      <stop offset="70%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#080c10"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" fill="#0d1117"/>
+  <rect width="1280" height="640" fill="url(#bg-glow)"/>
+
+  <!-- Schemaless linear memory: a row of byte cells, mostly untyped (faint) -->
+  <g stroke="#8957e5" stroke-width="2" fill="none" opacity="0.22">
+    <rect x="500" y="150" width="46" height="46" rx="6"/>
+    <rect x="554" y="150" width="46" height="46" rx="6"/>
+    <rect x="608" y="150" width="46" height="46" rx="6"/>
+    <rect x="662" y="150" width="46" height="46" rx="6"/>
+    <rect x="716" y="150" width="46" height="46" rx="6"/>
+    <rect x="500" y="258" width="46" height="46" rx="6"/>
+    <rect x="716" y="258" width="46" height="46" rx="6"/>
+  </g>
+
+  <!-- Schema region: violet bracket binding a typed region over the byte grid -->
+  <path d="M 560,196 L 548,196 L 548,258 L 560,258"
+        fill="none" stroke="#a371f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.9" filter="url(#circle-glow)"/>
+  <path d="M 708,196 L 720,196 L 720,258 L 708,258"
+        fill="none" stroke="#a371f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.9" filter="url(#circle-glow)"/>
+
+  <!-- Three typed fields lit by the schema -->
+  <rect x="554" y="204" width="46" height="46" rx="6" fill="#a371f7" opacity="0.16"/>
+  <rect x="554" y="204" width="46" height="46" rx="6" fill="none" stroke="#a371f7" stroke-width="3" filter="url(#glow)"/>
+  <rect x="608" y="204" width="46" height="46" rx="6" fill="#a371f7" opacity="0.16"/>
+  <rect x="608" y="204" width="46" height="46" rx="6" fill="none" stroke="#a371f7" stroke-width="3" filter="url(#glow)"/>
+  <rect x="662" y="204" width="46" height="46" rx="6" fill="#a371f7" opacity="0.16"/>
+  <rect x="662" y="204" width="46" height="46" rx="6" fill="none" stroke="#a371f7" stroke-width="3" filter="url(#glow)"/>
+
+  <!-- Type-checked access tick on the first typed field -->
+  <path d="M 566,228 l 6,7 l 14,-16" fill="none" stroke="#a371f7" stroke-width="3.5"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <!-- Linear field (exactly-once) marker on the last typed field -->
+  <path d="M 672,219 l 0,16 l 18,0" fill="none" stroke="#a371f7" stroke-width="3.5"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <circle cx="685" cy="227" r="3.5" fill="#a371f7" opacity="0.55"/>
+
+  <!-- Wordmark -->
+  <text x="640" y="450" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="104" font-weight="300" fill="#e6edf3" letter-spacing="2" filter="url(#text-glow)">typed-wasm</text>
+  <!-- Etymology subtitle (the core idea: a schema over a schemaless byte array) -->
+  <text x="640" y="504" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="29" font-weight="300" fill="#a371f7" letter-spacing="4" opacity="0.85">regions over a schemaless byte array · checked L1-L10</text>
+
+  <!-- Accent rule -->
+  <line x1="500" y1="556" x2="610" y2="556" stroke="#a371f7" stroke-width="1" opacity="0.3"/>
+  <circle cx="640" cy="556" r="4" fill="#a371f7" opacity="0.6"/>
+  <line x1="670" y1="556" x2="780" y2="556" stroke="#a371f7" stroke-width="1" opacity="0.3"/>
+</svg>

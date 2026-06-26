@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="circle-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <radialGradient id="bg-glow" cx="50%" cy="46%" r="55%">
+      <stop offset="0%" stop-color="#1d1233"/>
+      <stop offset="70%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#080c10"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#0d1117"/>
+  <rect width="512" height="512" rx="96" fill="url(#bg-glow)"/>
+
+  <!-- Schemaless linear memory: a 4x4 grid of byte cells, mostly untyped (faint) -->
+  <g stroke="#8957e5" stroke-width="3" fill="none" opacity="0.28">
+    <rect x="136" y="136" width="60" height="60" rx="8"/>
+    <rect x="206" y="136" width="60" height="60" rx="8"/>
+    <rect x="276" y="136" width="60" height="60" rx="8"/>
+    <rect x="346" y="136" width="60" height="60" rx="8"/>
+    <rect x="136" y="206" width="60" height="60" rx="8"/>
+    <rect x="346" y="206" width="60" height="60" rx="8"/>
+    <rect x="136" y="276" width="60" height="60" rx="8"/>
+    <rect x="206" y="276" width="60" height="60" rx="8"/>
+    <rect x="276" y="276" width="60" height="60" rx="8"/>
+    <rect x="346" y="276" width="60" height="60" rx="8"/>
+    <rect x="136" y="346" width="60" height="60" rx="8"/>
+    <rect x="206" y="346" width="60" height="60" rx="8"/>
+    <rect x="276" y="346" width="60" height="60" rx="8"/>
+    <rect x="346" y="346" width="60" height="60" rx="8"/>
+  </g>
+
+  <!-- Schema region (the typed bracket binding two cells into a region) -->
+  <path d="M 196,200 L 184,200 L 184,272 L 196,272"
+        fill="none" stroke="#a371f7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.9" filter="url(#circle-glow)"/>
+  <path d="M 346,200 L 358,200 L 358,272 L 346,272"
+        fill="none" stroke="#a371f7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.9" filter="url(#circle-glow)"/>
+
+  <!-- Two typed fields: cells lit by the schema -->
+  <rect x="206" y="206" width="60" height="60" rx="8" fill="#a371f7" opacity="0.16"/>
+  <rect x="206" y="206" width="60" height="60" rx="8" fill="none" stroke="#a371f7" stroke-width="6" filter="url(#glow)"/>
+  <rect x="276" y="206" width="60" height="60" rx="8" fill="#a371f7" opacity="0.16"/>
+  <rect x="276" y="206" width="60" height="60" rx="8" fill="none" stroke="#a371f7" stroke-width="6" filter="url(#glow)"/>
+
+  <!-- Type tag on the typed region: a checked-access cell -->
+  <path d="M 222,236 l 10,11 l 22,-24" fill="none" stroke="#a371f7" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+
+  <!-- Linear field (exactly-once): one cell carries the linearity tick -->
+  <path d="M 292,224 l 0,24 l 28,0" fill="none" stroke="#a371f7" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+
+  <!-- Echo residue tick (what was spent at the typed access) -->
+  <circle cx="306" cy="236" r="5" fill="#a371f7" opacity="0.55"/>
+</svg>
