@@ -9,9 +9,9 @@
 // Enforced ECHIDNA-style over a deterministically-generated corpus, plus
 // negative controls that MUST be rejected so the property has teeth.
 //
-// The corpus is generated at the IR level — the producer has no in-process
-// `.twasm` parser yet (#127). A `verify(codegen(parse(src)))` corpus over
-// real `.twasm` sources follows once the front-end → IR seam lands.
+// Two corpus axes: IR-level generated modules, plus `verify(emit(parse(src)))`
+// over real `.twasm` sources — both the six canonical examples and randomly
+// generated source text (the in-process parser is `src/parser.rs`, ADR-0006).
 
 use typed_wasm_codegen::{
     emit, example01, paint_type_tile, paint_type_layer, parser, Field, Func, Memory, Module,
@@ -618,7 +618,7 @@ fn one_func_module(kind: Ownership, body: Vec<Op>) -> Module {
             accesses: vec![],
             export: true,
         }],
-        ownership: vec![(0, vec![kind])],
+        ownership: vec![(0, vec![kind], Ownership::Unrestricted)],
     }
 }
 

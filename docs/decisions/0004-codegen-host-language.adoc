@@ -1,6 +1,6 @@
 = Architecture Decision Record: 0004-codegen-host-language
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
-<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
 
 # 4. Codegen host language, integration point & IR threading
 
@@ -8,13 +8,17 @@ Date: 2026-05-30
 
 ## Status
 
-Proposed
+Accepted (§1, §3) / Superseded in §2 by
+link:0006-rust-frontend-canonical.adoc[ADR-0006]
 
 This ADR is the decision gate for Phase 1 codegen
 (https://github.com/hyperpolymath/typed-wasm/issues/123[issue #123]).
-It is **Proposed** pending owner ratification at PR review: committing
-to Rust for the in-tree producer is a load-bearing choice and the
-front-end → IR seam is deferred, so the decision is not yet Accepted.
+§1 (Rust producer crate) and §3 (carrier set) are borne out by the
+implemented `typed-wasm-codegen` crate. §2's "no Rust `.twasm` parser"
+pin is superseded: per owner direction (2026-07-07, independence as a
+compile target), the in-tree Rust parser is canonical — see
+link:0006-rust-frontend-canonical.adoc[ADR-0006]; §2's JSON-IR seam is
+repurposed there as the external-producer seam.
 
 ## Context
 

@@ -27,10 +27,10 @@
 //!   IR for [`example01`] directly rather than parsing `.twasm`. Wiring the
 //!   checker's AST to this IR (a serialized JSON IR) is tracked by issue
 //!   #127 (D1: all 10 levels × all 6 examples).
-//! * L7/L10 ownership/linearity carriers (`typedwasm.ownership`) are not
-//!   emitted for the read/write example 01 (its region borrows are not
-//!   linear resources); they land with `examples/03-ownership-linearity`
-//!   under #127.
+//! * L7/L10 ownership/linearity carriers (`typedwasm.ownership`) are
+//!   emitted whenever the source declares discipline (`own` / `&mut` /
+//!   `&` qualifiers) — the parser records them into [`Module::ownership`]
+//!   and `emit` writes the carrier (exercised by `tests/example03.rs`).
 //! * Full function-body semantics (indexing, `region.scan`, null checks):
 //!   v0 emits type-correct representative bodies, not the full lowering.
 
@@ -318,9 +318,9 @@ pub struct Module {
     pub imports: Vec<Import>,
     pub funcs: Vec<Func>,
     /// Per-local-function ownership annotations: `(local_func_index,
-    /// param_kinds)`. Emitted as the `typedwasm.ownership` carrier;
-    /// empty = no L7/L10 carrier.
-    pub ownership: Vec<(usize, Vec<Ownership>)>,
+    /// param_kinds, ret_kind)`. Emitted as the `typedwasm.ownership`
+    /// carrier; empty = no L7/L10 carrier.
+    pub ownership: Vec<(usize, Vec<Ownership>, Ownership)>,
 }
 
 // ----------------------------------------------------------------------
@@ -464,10 +464,10 @@ pub fn emit(module: &Module) -> Vec<u8> {
     let ownership_entries: Vec<OwnershipEntry> = module
         .ownership
         .iter()
-        .map(|(local_i, kinds)| OwnershipEntry {
+        .map(|(local_i, kinds, ret)| OwnershipEntry {
             func_idx: import_count + *local_i as u32,
             param_kinds: kinds.iter().map(|o| o.to_kind()).collect(),
-            ret_kind: OwnershipKind::Unrestricted,
+            ret_kind: ret.to_kind(),
         })
         .collect();
 
@@ -985,7 +985,7 @@ pub fn multimodule_callee() -> Module {
             accesses: vec![],
             export: true,
         }],
-        ownership: vec![(0, vec![Ownership::Linear])],
+        ownership: vec![(0, vec![Ownership::Linear], Ownership::Unrestricted)],
     }
 }
 
