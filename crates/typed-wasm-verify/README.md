@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
 # typed-wasm-verify
 
 Post-codegen verifier for typed-wasm **L7 (aliasing safety)** and **L10 (linearity)** constraints on emitted wasm modules.
@@ -38,7 +39,9 @@ The OCaml files remain the spec of record until behavioural parity is establishe
 ## Status
 
 - [x] C1 — Scaffold (types, error enums, public entry stubs)
-- [ ] C2 — Custom-section parser
-- [ ] C3 — Per-path use-range analysis (L7+L10 intra-function)
-- [ ] C4 — Cross-module boundary verifier
-- [ ] C5 — Cross-compat test against affinescript-emitted wasm
+- [x] C2 — Custom-section parser (`src/section.rs`)
+- [x] C3 — Per-path use-range analysis (L7+L10 intra-function, `src/verify.rs`; includes L13 negative-form module isolation)
+- [x] C4 — Cross-module boundary verifier (`src/cross.rs`)
+- [x] C5 — Cross-compat test against affinescript-emitted wasm (`tests/cross_compat.rs` synthetic parity table + `tests/cross_compat_real.rs` real fixtures under `tests/fixtures/c5_real/`)
+
+Still open: L13 positive-form region-imports agreement (typed-wasm#140, proposal 0003) and carrier-backed L2–L6/L15 passes graduating from the `unstable-l2`/`unstable-l15` features.
