@@ -19,7 +19,7 @@ fn clean_examples_self_verify() {
         self_verify(&example01()).is_ok(),
         "example 01 should self-verify clean"
     );
-    // example03 not yet implemented - tracked by #127
+    // example03 source→emit→verify coverage lives in tests/example03.rs
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn double_free_gives_named_actionable_message() {
             accesses: vec![],
             export: true,
         }],
-        ownership: vec![(0, vec![Ownership::Linear])],
+        ownership: vec![(0, vec![Ownership::Linear], Ownership::Unrestricted)],
     };
     let diagnostics = self_verify(&module).expect_err("double-free must be rejected");
     let joined = diagnostics.join("\n");

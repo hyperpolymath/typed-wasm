@@ -95,7 +95,7 @@ fn ownership_func_idx_is_load_bearing() {
         memory: None,
         imports: vec![],
         funcs: funcs(),
-        ownership: vec![(owned, vec![Ownership::Linear])],
+        ownership: vec![(owned, vec![Ownership::Linear], Ownership::Unrestricted)],
     };
 
     // Carrier marks func 0 Linear → its double-use is the violation.

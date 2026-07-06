@@ -30,7 +30,7 @@ struct Parser<'a> {
     memory: Option<Memory>,
     imports: Vec<crate::Import>,
     funcs: Vec<crate::Func>,
-    ownership: Vec<(usize, Vec<crate::Ownership>)>,
+    ownership: Vec<(usize, Vec<crate::Ownership>, crate::Ownership)>,
 }
 
 impl<'a> Parser<'a> {
@@ -590,6 +590,10 @@ impl<'a> Parser<'a> {
         // Per-param (name, region-index) for body lowering: a region-typed
         // param records the region it points at; scalar params record None.
         let mut param_meta: Vec<(String, Option<usize>)> = Vec::new();
+        // L7/L10 ownership kinds per param (`own`/`&mut`/`&` qualifiers),
+        // recorded into `Module::ownership` so the emitted module carries
+        // the `typedwasm.ownership` section the verifier checks.
+        let mut param_kinds: Vec<crate::Ownership> = Vec::new();
         loop {
             self.skip_whitespace();
             if self.peek_char(')') {
@@ -614,7 +618,7 @@ impl<'a> Parser<'a> {
             };
 
             // Parse the type, which may include ownership qualifiers
-            let (param_ty, _) = self.parse_param_type()?;
+            let (param_ty, _, kind) = self.parse_param_type()?;
 
             // Map field type to Wty; remember the region a region-typed param
             // points at (for `region.get $p` lowering).
@@ -625,6 +629,7 @@ impl<'a> Parser<'a> {
 
             params.push(wty);
             param_meta.push((pname, region));
+            param_kinds.push(kind);
 
             if self.peek_char(',') {
                 self.expect(",")?;
@@ -635,12 +640,14 @@ impl<'a> Parser<'a> {
 
         // Parse optional -> return type
         let mut results = Vec::new();
+        let mut ret_kind = crate::Ownership::Unrestricted;
         if self.peek_word("->") {
             self.expect("->")?;
             self.skip_whitespace();
-            
+
             // For now, assume single return type - parse it
-            let (ret_ty, _) = self.parse_param_type()?;
+            let (ret_ty, _, kind) = self.parse_param_type()?;
+            ret_kind = kind;
             let wty = match ret_ty {
                 FieldTy::Scalar(s) => wty_from_scalar(&s),
                 FieldTy::Ptr { .. } => Wty::I32,
@@ -705,6 +712,18 @@ impl<'a> Parser<'a> {
                 (body, Vec::new())
             }
         };
+
+        // Record the function's ownership signature when the source asked
+        // for L7/L10 discipline anywhere in it. All-Unrestricted functions
+        // stay out of the carrier (empty = no constraint, matching the
+        // "empty = no L7/L10 carrier" Module contract).
+        let has_discipline = ret_kind != crate::Ownership::Unrestricted
+            || param_kinds
+                .iter()
+                .any(|k| *k != crate::Ownership::Unrestricted);
+        if has_discipline {
+            self.ownership.push((self.funcs.len(), param_kinds, ret_kind));
+        }
 
         self.funcs.push(crate::Func {
             name,
@@ -1047,8 +1066,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse a parameter type which may include ownership qualifiers like 'own', '&', '&mut'
-    fn parse_param_type(&mut self) -> Result<(FieldTy, u32), String> {
+    /// Parse a parameter type which may include ownership qualifiers like 'own', '&', '&mut'.
+    /// The third component is the L7/L10 ownership kind the qualifier denotes:
+    /// `own` → Linear, `&mut` → ExclBorrow, `&` → SharedBorrow. A bare
+    /// `region<T>` (no qualifier) and every scalar stay Unrestricted — the
+    /// carrier only asserts discipline the source explicitly asked for.
+    fn parse_param_type(&mut self) -> Result<(FieldTy, u32, crate::Ownership), String> {
         self.skip_whitespace();
         
         // Check for ownership qualifier
@@ -1097,14 +1120,24 @@ impl<'a> Parser<'a> {
                 PtrKind::Owning // default
             };
             
+            let ownership = if is_own {
+                crate::Ownership::Linear
+            } else if is_excl_borrow {
+                crate::Ownership::ExclBorrow
+            } else if is_shared_borrow {
+                crate::Ownership::SharedBorrow
+            } else {
+                crate::Ownership::Unrestricted
+            };
             Ok((FieldTy::Ptr {
                 kind,
                 target: idx,
                 nullable: false,
-            }, 1))
+            }, 1, ownership))
         } else {
             // Parse as normal field type
-            self.parse_field_type()
+            let (ty, card) = self.parse_field_type()?;
+            Ok((ty, card, crate::Ownership::Unrestricted))
         }
     }
 

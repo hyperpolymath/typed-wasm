@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
 # typed-wasm-codegen
 
 The first in-tree `.twasm → .wasm` **producer** (codegen **v0**).
@@ -46,10 +47,10 @@ cargo test -p typed-wasm-codegen
 | Aspect | v0 status |
 |---|---|
 | Host language / location | Rust crate, sibling of `typed-wasm-verify`, emits via `wasm-encoder` |
-| Front-end (`.twasm`) → IR | **deferred** — v0 builds the IR for `example01` directly (seam tracked by #127) |
+| Front-end (`.twasm`) → IR | **in-process Rust parser** (`src/parser.rs`) — all six `examples/*.twasm` parse → emit → verify (`tests/corpus.rs`), incl. ownership qualifiers → `typedwasm.ownership` (ADR-0006) |
 | `typedwasm.regions` + `typedwasm.access-sites` | **emitted**, verifier-accepted |
 | WAT (text) emission | **emitted** via `--emit wat\|both` (#125) |
-| `typedwasm.ownership` (L7/L10) | **emitted** for Linear params (multi-module callee, #128); example 01 has no linear resources |
+| `typedwasm.ownership` (L7/L10) | **emitted** for any `own`/`&mut`/`&` source discipline (parser-recorded, incl. Linear returns) and for the multi-module callee (#128) |
 | Multi-module (linear boundary) | **emitted** — callee export + caller import round-trip through `verify_cross_module` (#128) |
 | Function-body lowering | representative type-correct bodies, not full `region.scan`/indexing semantics |
 

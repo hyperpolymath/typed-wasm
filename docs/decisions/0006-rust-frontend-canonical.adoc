@@ -1,0 +1,99 @@
+= Architecture Decision Record: 0006-rust-frontend-canonical
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
+
+# 6. The in-tree Rust front-end is the canonical `.twasm` parser
+
+Date: 2026-07-07
+
+## Status
+
+Accepted
+
+Owner direction (2026-07-07 session): typed-wasm is to be realised as an
+**independent compile target** — usable by AffineScript and Ephapax but
+not dependent on either. This ADR records that direction where it bites
+first: the front-end.
+
+Supersedes link:0004-codegen-host-language.adoc[ADR-0004] §2's pin that
+"typed-wasm will **not** grow a second `.twasm` parser in Rust", and
+retires the "stopgap until the AffineScript front-end" framing from the
+issue-#127 thread. ADR-0004 §1 (Rust producer crate, `wasm-encoder`) and
+§3 (carrier emission set) stand unchanged.
+
+## Context
+
+ADR-0004 §2 deferred the front-end → IR seam to a serialised JSON IR
+emitted by the AffineScript checker (`src/parser/*.affine`, compiled to
+`.mjs` by the `affinescript` toolchain per `affinescript.json`), and
+explicitly ruled out a Rust parser as a duplicate-parser code smell.
+
+Reality moved past the pin. PR #165 landed a hand-written Rust parser
+(`crates/typed-wasm-codegen/src/parser.rs`) as a paint-type stopgap; it
+has since grown to parse **all six** canonical `examples/*.twasm` sources
+end-to-end (`tests/corpus.rs` round-trips parse → emit → verify 6/6,
+plus generated source text and never-panic totality sweeps), and now
+records source ownership qualifiers into the `typedwasm.ownership`
+carrier (`tests/example03.rs`).
+
+Meanwhile the independence goal makes the AffineScript-hosted front-end
+a structural liability, not a destination: the standalone compile
+target's own surface language must not require one of its producers'
+toolchains to parse. The same reasoning already renamed the carrier
+section producer-neutral (`affinescript.ownership` → `typedwasm.ownership`,
+2026-05-26).
+
+## Decision
+
+1. **The Rust parser is the canonical `.twasm` front-end.** The
+   `source → parse_module → IR → emit → verify` pipeline in
+   `crates/typed-wasm-codegen` is the reference path for `.twasm`;
+   `tw build` is the reference CLI. Gaps against `spec/grammar.ebnf`
+   (full statement lowering, `if`/`else`, `region.scan` loops, L11/L12
+   draft forms) are tracked as issues against this parser, not deferred
+   to an external front-end.
+2. **The AffineScript front-end (`src/parser/*.affine`) is demoted to a
+   reference implementation** — kept for cross-checking and for the
+   AffineScript ecosystem's own use, no longer on typed-wasm's critical
+   path. `affinescript.json` stays, but nothing in build, test, or CI
+   may require the `affinescript` toolchain.
+3. **The JSON-IR seam of ADR-0004 §2 is repurposed** as the *external
+   producer* seam: any language front-end (AffineScript, Ephapax, or a
+   third party) may hand typed-wasm a serialised IR instead of `.twasm`
+   source. It is an interoperability surface, not the front-end.
+
+## Consequences
+
+### Positive
+
+- typed-wasm builds, tests, and verifies with the Rust toolchain alone —
+  the independence property the compile-target vision requires.
+- One language for parser + codegen + verifier keeps the closed-loop
+  round-trip corpus (parse → emit → verify, in-process) as the soundness
+  net around the whole pipeline.
+- The "duplicate parser" smell of ADR-0004 inverts: the duplicate is now
+  the *AffineScript* parser, and divergence is caught by keeping it as a
+  cross-check reference rather than a dependency.
+
+### Negative
+
+- Two grammars to keep in sync until the `.affine` front-end is archived
+  or fully delegated to the AffineScript repo.
+- The Rust parser must now carry the full weight of
+  `spec/grammar.ebnf` — its v0 shortcuts (stub bodies for non-lowerable
+  statements, simplified control flow) become tracked debt rather than
+  acceptable stopgap behaviour.
+
+### Neutral
+
+- Producer repos are unaffected: AffineScript and Ephapax keep emitting
+  carriers per ADR-0002/0003; the wire contract does not change.
+
+## Cross-references
+
+* link:0004-codegen-host-language.adoc[ADR-0004] — superseded in §2 only
+* `crates/typed-wasm-codegen/src/parser.rs` — the canonical front-end
+* `tests/corpus.rs`, `tests/example03.rs` — the 6/6 round-trip +
+  ownership-carrier evidence
+* https://github.com/hyperpolymath/typed-wasm/issues/127[issue #127] —
+  the D1 thread whose "stopgap" framing this ADR retires
