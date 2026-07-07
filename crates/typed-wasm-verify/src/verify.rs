@@ -1699,3 +1699,215 @@ mod access_sites_verifier_tests {
         ));
     }
 }
+
+// ----------------------------------------------------------------------
+// L13 positive-form region imports (proposal 0003 / ADR-0007)
+// ----------------------------------------------------------------------
+
+#[cfg(feature = "unstable-l13-imports")]
+use crate::section::{parse_region_imports_section_payload, FieldKind, RegionImportEntry};
+#[cfg(feature = "unstable-l13-imports")]
+use crate::{
+    CompatCertificate, LinkGraphReport, RegionImportsError, REGION_IMPORTS_SECTION_NAME,
+};
+
+/// High bit of `target_region`: set = the low 31 bits index the
+/// import table rather than the local region table (proposal 0003
+/// §Cross-section foreign-key extension).
+#[cfg(feature = "unstable-l13-imports")]
+pub const TARGET_REGION_IMPORT_BIT: u32 = 0x8000_0000;
+
+/// Per-module internal-consistency pass over
+/// `typedwasm.region-imports`. Returns the parsed import table (empty
+/// when the section is absent) plus every violation found; cross-module
+/// agreement is `verify_link_graph`'s job.
+#[cfg(feature = "unstable-l13-imports")]
+pub fn verify_region_imports_from_module(
+    wasm_bytes: &[u8],
+) -> Result<(Vec<RegionImportEntry>, Vec<RegionImportsError>), VerifyError> {
+    let parser = Parser::new(0);
+    let mut imports_payload: Option<Vec<u8>> = None;
+    let mut regions_payload: Option<Vec<u8>> = None;
+    for payload in parser.parse_all(wasm_bytes) {
+        if let Payload::CustomSection(reader) = payload? {
+            match reader.name() {
+                REGION_IMPORTS_SECTION_NAME => {
+                    imports_payload = Some(reader.data().to_vec());
+                }
+                REGIONS_SECTION_NAME => {
+                    regions_payload = Some(reader.data().to_vec());
+                }
+                _ => {}
+            }
+        }
+    }
+    let Some(imports_bytes) = imports_payload else {
+        // Absent = "no cross-module regions imported" — trivially clean.
+        return Ok((vec![], vec![]));
+    };
+    let Some(imports) = parse_region_imports_section_payload(&imports_bytes) else {
+        return Ok((vec![], vec![RegionImportsError::UnparseableSection]));
+    };
+
+    let mut errors = Vec::new();
+
+    // MissingDependentCarrier (proposal 0003 §Producer obligations #1).
+    let regions = regions_payload
+        .as_deref()
+        .and_then(parse_regions_section_payload);
+    if regions.is_none() {
+        errors.push(RegionImportsError::MissingDependentRegions);
+    }
+
+    // Unique (producer_module, region_name) pairs.
+    let mut seen: std::collections::HashSet<(&str, &str)> = std::collections::HashSet::new();
+    for imp in &imports {
+        if !seen.insert((imp.producer_module.as_str(), imp.region_name.as_str())) {
+            errors.push(RegionImportsError::DuplicateImport {
+                producer_module: imp.producer_module.clone(),
+                region_name: imp.region_name.clone(),
+            });
+        }
+    }
+
+    // v1 scalar-only expected schemas.
+    for (import_idx, imp) in imports.iter().enumerate() {
+        for f in &imp.expected_fields {
+            if f.kind != FieldKind::Scalar {
+                errors.push(RegionImportsError::PointerInImportNotSupportedInV1 {
+                    import_idx: import_idx as u32,
+                    field_name: f.name.clone(),
+                });
+            }
+        }
+    }
+
+    // High-bit target_region foreign keys in typedwasm.regions must land
+    // within the import table.
+    if let Some(regions) = &regions {
+        let import_count = imports.len() as u32;
+        for (ri, region) in regions.iter().enumerate() {
+            for (fi, f) in region.fields.iter().enumerate() {
+                if f.target_region != crate::section::NO_TARGET_REGION
+                    && f.target_region & TARGET_REGION_IMPORT_BIT != 0
+                {
+                    let import_idx = f.target_region & !TARGET_REGION_IMPORT_BIT;
+                    if import_idx >= import_count {
+                        errors.push(RegionImportsError::ImportTargetOutOfRange {
+                            local_region_idx: ri as u32,
+                            field_idx: fi as u32,
+                            import_idx,
+                            import_count,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok((imports, errors))
+}
+
+/// Whole-link-graph L13 pass: per-module internal consistency, then
+/// `SchemaSub expected actual` for every import against the named
+/// producer's `typedwasm.regions` export. Subset imports are agreement.
+#[cfg(feature = "unstable-l13-imports")]
+pub fn verify_link_graph(modules: &[(&str, &[u8])]) -> Result<LinkGraphReport, VerifyError> {
+    let mut report = LinkGraphReport::default();
+
+    // Producer lookup: module name -> parsed regions table (None until
+    // needed; a producer without a regions section resolves no regions).
+    let mut producer_regions: std::collections::HashMap<&str, Option<Vec<RegionEntry>>> =
+        std::collections::HashMap::new();
+    for (name, bytes) in modules {
+        let parser = Parser::new(0);
+        let mut regions_payload: Option<Vec<u8>> = None;
+        for payload in parser.parse_all(bytes) {
+            if let Payload::CustomSection(reader) = payload? {
+                if reader.name() == REGIONS_SECTION_NAME {
+                    regions_payload = Some(reader.data().to_vec());
+                }
+            }
+        }
+        producer_regions.insert(
+            name,
+            regions_payload
+                .as_deref()
+                .and_then(parse_regions_section_payload),
+        );
+    }
+
+    for (consumer, bytes) in modules {
+        let (imports, errs) = verify_region_imports_from_module(bytes)?;
+        report.errors.extend(errs);
+
+        for imp in &imports {
+            let Some(regions) = producer_regions
+                .get(imp.producer_module.as_str())
+                .and_then(|r| r.as_ref())
+            else {
+                report.errors.push(RegionImportsError::UnresolvedProducerModule {
+                    consumer: consumer.to_string(),
+                    producer_module: imp.producer_module.clone(),
+                });
+                continue;
+            };
+            let Some(actual) = regions.iter().find(|r| r.name == imp.region_name) else {
+                report.errors.push(RegionImportsError::UnresolvedExportedRegion {
+                    consumer: consumer.to_string(),
+                    producer_module: imp.producer_module.clone(),
+                    region_name: imp.region_name.clone(),
+                });
+                continue;
+            };
+
+            // SchemaSub expected actual: every expected field appears in
+            // the actual schema with matching name/kind/type/nullability/
+            // cardinality (noSpoofing, MultiModule.idr:374).
+            let mut missing_fields = Vec::new();
+            let mut type_mismatches = Vec::new();
+            for exp in &imp.expected_fields {
+                match actual.fields.iter().find(|a| a.name == exp.name) {
+                    None => missing_fields.push(exp.name.clone()),
+                    Some(act) => {
+                        if act.kind != exp.kind
+                            || act.wasm_ty != exp.wasm_ty
+                            || act.nullability != exp.nullability
+                            || act.cardinality != exp.cardinality
+                        {
+                            type_mismatches.push(format!(
+                                "{}: expected {:?}/{:?}/{:?}/x{}, actual {:?}/{:?}/{:?}/x{}",
+                                exp.name,
+                                exp.kind,
+                                exp.wasm_ty,
+                                exp.nullability,
+                                exp.cardinality,
+                                act.kind,
+                                act.wasm_ty,
+                                act.nullability,
+                                act.cardinality
+                            ));
+                        }
+                    }
+                }
+            }
+            if missing_fields.is_empty() && type_mismatches.is_empty() {
+                report.certificates.push(CompatCertificate {
+                    consumer: consumer.to_string(),
+                    producer: imp.producer_module.clone(),
+                    region_name: imp.region_name.clone(),
+                });
+            } else {
+                report.errors.push(RegionImportsError::SchemaImportMismatch {
+                    consumer: consumer.to_string(),
+                    producer_module: imp.producer_module.clone(),
+                    region_name: imp.region_name.clone(),
+                    missing_fields,
+                    type_mismatches,
+                });
+            }
+        }
+    }
+
+    Ok(report)
+}

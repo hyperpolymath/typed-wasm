@@ -58,4 +58,4 @@ cargo test -p typed-wasm-codegen
 
 - **#127** — codegen coverage across all 10 levels × all 6 examples (and the front-end → IR JSON seam).
 - **#130** — promote the round-trip tests into the ECHIDNA property corpus.
-- **L13 positive-form / region-imports** — shared-region schema agreement (`examples/02`); rides the `typedwasm.region-imports` carrier (proposal 0003 `[draft]`, no verifier pass yet).
+- **L13 positive-form / region-imports** — **done** (issue #140): `import region … from "…" { … }` parses into `Module::region_imports`, emits the `typedwasm.region-imports` carrier (proposal 0003 `[accepted]` / ADR-0007), and `verify_link_graph` certifies cross-module schema agreement (`tests/example02.rs`).

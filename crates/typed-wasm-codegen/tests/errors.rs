@@ -39,6 +39,7 @@ fn double_free_gives_named_actionable_message() {
             export: true,
         }],
         ownership: vec![(0, vec![Ownership::Linear], Ownership::Unrestricted)],
+        region_imports: vec![],
     };
     let diagnostics = self_verify(&module).expect_err("double-free must be rejected");
     let joined = diagnostics.join("\n");

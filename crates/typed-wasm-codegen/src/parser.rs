@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
-//! Minimal .twasm text parser for codegen v0.
+//! The canonical `.twasm` front-end (ADR-0006).
 //!
-//! This module provides a Rust-native parser for the typed-wasm surface syntax
-//! as a stopgap until the AffineScript front-end (ADR-0004, issue #127) lands.
-//! It is intentionally limited to the subset needed by paint-type schemas and
-//! example-01, not the full .twasm language.
+//! Hand-written Rust parser for the typed-wasm surface syntax: the
+//! `source → IR → emit → verify` reference path. Parses all six
+//! canonical `examples/*.twasm` (round-tripped by `tests/corpus.rs`),
+//! recording region schemas, ownership qualifiers (`own`/`&mut`/`&` →
+//! the `typedwasm.ownership` carrier) and cross-module region imports
+//! (`import region … from "…" { … }` → the `typedwasm.region-imports`
+//! carrier, ADR-0007).
 //!
-//! This parser does NOT duplicate the full AffineScript front-end — it only handles
-//! the specific schemas needed to unblock paint-type#39 and demonstrate the
-//! codegen path. Full .twasm parsing remains deferred to the AffineScript front-end.
+//! Known gaps against `spec/grammar.ebnf` are tracked debt (ADR-0006
+//! §Consequences): non-lowerable statement bodies fall back to
+//! type-correct stubs, and `if`/`else` / `region.scan` control flow is
+//! simplified. The AffineScript front-end (`src/parser/*.affine`) is a
+//! reference implementation, not a dependency.
 
 use crate::{Field, FieldTy, Memory, Module, PtrKind, Region, Scalar, Wty};
 use std::collections::HashMap;
@@ -31,6 +36,7 @@ struct Parser<'a> {
     imports: Vec<crate::Import>,
     funcs: Vec<crate::Func>,
     ownership: Vec<(usize, Vec<crate::Ownership>, crate::Ownership)>,
+    region_imports: Vec<typed_wasm_verify::RegionImportEntry>,
 }
 
 impl<'a> Parser<'a> {
@@ -44,6 +50,7 @@ impl<'a> Parser<'a> {
             imports: Vec::new(),
             funcs: Vec::new(),
             ownership: Vec::new(),
+            region_imports: Vec::new(),
         }
     }
 
@@ -78,6 +85,7 @@ impl<'a> Parser<'a> {
             imports: self.imports,
             funcs: self.funcs,
             ownership: self.ownership,
+            region_imports: self.region_imports,
         })
     }
 
@@ -1242,33 +1250,160 @@ impl<'a> Parser<'a> {
         self.expect("import")?;
         self.skip_whitespace();
         // Optional `region` keyword: `import region Name from "module" ...`
-        if self.peek_word("region") {
+        let is_region_import = if self.peek_word("region") {
             self.expect("region")?;
             self.skip_whitespace();
-        }
-        let _name = self.parse_ident();
+            true
+        } else {
+            false
+        };
+        let name = self.parse_ident();
         self.skip_whitespace();
         self.expect("from")?;
         self.skip_whitespace();
         // Module source: a quoted string ("game_server") or a bare ident.
-        if self.peek_char('"') {
+        let producer_module = if self.peek_char('"') {
             self.expect("\"")?;
+            let start = self.pos;
             while self.pos < self.src.len() && self.src.as_bytes()[self.pos] != b'"' {
                 self.pos += 1;
             }
+            let module = self.src.get(start..self.pos).unwrap_or("").to_string();
             self.expect("\"")?;
+            module
         } else {
-            let _module = self.parse_ident();
-        }
+            self.parse_ident()
+        };
         self.skip_whitespace();
-        // Either a re-declaration body `{ ... }` (multi-module) or a `;`.
+        // Either an expected-schema body `{ ... }` (multi-module region
+        // import, L13 positive form — recorded into the
+        // `typedwasm.region-imports` carrier) or a bare `;`.
         if self.peek_char('{') {
             self.expect("{")?;
-            self.skip_to_brace_close();
+            if is_region_import {
+                let expected = self.parse_expected_import_fields()?;
+                self.record_region_import(producer_module, name, expected)?;
+            } else {
+                self.skip_to_brace_close();
+            }
         } else if self.peek_char(';') {
             self.expect(";")?;
+            if is_region_import {
+                // No expected schema listed: the import asserts presence
+                // only (zero expected fields — vacuous agreement).
+                self.record_region_import(producer_module, name, Vec::new())?;
+            }
         }
         Ok(())
+    }
+
+    /// Parse the field list of an `import region … from "…" { … }` body
+    /// into EXPECTED-schema entries (proposal 0003). Cursor is just past
+    /// the `{`; consumes through the matching `}`. v1 restriction:
+    /// scalar fields only.
+    fn parse_expected_import_fields(
+        &mut self,
+    ) -> Result<Vec<typed_wasm_verify::FieldEntry>, String> {
+        let mut fields = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if self.peek_char('}') {
+                self.expect("}")?;
+                break;
+            }
+            if self.pos >= self.src.len() {
+                return Err("unterminated import region body".into());
+            }
+            let fname = self.parse_ident();
+            if fname.is_empty() {
+                return Err("expected field name in import region body".into());
+            }
+            self.skip_whitespace();
+            self.expect(":")?;
+            self.skip_whitespace();
+            let (fty, cardinality) = self.parse_field_type()?;
+            let wasm_ty = match fty {
+                FieldTy::Scalar(s) => scalar_to_wire_ty(&s),
+                FieldTy::Ptr { .. } => {
+                    return Err(format!(
+                        "import region field '{fname}' is pointer-typed — \
+                         pointer fields in imported region schemas are not \
+                         supported in v1 (proposal 0003)"
+                    ));
+                }
+            };
+            fields.push(typed_wasm_verify::FieldEntry {
+                name: fname,
+                kind: typed_wasm_verify::FieldKind::Scalar,
+                wasm_ty,
+                target_region: crate::NO_TARGET_REGION,
+                nullability: typed_wasm_verify::Nullability::NonNull,
+                cardinality,
+            });
+            self.skip_whitespace();
+            if self.peek_char(';') {
+                self.expect(";")?;
+            }
+        }
+        Ok(fields)
+    }
+
+    /// Record a region import, union-merging repeated imports of the
+    /// same `(producer, region)` pair — a single `.twasm` file may hold
+    /// several conceptual modules (examples/02) that each declare their
+    /// own expected subset. Conflicting declarations for the same field
+    /// are a source error; the emitted carrier keeps pairs unique
+    /// (proposal 0003 `DuplicateImport` obligation).
+    fn record_region_import(
+        &mut self,
+        producer_module: String,
+        region_name: String,
+        expected: Vec<typed_wasm_verify::FieldEntry>,
+    ) -> Result<(), String> {
+        if let Some(existing) = self
+            .region_imports
+            .iter_mut()
+            .find(|e| e.producer_module == producer_module && e.region_name == region_name)
+        {
+            for f in expected {
+                match existing.expected_fields.iter().find(|e| e.name == f.name) {
+                    None => existing.expected_fields.push(f),
+                    Some(prev) if *prev == f => {}
+                    Some(prev) => {
+                        return Err(format!(
+                            "conflicting expected types for imported field \
+                             '{}.{}' from \"{}\": {:?} vs {:?}",
+                            region_name, f.name, producer_module, prev.wasm_ty, f.wasm_ty
+                        ));
+                    }
+                }
+            }
+        } else {
+            self.region_imports.push(typed_wasm_verify::RegionImportEntry {
+                producer_module,
+                region_name,
+                expected_fields: expected,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// `.twasm` scalar type → wire `WasmTy` (typedwasm.regions enum).
+fn scalar_to_wire_ty(s: &Scalar) -> typed_wasm_verify::WasmTy {
+    use typed_wasm_verify::WasmTy as W;
+    match s {
+        Scalar::I8 => W::I8,
+        Scalar::I16 => W::I16,
+        Scalar::I32 => W::I32,
+        Scalar::I64 => W::I64,
+        Scalar::U8 => W::U8,
+        Scalar::U16 => W::U16,
+        Scalar::U32 => W::U32,
+        Scalar::U64 => W::U64,
+        Scalar::F32 => W::F32,
+        Scalar::F64 => W::F64,
+        Scalar::Bool => W::WBool,
     }
 }
 

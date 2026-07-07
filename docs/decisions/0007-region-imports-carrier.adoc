@@ -1,0 +1,95 @@
+= Architecture Decision Record: 0007-region-imports-carrier
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
+
+# 7. `typedwasm.region-imports` — L13 positive-form cross-module schema agreement
+
+Date: 2026-07-07
+
+## Status
+
+Accepted
+
+Promotion of link:../proposals/0003-region-imports-carrier.adoc[proposal
+0003] (`[draft]` 2026-05-30 → `[accepted]` 2026-07-07, owner direction:
+progress on the independent-compile-target construction path). The
+proposal file remains the wire-format spec of record; this ADR records
+the decision and the shipped surface.
+
+## Context
+
+Without a cross-module import carrier, L13's `noSpoofing` theorem
+(`MultiModule.idr:374`) cannot fire on emitted bytes: `typedwasm.regions`
+foreign keys are module-local, so a module importing a region from
+another module has no wire-level way to state which producer supplies
+it and what schema it expects (proposal 0003 §Context; issue #95, #140).
+
+## Decision
+
+Adopt proposal 0003 as specified. Shipped in-tree (this repo), all
+behind the `unstable-l13-imports` cargo feature (implies `unstable-l2`):
+
+* **Codec** — `crates/typed-wasm-verify/src/section.rs`:
+  `RegionImportEntry`, `parse_region_imports_section_payload`,
+  `build_region_imports_section_payload`. u16le version (= 1), LEB128
+  counts and name lengths, UTF-8 names; expected fields reuse
+  `FieldEntry` (scalar-only in v1, no on-wire `target_region`).
+* **Verifier passes** — `crates/typed-wasm-verify/src/verify.rs`:
+  `verify_region_imports_from_module` (module-local: dependent
+  `typedwasm.regions` present, unique `(producer, region)` pairs,
+  scalar-only expected schemas, high-bit `target_region` foreign keys
+  within import-table bounds) and `verify_link_graph(&[(name, bytes)])`
+  (cross-module: `SchemaSub expected actual` per import — subset
+  semantics — yielding `CompatCertificate`s, the wire realisation of
+  `ModuleCompat`). Error taxonomy `RegionImportsError` per proposal
+  §Consumer obligations.
+* **Producer emission** — `crates/typed-wasm-codegen`:
+  `import region X from "module" { expected fields }` parses into
+  `Module::region_imports` (union-merging repeated imports of one
+  `(producer, region)` pair, since a single `.twasm` file may hold
+  several conceptual modules — `examples/02`); `emit()` writes the
+  carrier via the verifier's own encoder and always emits the dependent
+  `typedwasm.regions` section alongside it.
+* **`target_region` v1.1 value-space extension** — high-bit values
+  (`0x80000000..0xFFFFFFFE`) in `typedwasm.regions` field entries index
+  the import table (`TARGET_REGION_IMPORT_BIT`); non-breaking for v1
+  consumers.
+
+## Consequences
+
+### Positive
+
+- L13 positive form is enforceable on emitted bytes: the
+  `examples/02-multi-module.twasm` killer feature (one module exports a
+  schema, others import subsets) round-trips source → carrier →
+  link-graph certificate in-process (`tests/example02.rs`,
+  `tests/link_graph.rs` — 15 tests).
+- The in-tree producer is the first conforming emitter, keeping the
+  reference implementation producer-neutral (ADR-0006).
+
+### Negative
+
+- v1 restricts expected schemas to scalar fields; transitive pointer
+  chains need the v2 follow-up (proposal 0003 §Open Questions #1).
+- Link-graph resolution is verify-time over an explicit module list
+  (option (a) of §Open Questions #4); no linker integration yet.
+
+### Neutral
+
+- Sibling producers (AffineScript, Ephapax) adopt when ready — the
+  carrier is optional and absence means "no cross-module regions
+  imported". Cross-repo adoption issues filed per proposal
+  §Acceptance criteria #6.
+
+## Cross-references
+
+* link:../proposals/0003-region-imports-carrier.adoc[Proposal 0003] —
+  wire format spec of record
+* link:0002-multi-producer-carrier-sections.adoc[ADR-0002] /
+  link:0003-access-site-carrier.adoc[ADR-0003] — sibling carriers
+* link:0006-rust-frontend-canonical.adoc[ADR-0006] — the front-end this
+  producer emission rides on
+* `src/abi/TypedWasm/ABI/MultiModule.idr` — `ImportedRegion`,
+  `SchemaSub`, `ModuleCompat`, `noSpoofing`, `CompatCertificate`
+* Issues https://github.com/hyperpolymath/typed-wasm/issues/95[#95],
+  https://github.com/hyperpolymath/typed-wasm/issues/140[#140]

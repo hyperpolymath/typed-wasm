@@ -724,7 +724,19 @@ can re-check.
 | L2 enforcement on emitted bytes (per-instruction `(func_idx, byte_offset) -> (region_id, field_id)` mapping)
 | Proposal 0002 `[accepted]` (ADR-0003); codec + verifier pass behind `unstable-l2`
 | `parse_access_sites_section_payload` / `build_access_sites_section_payload` / `verify_access_sites_from_module`
+
+| `typedwasm.region-imports`
+| L13 positive form: cross-module region schema agreement (per-module import table of `(producer_module, region_name, expected_schema)`; `verify_link_graph` constructs `SchemaSub expected actual` witnesses — `noSpoofing`, MultiModule.idr)
+| Proposal 0003 `[accepted]` (ADR-0007); codec + verifier passes behind `unstable-l13-imports`
+| `parse_region_imports_section_payload` / `build_region_imports_section_payload` / `verify_region_imports_from_module` / `verify_link_graph`
 |===
+
+The `typedwasm.regions` `target_region` value space is extended
+(non-breakingly, v1.1) by proposal 0003: values with the high bit set
+(`0x80000000..0xFFFFFFFE`) index the module's `typedwasm.region-imports`
+table instead of the local region table; `0xFFFFFFFF` stays the scalar
+sentinel. v1 consumers see the previous "out of range" behaviour;
+import-aware consumers resolve the foreign key through the import table.
 
 === `typedwasm.ownership` (L7 / L10)
 
@@ -871,6 +883,6 @@ contract:
 * Codec: `crates/typed-wasm-verify/src/section.rs`
 * Proposal 0001 (regions + capabilities): `docs/proposals/0001-multi-producer-carrier-section.adoc` — `[accepted]` 2026-05-30 → `docs/decisions/0002-multi-producer-carrier-sections.adoc` (ADR-0002)
 * Proposal 0002 (access-sites): `docs/proposals/0002-access-site-carrier.adoc` — `[accepted]` 2026-05-30 → `docs/decisions/0003-access-site-carrier.adoc` (ADR-0003)
-* Proposal 0003 (region-imports, L13 cross-module): `docs/proposals/0003-region-imports-carrier.adoc` — `[draft]`
+* Proposal 0003 (region-imports, L13 cross-module): `docs/proposals/0003-region-imports-carrier.adoc` — `[accepted]` 2026-07-07 → `docs/decisions/0007-region-imports-carrier.adoc` (ADR-0007)
 * Proposal 0004 (capability-grants, L15-C): `docs/proposals/0004-capability-grants-carrier.adoc` — `[draft]`
 * Open questions: typed-wasm#94 (WBool wire width), #95 (region-imports v0.3), #96 (capability-grants L15-C), #97 (producer-readiness checklist)

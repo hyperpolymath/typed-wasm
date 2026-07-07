@@ -30,6 +30,16 @@ unstable-l2 = []
 # `FunctionCapabilities` + `verify_capabilities_from_module` (PR #109).
 # L15-C (per-call-site grants) is a separate proposal 0004 (`[draft]`).
 unstable-l15 = []
+# L13 positive-form cross-module region imports for typed-wasm proposal
+# 0003 (`[accepted]` 2026-07-07 → ADR-0007). Requires `unstable-l2`
+# (expected-schema entries reuse the regions codec's `FieldEntry`).
+# Enables:
+#   - `parse_region_imports_section_payload` /
+#     `build_region_imports_section_payload` + `RegionImportEntry`
+#   - `verify_region_imports_from_module` (per-module internal
+#     consistency) and `verify_link_graph` (cross-module SchemaSub
+#     agreement → `CompatCertificate`s).
+unstable-l13-imports = ["unstable-l2"]
 
 [dependencies]
 # Exact pins: wasmparser's 0.x line ships API breaks on every minor bump

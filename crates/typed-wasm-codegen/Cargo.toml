@@ -25,7 +25,7 @@ wasmprinter = "=0.252.0"
 # The producer reuses the verifier's own carrier encoders so the emitted
 # typedwasm.regions / typedwasm.access-sites bytes cannot drift from the
 # decoder the verifier runs. `unstable-l2` gates those encoders.
-typed-wasm-verify = { path = "../typed-wasm-verify", features = ["unstable-l2"] }
+typed-wasm-verify = { path = "../typed-wasm-verify", features = ["unstable-l2", "unstable-l13-imports"] }
 
 [dev-dependencies]
 # Round-trip test validates the emitted module is well-formed wasm before

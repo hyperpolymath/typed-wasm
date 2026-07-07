@@ -1,0 +1,77 @@
+= Cross-repo adoption issues for proposal 0003 (region-imports) — ready to file
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
+
+Proposal 0003 §Acceptance criteria #6 requires cross-repo issues against
+`affinescript` and `ephapax` for codegen of `typedwasm.region-imports` +
+the high-bit `target_region` convention. Automated filing was
+permission-blocked (cross-repo write); the ready-to-paste bodies are
+below. Delete this file once both are filed.
+
+== hyperpolymath/affinescript
+
+*Title:* codegen: emit typedwasm.region-imports carrier + high-bit
+target_region convention (typed-wasm proposal 0003 accepted → ADR-0007)
+
+*Body:*
+
+----
+typed-wasm proposal 0003 (`typedwasm.region-imports`, L13 positive-form
+cross-module region schema agreement) was accepted 2026-07-07 and
+promoted to ADR-0007. The verifier passes
+(`verify_region_imports_from_module`, `verify_link_graph`) and codec
+ship in `typed-wasm-verify` behind the `unstable-l13-imports` cargo
+feature; typed-wasm's in-tree producer is the first conforming emitter.
+
+For AffineScript to participate in cross-module L2/L13 (Roadmap C3):
+
+1. Emit `typedwasm.region-imports` for imported regions — wire format
+   per `typed-wasm/docs/proposals/0003-region-imports-carrier.adoc`
+   (u16le version, LEB128 counts/lengths, UTF-8 names; expected schemas
+   scalar-only in v1).
+2. Use the high-bit `target_region` convention
+   (`0x80000000 + import_table_idx`) in `typedwasm.regions` field
+   entries that point at imported regions.
+3. Always emit `typedwasm.regions` alongside the import table
+   (`MissingDependentCarrier` otherwise).
+
+Prerequisite: single-module regions emission (proposal 0001 Appendix B
+/ affinescript#462 access-sites lineage).
+
+Filed per proposal 0003 §Acceptance criteria #6.
+----
+
+== hyperpolymath/ephapax
+
+*Title:* codegen: emit typedwasm.region-imports carrier + high-bit
+target_region convention (typed-wasm proposal 0003 accepted → ADR-0007)
+
+*Body:*
+
+----
+typed-wasm proposal 0003 (`typedwasm.region-imports`, L13 positive-form
+cross-module region schema agreement) was accepted 2026-07-07 and
+promoted to ADR-0007. The verifier passes
+(`verify_region_imports_from_module`, `verify_link_graph`) and codec
+ship in `typed-wasm-verify` behind the `unstable-l13-imports` cargo
+feature — ephapax already consumes this crate, so adoption is enabling
+the feature + emitting the section.
+
+For ephapax's cross-module story (longer-term, after #251 access-sites):
+
+1. Emit `typedwasm.region-imports` for imported regions — wire format
+   per `typed-wasm/docs/proposals/0003-region-imports-carrier.adoc`.
+   Prefer `typed-wasm-verify`'s own
+   `build_region_imports_section_payload` so bytes cannot drift (same
+   pattern as the ownership seam-conformance tests).
+2. Use the high-bit `target_region` convention
+   (`0x80000000 + import_table_idx`) in `typedwasm.regions` field
+   entries that point at imported regions.
+3. Always emit `typedwasm.regions` alongside the import table
+   (`MissingDependentCarrier` otherwise).
+
+Ephapax's first-class regions make it the natural second producer for
+this carrier once single-module regions emission lands.
+
+Filed per proposal 0003 §Acceptance criteria #6.
+----

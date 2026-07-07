@@ -38,10 +38,13 @@ use typed_wasm_verify::section::{
     build_access_sites_section_payload, AccessSiteEntry, ACCESS_SITE_UNPINNED, NO_TARGET_REGION,
 };
 use typed_wasm_verify::{
-    build_ownership_section_payload, build_regions_section_payload, CrossError, FieldEntry, FieldKind,
-    Nullability, OwnershipError, OwnershipEntry, OwnershipKind, RegionEntry, VerifyError, WasmTy,
+    build_ownership_section_payload, build_region_imports_section_payload,
+    build_regions_section_payload, CrossError, FieldEntry, FieldKind,
+    Nullability, OwnershipError, OwnershipEntry, OwnershipKind, RegionEntry,
+    RegionImportEntry, VerifyError, WasmTy,
     verify_access_sites_from_module, verify_from_module,
     ACCESS_SITES_SECTION_NAME, OWNERSHIP_SECTION_NAME, REGIONS_SECTION_NAME,
+    REGION_IMPORTS_SECTION_NAME,
 };
 use wasm_encoder::{
     CodeSection, CustomSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
@@ -321,6 +324,12 @@ pub struct Module {
     /// param_kinds, ret_kind)`. Emitted as the `typedwasm.ownership`
     /// carrier; empty = no L7/L10 carrier.
     pub ownership: Vec<(usize, Vec<Ownership>, Ownership)>,
+    /// Cross-module region imports (`import region X from "module"`),
+    /// each carrying the EXPECTED schema. Emitted as the
+    /// `typedwasm.region-imports` carrier (proposal 0003 / ADR-0007,
+    /// L13 positive form); empty = no carrier. Entries reuse the
+    /// verifier's own type so bytes cannot drift from its decoder.
+    pub region_imports: Vec<RegionImportEntry>,
 }
 
 // ----------------------------------------------------------------------
@@ -522,10 +531,20 @@ pub fn emit(module: &Module) -> Vec<u8> {
             data: payload.as_slice().into(),
         });
     }
-    if !region_entries.is_empty() {
+    // Region imports require their dependent regions carrier (proposal
+    // 0003 §Producer obligations #1) — emit regions (even if empty)
+    // whenever an import table is present.
+    if !region_entries.is_empty() || !module.region_imports.is_empty() {
         let payload = build_regions_section_payload(&region_entries);
         wasm.section(&CustomSection {
             name: REGIONS_SECTION_NAME.into(),
+            data: payload.as_slice().into(),
+        });
+    }
+    if !module.region_imports.is_empty() {
+        let payload = build_region_imports_section_payload(&module.region_imports);
+        wasm.section(&CustomSection {
+            name: REGION_IMPORTS_SECTION_NAME.into(),
             data: payload.as_slice().into(),
         });
     }
@@ -670,6 +689,7 @@ pub fn example01() -> Module {
         imports: vec![],
         funcs,
         ownership: vec![],
+        region_imports: vec![],
     }
 }
 
@@ -820,6 +840,7 @@ pub fn paint_type_tile() -> Module {
         imports: vec![],
         funcs,
         ownership: vec![],
+        region_imports: vec![],
     }
 }
 
@@ -945,6 +966,7 @@ pub fn paint_type_layer() -> Module {
         imports: vec![],
         funcs,
         ownership: vec![],
+        region_imports: vec![],
     }
 }
 
@@ -986,6 +1008,7 @@ pub fn multimodule_callee() -> Module {
             export: true,
         }],
         ownership: vec![(0, vec![Ownership::Linear], Ownership::Unrestricted)],
+        region_imports: vec![],
     }
 }
 
@@ -1017,6 +1040,7 @@ pub fn multimodule_caller(call_count: u32) -> Module {
             export: false,
         }],
         ownership: vec![],
+        region_imports: vec![],
     }
 }
 
