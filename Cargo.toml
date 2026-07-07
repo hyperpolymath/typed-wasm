@@ -4,4 +4,5 @@ resolver = "2"
 members = [
     "crates/typed-wasm-verify",
     "crates/typed-wasm-codegen",
+    "crates/typed-wasm-gate",
 ]
