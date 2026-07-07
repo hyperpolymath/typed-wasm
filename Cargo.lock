@@ -209,6 +209,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-wasm-gate"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "typed-wasm-codegen",
+ "typed-wasm-verify",
+ "wasmi",
+]
+
+[[package]]
 name = "typed-wasm-verify"
 version = "0.1.0"
 dependencies = [

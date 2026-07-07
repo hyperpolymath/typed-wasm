@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MPL-2.0
+[package]
+name = "typed-wasm-gate"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Load-time enforcement gate: refuse to instantiate wasm that fails typed-wasm verification (Phase 3 slice)"
+repository = "https://github.com/hyperpolymath/typed-wasm"
+readme = "README.md"
+
+[features]
+default = ["wasmi-runtime"]
+# In-process instantiation adapter backed by wasmi (pure Rust — runs in
+# CI without a system runtime). A wasmtime adapter is the documented
+# follow-up; the gate API is runtime-agnostic by construction.
+wasmi-runtime = ["dep:wasmi"]
+
+[dependencies]
+typed-wasm-verify = { path = "../typed-wasm-verify", features = ["unstable-l2", "unstable-l13-imports"] }
+thiserror = "2"
+wasmi = { version = "1.1.0", optional = true }
+
+[dev-dependencies]
+typed-wasm-codegen = { path = "../typed-wasm-codegen" }
+wasmi = "1.1.0"
