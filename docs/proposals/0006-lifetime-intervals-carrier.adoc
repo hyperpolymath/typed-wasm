@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+= Proposal 0006: Lifetime Intervals Carrier Section (`typedwasm.lifetimes`)
+:toc: preamble
+:icons: font
+
+[cols="1,3"]
+|===
+| Status       | draft — for owner ratification
+| Author       | hyperpolymath
+| Date         | 2026-07-07
+| Level        | L9 (lifetime safety) on emitted bytes
+| Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001], `typedwasm.ownership` (L7/L10)
+| Sibling      | link:0005-effects-carrier.adoc[Proposal 0005] (L8 — drafted together)
+|===
+
+== Context — what of a lifetime survives to the bytes
+
+Lifetimes are a compile-time discipline; no wire format can carry the
+producer's inference. What it CAN carry is the inference's **conclusion**
+in a checkable shape: per-function **handle validity intervals** — for
+each local holding a region handle, the instruction range within which
+the producer's analysis proved the handle valid. The verifier then
+checks *consistency*, not inference:
+
+* every use of the handle falls inside its interval
+  (use-after-free / use-before-init refuted at the bytes level);
+* a derived handle's interval is **contained** in its parent's — the
+  wire realisation of `Outlives` (`Lifetime.idr:70`): containment is
+  reflexive-transitive exactly as `outlivesTransitive` (line 86)
+  requires;
+* an owned handle's interval **ends at its consuming use** (ties L9 to
+  the L10 exactly-once discipline the ownership carrier already
+  enforces).
+
+This is the same trust split as `typedwasm.ownership`: the producer
+asserts a discipline; the verifier refutes violations of it cheaply.
+
+**Why now / why here:** AffineScript's Polonius-style analysis
+natively produces loan ranges over a CFG; ephapax's choreographic-
+tropical model produces region liveness over time segments. Both
+project conservatively onto instruction-index intervals. If typed-wasm
+pins this format first, both producers emit into it; otherwise two
+incompatible lifetime carriers are the likely outcome.
+
+== Wire format — `typedwasm.lifetimes`
+
+----
+u16le  version                  (= 1)
+leb    entry_count
+for each entry:
+    leb    func_idx             (GLOBAL function index)
+    leb    interval_count
+    for each interval:
+        leb    local_idx        (wasm local holding the handle)
+        u8     provenance       (0=borrowed param, 1=derived — scan
+                                 instance / field projection,
+                                 2=owned-until-consumed)
+        leb    parent           (interval index this one derives from;
+                                 0xFFFFFFFF = none / roots at a param)
+        leb    valid_from       (instruction index, inclusive)
+        leb    valid_to         (instruction index, exclusive;
+                                 0xFFFFFFFF = to end of body — the
+                                 `FnScope` lifetime)
+----
+
+Absence = no L9 claim. Modules emitting `typedwasm.lifetimes` MUST
+also emit `typedwasm.ownership` for provenance-2 intervals to be
+checkable against consumption (`MissingDependentCarrier` otherwise).
+
+== Mapping to the spec types
+
+[cols="1,2"]
+|===
+| Wire | Idris2 (`Lifetime.idr`)
+
+| `valid_to = 0xFFFFFFFF` | `FnScope` (whole-body validity); `Static` is the degenerate module-lifetime case, out of scope for per-function intervals in v1
+| interval containment (parent ⊇ child) | `Outlives parent child`; nesting depth mirrors `Named n` / `NamedNesting` (LTE)
+| containment transitivity | `outlivesTransitive` (line 86) — the verifier gets it for free from interval arithmetic
+| in-interval use check | `loadSafe` (the A4 behavioural lemmas): a load through a handle is safe only while the handle's lifetime is live
+|===
+
+== Verifier obligations (`unstable-l9` cargo feature)
+
+`verify_lifetimes_from_module`:
+
+. Decode each declared function's body; index instructions 0..n.
+. **In-interval use**: every `local.get local_idx` at instruction `i`
+  with a declared interval must satisfy `valid_from <= i < valid_to` —
+  else `UseOutsideLifetime { func_idx, local_idx, instr }`.
+. **Containment**: `parent != NONE` requires
+  `parent.valid_from <= child.valid_from` and
+  `child.valid_to <= parent.valid_to` — else
+  `DerivedOutlivesParent { … }`.
+. **Consumption ties (provenance 2)**: the LAST use inside the
+  interval must be the handle's consuming use per the L10 analysis, and
+  no use may follow `valid_to` — else `UseAfterConsume { … }`.
+. Structural: `valid_from < valid_to` (empty intervals rejected),
+  `local_idx` within the function's local space, `parent` within the
+  entry's interval table.
+
+The verifier does NOT re-derive liveness. A producer may emit
+over-wide intervals; that weakens the claim but cannot make the
+verifier certify a use the producer's own analysis placed outside an
+interval. The carrier's value is *refuting* stale-handle use per the
+producer's own stated bounds — the L7/L10 trust split, extended.
+
+== Producer obligations
+
+. Intervals must be **sound upper bounds** from the producer's own
+  analysis (loan ranges, region segments); emitting known-unsound
+  bounds is a producer bug the L9 pass may not catch.
+. Straight-line conservative projection is acceptable in v1: an
+  interval must COVER all uses on every path; loops make liveness
+  non-contiguous, and covering the loop is the conservative answer.
+. The in-tree front-end can emit provenance-0 intervals for borrowed
+  params (whole-body) and provenance-1 for scan instance handles
+  (the scan loop's extent) immediately — both are syntactically
+  derivable from the statement lowerer.
+
+== Coordination
+
+* `affinescript` — Polonius loan ranges project directly; blocked only
+  on its own analysis maturing (its `core-01/polonius-m1-sketch`).
+* `ephapax` — region liveness through segment exit is exactly the
+  provenance-1/2 story; its choreographic-tropical proofs supply the
+  soundness argument the intervals summarise.
+
+== Open questions
+
+. **CFG precision.** Instruction-index intervals are linear; a handle
+  dead in one branch and live in another gets the conservative hull.
+  v2 could carry per-block intervals if producers need the precision.
+. **Cross-function lifetimes.** A borrowed param's interval is
+  whole-body by construction; propagating CALLER lifetimes through
+  calls needs a signature-level annotation — deliberately deferred
+  (interacts with proposal 0004's call-site grants).
+. **`Static` / module-lifetime handles** — deferred with globals.
+
+== Acceptance criteria
+
+As proposal 0003/0005: codec + pass behind `unstable-l9` (round-trip,
+refutation of use-after-`valid_to`, containment violations,
+consume-tie violations); in-tree emission for borrowed params + scan
+handles; spec doc section; cross-repo adoption issues. On acceptance,
+promoted to an ADR.
