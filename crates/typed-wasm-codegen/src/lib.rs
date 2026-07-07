@@ -33,8 +33,10 @@
 //!   and `emit` writes the carrier (exercised by `tests/example03.rs`).
 //! * Function bodies lower for real where the statement lowerer covers
 //!   them (`let`, assignment, `if`/`else`, `while`, indexed access,
-//!   `cast<>` — see `parser.rs`); `region.scan` closures and `opt<T>`
-//!   null-checks still fall back to type-correct representative stubs.
+//!   `cast<>`, `region.scan` closures with `where` predicates,
+//!   `is_null` under the v0 null-is-zero convention — see `parser.rs`);
+//!   handle-typed locals and embedded-region field paths still fall
+//!   back to type-correct representative stubs.
 
 use typed_wasm_verify::section::{
     build_access_sites_section_payload, AccessSiteEntry, ACCESS_SITE_UNPINNED, NO_TARGET_REGION,
@@ -257,6 +259,8 @@ pub enum Op {
     BrIf(u32),
     Return,
     I32Eqz,
+    I32And,
+    I32Or,
     I32Add,
     I32Sub,
     I32Mul,
@@ -472,6 +476,8 @@ fn op_to_instruction(op: Op) -> Instruction<'static> {
         Op::BrIf(d) => Instruction::BrIf(d),
         Op::Return => Instruction::Return,
         Op::I32Eqz => Instruction::I32Eqz,
+        Op::I32And => Instruction::I32And,
+        Op::I32Or => Instruction::I32Or,
         Op::I32Add => Instruction::I32Add,
         Op::I32Sub => Instruction::I32Sub,
         Op::I32Mul => Instruction::I32Mul,

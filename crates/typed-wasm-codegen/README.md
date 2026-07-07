@@ -52,7 +52,7 @@ cargo test -p typed-wasm-codegen
 | WAT (text) emission | **emitted** via `--emit wat\|both` (#125) |
 | `typedwasm.ownership` (L7/L10) | **emitted** for any `own`/`&mut`/`&` source discipline (parser-recorded, incl. Linear returns) and for the multi-module callee (#128) |
 | Multi-module (linear boundary) | **emitted** — callee export + caller import round-trip through `verify_cross_module` (#128) |
-| Function-body lowering | **real statement lowering** — `let`, assignment, `if`/`else`, `while`, indexed `region.get`/`region.set`, `cast<>` (wasmi-executed, `tests/example04.rs`); `region.scan` and `opt<T>` unwraps still stub |
+| Function-body lowering | **real statement lowering** — `let`, assignment, `if`/`else`, `while`, indexed access, `cast<>`, `region.scan … -> \|e\| { … }` with `where` predicates, `is_null`/`opt<T>` (v0 null = 0) — wasmi-executed (`tests/example04.rs`, `tests/scan_lowering.rs`); remaining stubs: handle-typed locals, embedded-region paths |
 
 ## Where this goes next
 
