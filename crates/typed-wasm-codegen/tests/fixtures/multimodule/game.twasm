@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// examples/02-multi-module.twasm restructured with the grammar's real
+// `module Name { … }` blocks (v1.2 L13 form) so the per-module split
+// (`parse_modules`, `tw build --split`, `tw link`) has a canonical
+// fixture. Bodies are within the statement lowerer's coverage so every
+// module emits real typed accesses.
+
+module physics {
+    region Entity[64] {
+        pos_x: f32;
+        pos_y: f32;
+        vel_x: f32;
+        vel_y: f32;
+        flags: u32;
+    }
+
+    fn physics_step(entities: &mut region<Entity>, dt: f32) {
+        region.scan $entities where (flags & 1) == 1 -> |e| {
+            region.get $e .vel_x -> vx;
+            region.get $e .pos_x -> px;
+            region.set $e .pos_x, px + vx * dt;
+        }
+    }
+}
+
+module ai {
+    import region Entity from "physics" {
+        pos_x: f32;
+        pos_y: f32;
+        flags: u32;
+    }
+
+    fn nearest_x(entities: &region<Entity>, count: i32) -> f32 {
+        let mut best: f32 = 999999.0;
+        let mut i: i32 = 0;
+        while i < count {
+            region.get $entities[i] .pos_x -> x;
+            if x < best {
+                best = x;
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+}
+
+module render {
+    import region Entity from "physics" {
+        pos_x: f32;
+        flags: u32;
+    }
+
+    fn count_visible(entities: &region<Entity>) -> i32 {
+        let mut n: i32 = 0;
+        region.scan $entities where (flags & 3) == 3 -> |e| {
+            n = n + 1;
+        }
+        return n;
+    }
+}

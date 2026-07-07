@@ -58,4 +58,5 @@ cargo test -p typed-wasm-codegen
 
 - **#127** — codegen coverage across all 10 levels × all 6 examples (and the front-end → IR JSON seam).
 - **#130** — promote the round-trip tests into the ECHIDNA property corpus.
+- **Per-module split** — **done**: `module Name { … }` blocks parse into separate modules (`parse_modules`; importers seeded with the producer's actual schema), `tw build --split` emits one wasm per module, `tw link` certifies the graph (`tests/multimodule_split.rs`, `tests/fixtures/multimodule/game.twasm`).
 - **L13 positive-form / region-imports** — **done** (issue #140): `import region … from "…" { … }` parses into `Module::region_imports`, emits the `typedwasm.region-imports` carrier (proposal 0003 `[accepted]` / ADR-0007), and `verify_link_graph` certifies cross-module schema agreement (`tests/example02.rs`).

@@ -20,10 +20,127 @@
 use crate::{Field, FieldTy, Memory, Module, PtrKind, Region, Scalar, Wty};
 use std::collections::HashMap;
 
-/// Parse a .twasm source file into a Module IR.
+/// Parse a .twasm source file into a single merged Module IR.
+/// `module Name [isolated] { … }` blocks are flattened into one module
+/// (the historical single-module view the round-trip corpus uses);
+/// [`parse_modules`] gives the per-module split.
 pub fn parse_module(src: &str) -> Result<Module, String> {
-    let parser = Parser::new(src);
-    parser.parse_module()
+    let fragments = slice_modules(src);
+    if fragments.len() == 1 {
+        return Parser::new(src).parse_module();
+    }
+    let merged: String = fragments
+        .into_iter()
+        .map(|(_, frag)| frag)
+        .collect::<Vec<_>>()
+        .join("\n");
+    Parser::new(&merged).parse_module()
+}
+
+/// Parse a multi-module `.twasm` source into one Module per top-level
+/// `module Name [isolated] { … }` block (declarations outside any block
+/// form the `"main"` module, omitted when empty). Two passes: modules
+/// parse independently, then any module importing a region whose
+/// producer is in the same file is RE-parsed with the producer's actual
+/// region schemas seeded in — so cross-module accesses lower against
+/// the producer's real layout, not the expected subset's packing.
+pub fn parse_modules(src: &str) -> Result<Vec<(String, Module)>, String> {
+    let fragments = slice_modules(src);
+    let mut parsed: Vec<(String, Module, Vec<u64>, String)> = Vec::new();
+    for (name, frag) in fragments {
+        let (module, instances) = Parser::new(&frag).parse_with_instances()?;
+        if name == "main"
+            && module.regions.is_empty()
+            && module.funcs.is_empty()
+            && module.region_imports.is_empty()
+        {
+            continue; // no default-module content
+        }
+        parsed.push((name, module, instances, frag));
+    }
+
+    // Pass 2: seed importers with in-file producers' actual schemas.
+    let producer_snapshot: Vec<(String, Module, Vec<u64>)> = parsed
+        .iter()
+        .map(|(n, m, i, _)| (n.clone(), m.clone(), i.clone()))
+        .collect();
+    for (_, module, _, frag) in parsed.iter_mut() {
+        if module.region_imports.is_empty() {
+            continue;
+        }
+        let mut seeds: Vec<(Region, u64)> = Vec::new();
+        for imp in &module.region_imports {
+            if let Some((_, producer, instances)) = producer_snapshot
+                .iter()
+                .find(|(n, _, _)| *n == imp.producer_module)
+            {
+                if let Some(idx) =
+                    producer.regions.iter().position(|r| r.name == imp.region_name)
+                {
+                    seeds.push((
+                        producer.regions[idx].clone(),
+                        instances.get(idx).copied().unwrap_or(1),
+                    ));
+                }
+            }
+        }
+        if !seeds.is_empty() {
+            let mut p = Parser::new(frag);
+            for (region, instances) in seeds {
+                p.region_map.insert(region.name.clone(), p.regions.len());
+                p.regions.push(region);
+                p.region_instances.push(instances);
+            }
+            *module = p.parse_module()?;
+        }
+    }
+
+    Ok(parsed.into_iter().map(|(n, m, _, _)| (n, m)).collect())
+}
+
+/// Split source at top-level `module Name [isolated] { … }` blocks into
+/// `(name, fragment)` pairs; text outside any block accumulates into a
+/// `"main"` fragment (kept even when blank so `parse_module` can join).
+fn slice_modules(src: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut default_frag = String::new();
+    let mut scanner = Parser::new(src);
+    let mut plain_start = 0usize;
+    loop {
+        scanner.skip_whitespace();
+        if scanner.pos >= src.len() {
+            break;
+        }
+        if scanner.peek_word("module") {
+            let block_start = scanner.pos;
+            scanner.pos += "module".len();
+            let name = scanner.parse_ident();
+            scanner.skip_whitespace();
+            let _ = scanner.try_keyword("isolated");
+            scanner.skip_whitespace();
+            if !name.is_empty() && scanner.try_char('{') {
+                default_frag.push_str(&src[plain_start..block_start]);
+                let body_start = scanner.pos;
+                scanner.skip_to_brace_close();
+                // skip_to_brace_close consumed through the closing `}`.
+                let body_end = scanner.pos.saturating_sub(1).max(body_start);
+                out.push((name, src[body_start..body_end].to_string()));
+                plain_start = scanner.pos;
+                continue;
+            }
+            // `module X;` or malformed: leave for the plain fragment.
+            scanner.pos = block_start + "module".len();
+        }
+        // Advance one declaration: consume through it so we never split
+        // inside a nested brace (fn bodies, regions, …).
+        scanner.skip_declaration();
+    }
+    default_frag.push_str(&src[plain_start..]);
+    if out.is_empty() {
+        return vec![("main".into(), default_frag)];
+    }
+    out.insert(0, ("main".into(), default_frag));
+    out
 }
 
 /// A simple hand-written parser for .twasm syntax.
@@ -63,7 +180,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_module(mut self) -> Result<Module, String> {
+    fn parse_module(self) -> Result<Module, String> {
+        self.parse_with_instances().map(|(m, _)| m)
+    }
+
+    /// As [`Self::parse_module`], additionally returning the per-region
+    /// declared instance counts (needed to seed importers in
+    /// [`parse_modules`] so their scans iterate the producer's real
+    /// instance array).
+    fn parse_with_instances(mut self) -> Result<(Module, Vec<u64>), String> {
         while self.pos < self.src.len() {
             self.skip_whitespace();
             if self.pos >= self.src.len() {
@@ -88,14 +213,17 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Module {
-            regions: self.regions,
-            memory: self.memory,
-            imports: self.imports,
-            funcs: self.funcs,
-            ownership: self.ownership,
-            region_imports: self.region_imports,
-        })
+        Ok((
+            Module {
+                regions: self.regions,
+                memory: self.memory,
+                imports: self.imports,
+                funcs: self.funcs,
+                ownership: self.ownership,
+                region_imports: self.region_imports,
+            },
+            self.region_instances,
+        ))
     }
 
     fn peek_word(&mut self, word: &str) -> bool {
