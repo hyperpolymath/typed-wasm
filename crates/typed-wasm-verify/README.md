@@ -35,6 +35,7 @@ The OCaml files remain the spec of record until behavioural parity is establishe
 
 - `hyperpolymath/ephapax` — calls into this crate as a Cargo dependency to verify its compile-eph output.
 - `hyperpolymath/affinescript` — invokes the built binary as a subprocess, eventually replacing its OCaml verifier.
+- **Third producer (Zig)** — `ffi/zig/src/twasm_producer.zig` hand-assembles wasm + the ownership carrier with no shared code; its committed fixtures (`tests/fixtures/zig_producer/`) are the producer-neutrality proof (`tests/third_producer_zig.rs`).
 
 ## Status
 

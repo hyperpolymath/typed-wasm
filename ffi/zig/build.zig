@@ -62,6 +62,27 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run FFI tests");
     test_step.dependOn(&run_main_tests.step);
 
+    // Third-producer module (typedwasm.ownership emitted from Zig — the
+    // language-agnosticism proof; fixtures consumed by
+    // crates/typed-wasm-verify/tests/third_producer_zig.rs).
+    const producer_mod = b.createModule(.{
+        .root_source_file = b.path("src/twasm_producer.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const producer_exe = b.addExecutable(.{
+        .name = "twasm-producer",
+        .root_module = producer_mod,
+    });
+    b.installArtifact(producer_exe);
+    const producer_tests = b.addTest(.{ .root_module = producer_mod });
+    const run_producer_tests = b.addRunArtifact(producer_tests);
+    test_step.dependOn(&run_producer_tests.step);
+    const gen = b.addRunArtifact(producer_exe);
+    gen.addArg("../../crates/typed-wasm-verify/tests/fixtures/zig_producer");
+    const gen_step = b.step("gen-fixtures", "Regenerate the committed zig_producer fixtures");
+    gen_step.dependOn(&gen.step);
+
     // Integration tests (if test directory exists)
     const integration_tests = b.addTest(.{
         .root_module = b.createModule(.{
