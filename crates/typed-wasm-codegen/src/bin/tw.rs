@@ -4,10 +4,13 @@
 //! `tw` — the typed-wasm build CLI (codegen v0).
 //!
 //! Usage:
-//!   tw build <file.twasm> [-o <out.wasm>]
+//!   tw build <file.twasm> [-o <out>] [--emit wasm|wat|both] [--split]
+//!   tw link <a.wasm> <b.wasm> …
 //!
-//! v0 supports only the example-01 schema; general `.twasm` front-end →
-//! IR lowering is tracked in ADR-0004 and issue #127.
+//! `--split` emits one wasm per top-level `module Name { … }` block
+//! (`<out>.<module>.wasm`); `link` runs the L13 cross-module link-graph
+//! pass (ADR-0007) over already-built modules, naming each by its file
+//! stem, and reports certificates / violations.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -16,6 +19,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("build") => build(&args[2..]),
+        Some("link") => link(&args[2..]),
         Some("--version") | Some("-V") => {
             println!("tw {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -33,7 +37,8 @@ fn main() -> ExitCode {
 }
 
 fn usage() {
-    eprintln!("usage: tw build <file.twasm> [-o <out>] [--emit wasm|wat|both]");
+    eprintln!("usage: tw build <file.twasm> [-o <out>] [--emit wasm|wat|both] [--split]");
+    eprintln!("       tw link <a.wasm> <b.wasm> ...");
 }
 
 /// What `tw build` emits.
@@ -65,6 +70,7 @@ fn build(rest: &[String]) -> ExitCode {
     let mut input: Option<String> = None;
     let mut output: Option<String> = None;
     let mut emit = Emit::Wasm;
+    let mut split = false;
     let mut i = 0;
     while i < rest.len() {
         let arg = rest[i].as_str();
@@ -96,6 +102,7 @@ fn build(rest: &[String]) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             },
+            "--split" => split = true,
             s if !s.starts_with('-') => input = Some(s.to_string()),
             other => {
                 eprintln!("tw build: unknown option '{other}'");
@@ -119,8 +126,11 @@ fn build(rest: &[String]) -> ExitCode {
         }
     };
 
-    // Try to parse the .twasm file using the Rust parser (issue #127).
-    // This parser handles the paint-type schemas and example-01.
+    if split {
+        return build_split(&input, &src, output.as_deref(), emit);
+    }
+
+    // Parse via the canonical Rust front-end (ADR-0006).
     let bytes = match typed_wasm_codegen::parser::parse_module(&src) {
         Ok(module) => {
             let bytes = typed_wasm_codegen::emit(&module);
@@ -169,6 +179,114 @@ fn build(rest: &[String]) -> ExitCode {
         wrote.join(" + ")
     );
     ExitCode::SUCCESS
+}
+
+/// `tw build --split`: one output per `module Name { … }` block.
+fn build_split(input: &str, src: &str, output: Option<&str>, emit: Emit) -> ExitCode {
+    let modules = match typed_wasm_codegen::parser::parse_modules(src) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("tw build: parse error in '{input}': {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let base = output.unwrap_or(input);
+    let stem = Path::new(base)
+        .with_extension("")
+        .to_string_lossy()
+        .into_owned();
+    let mut wrote = Vec::new();
+    for (name, module) in &modules {
+        let bytes = typed_wasm_codegen::emit(module);
+        if let Err(diagnostics) = typed_wasm_codegen::self_verify(module) {
+            for msg in diagnostics {
+                eprintln!("tw build: self-verify warning [{name}]: {msg}");
+            }
+        }
+        if emit.wants_wasm() {
+            let path = format!("{stem}.{name}.wasm");
+            if let Err(e) = std::fs::write(&path, &bytes) {
+                eprintln!("tw build: cannot write '{path}': {e}");
+                return ExitCode::FAILURE;
+            }
+            wrote.push(format!("{path} ({} bytes)", bytes.len()));
+        }
+        if emit.wants_wat() {
+            let path = format!("{stem}.{name}.wat");
+            let text = typed_wasm_codegen::wat(&bytes);
+            if let Err(e) = std::fs::write(&path, text.as_bytes()) {
+                eprintln!("tw build: cannot write '{path}': {e}");
+                return ExitCode::FAILURE;
+            }
+            wrote.push(path);
+        }
+    }
+    eprintln!(
+        "tw build: split {} module(s): {}",
+        modules.len(),
+        wrote.join(" + ")
+    );
+    eprintln!("tw build: check cross-module schema agreement with `tw link <files…>`.");
+    ExitCode::SUCCESS
+}
+
+/// `tw link`: the L13 positive-form link-graph pass (ADR-0007) over
+/// built modules. Each module's wasm-level name is its file stem's last
+/// dot-segment (`game.physics.wasm` → `physics`).
+fn link(files: &[String]) -> ExitCode {
+    if files.is_empty() {
+        eprintln!("tw link: no modules given");
+        usage();
+        return ExitCode::FAILURE;
+    }
+    let mut named: Vec<(String, Vec<u8>)> = Vec::new();
+    for f in files {
+        let bytes = match std::fs::read(f) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("tw link: cannot read '{f}': {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let stem = Path::new(f)
+            .with_extension("")
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| f.clone());
+        let name = stem.rsplit('.').next().unwrap_or(&stem).to_string();
+        named.push((name, bytes));
+    }
+    let graph: Vec<(&str, &[u8])> = named
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    match typed_wasm_verify::verify_link_graph(&graph) {
+        Ok(report) => {
+            for c in &report.certificates {
+                println!(
+                    "CERTIFIED  {} imports {}.{}",
+                    c.consumer, c.producer, c.region_name
+                );
+            }
+            for e in &report.errors {
+                eprintln!("VIOLATION  {e}");
+            }
+            if report.errors.is_empty() {
+                eprintln!(
+                    "tw link: {} module(s), {} certificate(s), no violations",
+                    named.len(),
+                    report.certificates.len()
+                );
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(e) => {
+            eprintln!("tw link: wasm parse error: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// `base` with its extension replaced by `ext`
