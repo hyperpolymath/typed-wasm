@@ -1164,3 +1164,213 @@ mod access_sites_tests {
         }
     }
 }
+
+// ----------------------------------------------------------------------
+// typedwasm.region-imports (proposal 0003 / ADR-0007) — L13 positive-form
+// cross-module region schema agreement. Carries the per-module table of
+// imported regions: producer module, region name, and EXPECTED schema.
+// The verifier confirms agreement against the producer's actual
+// `typedwasm.regions` export at link time (`verify_link_graph`),
+// realising `MultiModule.idr`'s `ImportedRegion` / `SchemaSub` /
+// `noSpoofing` on emitted bytes.
+// ----------------------------------------------------------------------
+
+#[cfg(feature = "unstable-l13-imports")]
+pub const REGION_IMPORTS_SECTION_VERSION: u16 = 1;
+
+/// One imported region: which producer module supplies it, its exported
+/// name there, and the schema the importer EXPECTS. Mirrors
+/// `MultiModule.idr::ImportedRegion` (source / regionName /
+/// expectedSchema). Expected fields reuse [`FieldEntry`]; v1 forbids
+/// pointer kinds (`kind != Scalar` → `PointerInImportNotSupportedInV1`)
+/// and carries no `target_region` on the wire — parse fills
+/// [`NO_TARGET_REGION`].
+#[cfg(feature = "unstable-l13-imports")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionImportEntry {
+    /// Wasm module name (the `(import "module" …)` name space), NOT a
+    /// source-language module name.
+    pub producer_module: String,
+    /// The exported region's name in the producer's `typedwasm.regions`.
+    pub region_name: String,
+    pub expected_fields: Vec<FieldEntry>,
+}
+
+/// Parse the `typedwasm.region-imports` payload. Lenient on truncation
+/// (matches the sibling codecs); `None` when `version !=
+/// REGION_IMPORTS_SECTION_VERSION`.
+#[cfg(feature = "unstable-l13-imports")]
+pub fn parse_region_imports_section_payload(payload: &[u8]) -> Option<Vec<RegionImportEntry>> {
+    let mut r = LenientReader::new(payload);
+    let version = read_u16_le(&mut r);
+    if version != REGION_IMPORTS_SECTION_VERSION {
+        return None;
+    }
+    let import_count = read_u32_leb128(&mut r);
+    let mut imports = Vec::with_capacity(import_count.min(1024) as usize);
+    for _ in 0..import_count {
+        let producer_module = read_utf8_leb(&mut r);
+        let region_name = read_utf8_leb(&mut r);
+        let field_count = read_u32_leb128(&mut r);
+        let mut expected_fields = Vec::with_capacity(field_count.min(1024) as usize);
+        for _ in 0..field_count {
+            let name = read_utf8_leb(&mut r);
+            let kind = FieldKind::from_byte(r.read_u8());
+            let wasm_ty = WasmTy::from_byte(r.read_u8());
+            let nullability = Nullability::from_byte(r.read_u8());
+            let cardinality = read_u32_leb128(&mut r);
+            expected_fields.push(FieldEntry {
+                name,
+                kind,
+                wasm_ty,
+                target_region: NO_TARGET_REGION,
+                nullability,
+                cardinality,
+            });
+        }
+        imports.push(RegionImportEntry {
+            producer_module,
+            region_name,
+            expected_fields,
+        });
+    }
+    Some(imports)
+}
+
+/// Encode imports to the `typedwasm.region-imports` payload format.
+/// `parse(build(x)) == Some(x)` for entries whose `target_region`s are
+/// [`NO_TARGET_REGION`] (the field is not carried on the wire in v1).
+#[cfg(feature = "unstable-l13-imports")]
+pub fn build_region_imports_section_payload(imports: &[RegionImportEntry]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 + 5 + imports.len() * 48);
+    out.extend_from_slice(&REGION_IMPORTS_SECTION_VERSION.to_le_bytes());
+    let import_count: u32 = imports
+        .len()
+        .try_into()
+        .expect("import count must fit in u32");
+    write_u32_leb128(&mut out, import_count);
+    for imp in imports {
+        write_utf8_leb(&mut out, &imp.producer_module);
+        write_utf8_leb(&mut out, &imp.region_name);
+        let field_count: u32 = imp
+            .expected_fields
+            .len()
+            .try_into()
+            .expect("field count must fit in u32");
+        write_u32_leb128(&mut out, field_count);
+        for f in &imp.expected_fields {
+            write_utf8_leb(&mut out, &f.name);
+            out.push(f.kind.to_byte());
+            out.push(f.wasm_ty.to_byte());
+            out.push(f.nullability.to_byte());
+            write_u32_leb128(&mut out, f.cardinality);
+        }
+    }
+    out
+}
+
+/// LEB128-length-prefixed UTF-8 (proposal 0003 wire format; the regions
+/// codec's `read_utf8`/`write_utf8` use u32le prefixes instead).
+#[cfg(feature = "unstable-l13-imports")]
+fn read_utf8_leb(r: &mut LenientReader<'_>) -> String {
+    let len = read_u32_leb128(r) as usize;
+    let mut bytes = Vec::with_capacity(len.min(4096));
+    for _ in 0..len {
+        bytes.push(r.read_u8());
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+#[cfg(feature = "unstable-l13-imports")]
+fn write_utf8_leb(out: &mut Vec<u8>, s: &str) {
+    let bytes = s.as_bytes();
+    let len: u32 = bytes.len().try_into().expect("name length must fit in u32");
+    write_u32_leb128(out, len);
+    out.extend_from_slice(bytes);
+}
+
+#[cfg(all(test, feature = "unstable-l13-imports"))]
+mod region_imports_tests {
+    use super::*;
+
+    fn scalar_field(name: &str, ty: WasmTy, cardinality: u32) -> FieldEntry {
+        FieldEntry {
+            name: name.into(),
+            kind: FieldKind::Scalar,
+            wasm_ty: ty,
+            target_region: NO_TARGET_REGION,
+            nullability: Nullability::NonNull,
+            cardinality,
+        }
+    }
+
+    #[test]
+    fn empty_payload_returns_none() {
+        assert_eq!(parse_region_imports_section_payload(&[]), None);
+    }
+
+    #[test]
+    fn wrong_version_returns_none() {
+        let mut buf = build_region_imports_section_payload(&[]);
+        buf[0] = 0xFE;
+        buf[1] = 0xFF;
+        assert_eq!(parse_region_imports_section_payload(&buf), None);
+    }
+
+    #[test]
+    fn example02_shaped_table_round_trips() {
+        // Mirrors examples/02-multi-module.twasm module B: Entity from
+        // "physics" with a 7-field expected subset.
+        let imports = vec![RegionImportEntry {
+            producer_module: "physics".into(),
+            region_name: "Entity".into(),
+            expected_fields: vec![
+                scalar_field("pos_x", WasmTy::F32, 1),
+                scalar_field("pos_y", WasmTy::F32, 1),
+                scalar_field("pos_z", WasmTy::F32, 1),
+                scalar_field("vel_x", WasmTy::F32, 1),
+                scalar_field("vel_y", WasmTy::F32, 1),
+                scalar_field("vel_z", WasmTy::F32, 1),
+                scalar_field("flags", WasmTy::U32, 1),
+            ],
+        }];
+        let built = build_region_imports_section_payload(&imports);
+        assert_eq!(parse_region_imports_section_payload(&built), Some(imports));
+    }
+
+    #[test]
+    fn multi_import_utf8_and_array_fields_round_trip() {
+        // Stress: two producers, non-ASCII names, array + unbounded
+        // cardinalities, empty expected list.
+        let imports = vec![
+            RegionImportEntry {
+                producer_module: "物理エンジン".into(),
+                region_name: "Träger".into(),
+                expected_fields: vec![
+                    scalar_field("data", WasmTy::U8, 64),
+                    scalar_field("tail", WasmTy::U8, 0),
+                ],
+            },
+            RegionImportEntry {
+                producer_module: "physics".into(),
+                region_name: "Entity".into(),
+                expected_fields: vec![],
+            },
+        ];
+        let built = build_region_imports_section_payload(&imports);
+        assert_eq!(parse_region_imports_section_payload(&built), Some(imports));
+    }
+
+    #[test]
+    fn truncation_is_lenient_never_panics() {
+        let imports = vec![RegionImportEntry {
+            producer_module: "physics".into(),
+            region_name: "Entity".into(),
+            expected_fields: vec![scalar_field("flags", WasmTy::U32, 1)],
+        }];
+        let built = build_region_imports_section_payload(&imports);
+        for cut in 0..built.len() {
+            let _ = parse_region_imports_section_payload(&built[..cut]);
+        }
+    }
+}

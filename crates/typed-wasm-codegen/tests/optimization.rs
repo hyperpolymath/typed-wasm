@@ -52,6 +52,7 @@ fn stripping_carriers_makes_verification_vacuous() {
             export: true,
         }],
         ownership: vec![],
+        region_imports: vec![],
     });
     assert!(
         custom_section_names(&bare)
@@ -96,6 +97,7 @@ fn ownership_func_idx_is_load_bearing() {
         imports: vec![],
         funcs: funcs(),
         ownership: vec![(owned, vec![Ownership::Linear], Ownership::Unrestricted)],
+        region_imports: vec![],
     };
 
     // Carrier marks func 0 Linear → its double-use is the violation.

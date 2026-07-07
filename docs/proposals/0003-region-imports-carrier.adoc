@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: CC-BY-SA-4.0
-// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// IMPLEMENTATION NOTE (2026-07-07, acceptance): the shipped codec uses
+// the sibling codecs' conventions — u16le version, LEB128 counts/
+// cardinality/name-lengths via `write_u32_leb128`, UTF-8 names — as
+// specified below. `target_region` is NOT carried per expected field on
+// the wire (v1 forbids pointer fields); the parser fills NO_TARGET_REGION.
 
 = Proposal 0003: Region Imports Carrier Section (`typedwasm.region-imports`)
 :toc: preamble
@@ -7,10 +13,10 @@
 
 [cols="1,3"]
 |===
-| Status       | draft
+| Status       | accepted (2026-07-07, owner direction — promoted to link:../decisions/0007-region-imports-carrier.adoc[ADR-0007])
 | Author       | hyperpolymath
 | Date         | 2026-05-30
-| Last-updated | 2026-05-30
+| Last-updated | 2026-07-07
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/95[#95]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption (cross-module increment)
 | Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (regions section — single-module foundation)

@@ -91,6 +91,7 @@ fn rig(region: Region, func: Func) -> Module {
         imports: vec![],
         funcs: vec![func],
         ownership: vec![],
+        region_imports: vec![],
     }
 }
 

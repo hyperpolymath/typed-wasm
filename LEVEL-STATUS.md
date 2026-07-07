@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: CC-BY-SA-4.0
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
 # typed-wasm Level Achievement Status
 
 ## Versioning Scheme (revised 2026-04-13 — typed-wasm-first rollout)
@@ -143,7 +144,7 @@ pins affinescript SHA for drift detection).
 | L7 (aliasing) | **YES** | `verify_function` per-path use-range |
 | L10 (linearity) | **YES** | `verify_function` per-path use-range |
 | L13 (module isolation, negative form) | **YES** | `verify_from_module`, gated on ownership-section presence (PR #37, 2026-05-19) |
-| L13 (cross-module schema agreement, positive form) | **proposal-stage** | `typedwasm.region-imports` carrier — proposal 0003 `[draft]` (`docs/proposals/0003`); blocked on producer-side multi-module emission |
+| L13 (cross-module schema agreement, positive form) | **YES (import-bound, carrier-backed)** | `typedwasm.region-imports` carrier — proposal 0003 `[accepted]` 2026-07-07 → ADR-0007; `verify_region_imports_from_module` (module-local) + `verify_link_graph` (cross-module `SchemaSub` → `CompatCertificate`s); gated `cargo feature = "unstable-l13-imports"`; in-tree producer emits from `import region … from "…" { … }` source (`tests/example02.rs`) |
 | L2 (region binding) | **YES** (carrier-backed) | `verify_access_sites_from_module` PR #109; reads `typedwasm.regions` + `typedwasm.access-sites` (proposals 0001 + 0002 `[accepted]` 2026-05-30; codec PR #107; gated `cargo feature = "unstable-l2"`) |
 | L3–L6 (type-compat, null, bounds, result-type) | **YES** (carrier-backed, schema half) | `typedwasm.regions` codec PR #107; cross-checks against `Region.idr::WasmType`, `Pointer.idr::Nullability`, cardinality. Per-access enforcement gated on producer codegen of access-sites (`affinescript#462`, `ephapax#251`). |
 | L15 (resource capabilities, L15-A/B) | **YES** (carrier-backed) | `verify_capabilities_from_module` PR #109; reads `typedwasm.capabilities` (proposal 0001 `[accepted]`; codec PR #107; gated `cargo feature = "unstable-l15"`). L15-C deferred to proposal 0004 `[draft]`. |
@@ -158,9 +159,11 @@ pins affinescript SHA for drift detection).
    (access-sites codegen, open), `ephapax#221` (Ty::Borrow surfacing,
    open), `ephapax#251` (access-sites codegen, filed 2026-05-30),
    `ephapax#250` (Codegen dead-fields cleanup, ✅ merged 2026-05-30).
-2. **L13 cross-module (positive form)** — proposal 0003 `[draft]`
-   (`docs/proposals/0003`). Gated on producer-side multi-module
-   emission (AffineScript Roadmap C3 / Ephapax not yet on roadmap).
+2. **L13 cross-module (positive form)** — DONE in-tree (2026-07-07):
+   proposal 0003 `[accepted]` → ADR-0007; codec + `verify_link_graph`
+   behind `unstable-l13-imports`; in-tree producer emits from source.
+   Sibling-producer adoption (AffineScript Roadmap C3 / Ephapax)
+   tracked by cross-repo issues.
 3. **L15-C (call-graph monotonicity)** — proposal 0004 `[draft]`
    (`docs/proposals/0004`). Gated on producer-side L15-A emission
    (Roadmap C2 not started in either producer).

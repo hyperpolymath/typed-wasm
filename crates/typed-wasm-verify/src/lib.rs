@@ -31,6 +31,11 @@ pub use section::{
     build_regions_section_payload, parse_regions_section_payload, FieldEntry, FieldKind,
     Nullability, RegionEntry, WasmTy, ACCESS_SITE_UNPINNED, REGIONS_SECTION_VERSION,
 };
+#[cfg(feature = "unstable-l13-imports")]
+pub use section::{
+    build_region_imports_section_payload, parse_region_imports_section_payload,
+    RegionImportEntry, REGION_IMPORTS_SECTION_VERSION,
+};
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
 /// Wire encoding in the `typedwasm.ownership` custom section: a single
@@ -148,6 +153,125 @@ pub const CAPABILITIES_SECTION_NAME: &str = "typedwasm.capabilities";
 /// mapping (proposal 0002, typed-wasm#86). UNSTABLE.
 #[cfg(feature = "unstable-l2")]
 pub const ACCESS_SITES_SECTION_NAME: &str = "typedwasm.access-sites";
+
+/// Custom-section name for the L13 positive-form cross-module region
+/// import table (proposal 0003 / ADR-0007).
+#[cfg(feature = "unstable-l13-imports")]
+pub const REGION_IMPORTS_SECTION_NAME: &str = "typedwasm.region-imports";
+
+/// L13 region-imports violation (proposal 0003 §Consumer obligations).
+#[cfg(feature = "unstable-l13-imports")]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum RegionImportsError {
+    /// `typedwasm.region-imports` present but `typedwasm.regions` absent
+    /// or unparseable — the import table's foreign keys dangle.
+    #[error("Level 13 violation: typedwasm.region-imports present without a parseable typedwasm.regions section (MissingDependentCarrier)")]
+    MissingDependentRegions,
+
+    /// The section is present but its version is unsupported / payload
+    /// unparseable by this verifier.
+    #[error("Level 13: typedwasm.region-imports section present but not parseable as version {expected} (unsupported carrier version or malformed payload)", expected = section::REGION_IMPORTS_SECTION_VERSION)]
+    UnparseableSection,
+
+    /// Duplicate `(producer_module, region_name)` pair — a producer bug.
+    #[error("Level 13 violation: duplicate import of region '{region_name}' from module '{producer_module}' (import-table entries must be unique per (producer, region) pair)")]
+    DuplicateImport {
+        producer_module: String,
+        region_name: String,
+    },
+
+    /// v1 restriction: expected schemas are scalar-only.
+    #[error("Level 13 violation: import {import_idx} field '{field_name}' is pointer-typed — pointer fields in imported region schemas are not supported in v1 (proposal 0003 §Open Questions #1)")]
+    PointerInImportNotSupportedInV1 {
+        import_idx: u32,
+        field_name: String,
+    },
+
+    /// A `target_region` high-bit foreign key in `typedwasm.regions`
+    /// points past the import table.
+    #[error("Level 13 violation: region {local_region_idx} field {field_idx} has target_region import-key {import_idx}, out of bounds for the import table (import_count = {import_count})")]
+    ImportTargetOutOfRange {
+        local_region_idx: u32,
+        field_idx: u32,
+        import_idx: u32,
+        import_count: u32,
+    },
+
+    /// Link graph: no module with the named wasm module name.
+    #[error("Level 13 violation: consumer '{consumer}' imports from producer module '{producer_module}', which is not present in the link graph")]
+    UnresolvedProducerModule {
+        consumer: String,
+        producer_module: String,
+    },
+
+    /// Link graph: the producer exists but exports no such region.
+    #[error("Level 13 violation: producer '{producer_module}' has no region named '{region_name}' in its typedwasm.regions table (imported by '{consumer}')")]
+    UnresolvedExportedRegion {
+        consumer: String,
+        producer_module: String,
+        region_name: String,
+    },
+
+    /// Link graph: the producer's actual exported schema does not
+    /// satisfy the importer's expected schema (`SchemaSub` fails —
+    /// `noSpoofing`, MultiModule.idr).
+    #[error("Level 13 violation: schema mismatch importing '{region_name}' from '{producer_module}' into '{consumer}': missing fields {missing_fields:?}; type mismatches {type_mismatches:?}")]
+    SchemaImportMismatch {
+        consumer: String,
+        producer_module: String,
+        region_name: String,
+        missing_fields: Vec<String>,
+        type_mismatches: Vec<String>,
+    },
+}
+
+/// A verified cross-module import: `consumer`'s expected schema for
+/// `region_name` is satisfied by `producer`'s actual export. The wire
+/// realisation of `MultiModule.idr::CompatCertificate`.
+#[cfg(feature = "unstable-l13-imports")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompatCertificate {
+    pub consumer: String,
+    pub producer: String,
+    pub region_name: String,
+}
+
+/// Result of a whole-link-graph L13 pass: one certificate per resolved
+/// import, plus every violation found. Agreement holds iff
+/// `errors.is_empty()`.
+#[cfg(feature = "unstable-l13-imports")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LinkGraphReport {
+    pub certificates: Vec<CompatCertificate>,
+    pub errors: Vec<RegionImportsError>,
+}
+
+/// Verify the internal consistency of a module's
+/// `typedwasm.region-imports` section: dependent regions carrier
+/// present, unique `(producer, region)` pairs, v1 scalar-only expected
+/// schemas, and high-bit `target_region` foreign keys within the import
+/// table. Modules without the section verify trivially. Cross-module
+/// schema agreement is [`verify_link_graph`]'s job.
+#[cfg(feature = "unstable-l13-imports")]
+pub fn verify_region_imports_from_module(
+    wasm_bytes: &[u8],
+) -> Result<Vec<RegionImportsError>, VerifyError> {
+    verify::verify_region_imports_from_module(wasm_bytes).map(|(_, errs)| errs)
+}
+
+/// Verify L13 positive-form schema agreement across a link graph of
+/// `(wasm_module_name, wasm_bytes)` pairs: every region import in every
+/// module must resolve to a producer in the graph whose actual exported
+/// schema satisfies the importer's expected schema (`SchemaSub` —
+/// every expected field present in the actual schema with matching
+/// name, kind, type, nullability, and cardinality). Subset imports are
+/// sound: importing 5 of 12 fields is agreement on those 5.
+#[cfg(feature = "unstable-l13-imports")]
+pub fn verify_link_graph(
+    modules: &[(&str, &[u8])],
+) -> Result<LinkGraphReport, VerifyError> {
+    verify::verify_link_graph(modules)
+}
 
 /// L15 capability-section violation (parsing succeeded, content invalid).
 #[cfg(feature = "unstable-l15")]

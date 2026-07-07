@@ -154,6 +154,7 @@ fn gen_valid(seed: u64) -> Module {
         imports: vec![],
         funcs,
         ownership: vec![],
+        region_imports: vec![],
     }
 }
 
@@ -619,6 +620,7 @@ fn one_func_module(kind: Ownership, body: Vec<Op>) -> Module {
             export: true,
         }],
         ownership: vec![(0, vec![kind], Ownership::Unrestricted)],
+        region_imports: vec![],
     }
 }
 
