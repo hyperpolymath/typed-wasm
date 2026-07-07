@@ -34,6 +34,7 @@ fn double_free_gives_named_actionable_message() {
             name: "despawn_particle".into(),
             params: vec![Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::LocalGet(0), Op::Drop, Op::Drop],
             accesses: vec![],
             export: true,

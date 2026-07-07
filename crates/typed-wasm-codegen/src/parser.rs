@@ -694,14 +694,27 @@ impl<'a> Parser<'a> {
         // closing `}` on success; on a None it leaves the cursor unspecified, so
         // we restore `body_start` before the next attempt and before the stub.
         let body_start = self.pos;
-        let lowered = self.try_lower_reader(&param_meta, &results).or_else(|| {
-            self.pos = body_start;
-            self.try_lower_writer(&params, &param_meta, &results)
-        });
-        let (body, accesses) = match lowered {
-            Some((body, accesses)) => (body, accesses),
+        let memory_before = self.memory;
+        let lowered = self
+            .try_lower_reader(&param_meta, &results)
+            .map(|(b, a)| (Vec::new(), b, a))
+            .or_else(|| {
+                self.pos = body_start;
+                self.try_lower_writer(&params, &param_meta, &results)
+                    .map(|(b, a)| (Vec::new(), b, a))
+            })
+            .or_else(|| {
+                // General statement lowerer (locals, if/else, while,
+                // indexed access) — bails to the stub on any
+                // unsupported construct.
+                self.pos = body_start;
+                self.try_lower_stmts(&params, &param_meta, &results)
+            });
+        let (locals, body, accesses) = match lowered {
+            Some(triple) => triple,
             None => {
                 self.pos = body_start;
+                self.memory = memory_before;
                 let mut body = Vec::new();
                 // Representative stub: drop all params, push a typed zero result.
                 for i in 0..params.len() as u32 {
@@ -717,7 +730,7 @@ impl<'a> Parser<'a> {
                     });
                 }
                 self.skip_to_brace_close();
-                (body, Vec::new())
+                (Vec::new(), body, Vec::new())
             }
         };
 
@@ -737,6 +750,7 @@ impl<'a> Parser<'a> {
             name,
             params,
             results,
+            locals,
             body,
             accesses,
             export: true, // All functions in .twasm are exported by default
@@ -1240,6 +1254,11 @@ impl<'a> Parser<'a> {
                     }
                     self.pos += 1;
                 }
+                // A block-shaped declaration (`invariant name { ... }`)
+                // ends with its balanced braces. Continuing to scan for
+                // a `;` here used to swallow every following top-level
+                // declaration (all of example-04's functions).
+                return;
             } else {
                 self.pos += 1;
             }
@@ -1404,6 +1423,558 @@ fn scalar_to_wire_ty(s: &Scalar) -> typed_wasm_verify::WasmTy {
         Scalar::F32 => W::F32,
         Scalar::F64 => W::F64,
         Scalar::Bool => W::WBool,
+    }
+}
+
+// ----------------------------------------------------------------------
+// General statement lowering (ADR-0006 debt: `let`, assignment,
+// `if`/`else`, `while`, indexed `region.get`/`region.set`, `return`).
+// Tried after the exact single-statement reader/writer shapes; bails to
+// the type-correct stub on ANY unsupported construct (`region.scan`,
+// `opt<T>` unwraps, calls, unknown idents), leaving the parser cursor
+// for the caller to restore.
+// ----------------------------------------------------------------------
+
+/// Lowering context for one function body. Extra locals hold `let`
+/// bindings, `region.get` destinations, and one base-pointer copy per
+/// region-typed param — the body reads each region PARAM exactly once
+/// (in the prologue) so `own`/`&mut` discipline holds under the
+/// verifier's per-path use counting no matter how many accesses follow.
+struct Lower {
+    /// Scalar bindings visible to expressions: name → (local slot, type).
+    names: HashMap<String, (u32, Wty)>,
+    /// Region handles: param name → (region index, base-local slot).
+    handles: HashMap<String, (usize, u32)>,
+    /// Extra locals, indexed after the params.
+    locals: Vec<Wty>,
+    n_params: u32,
+    ops: Vec<crate::Op>,
+    accesses: Vec<crate::AccessSite>,
+    /// Regions touched — memory is synthesised only on successful lowering.
+    used_regions: Vec<usize>,
+}
+
+impl Lower {
+    fn alloc(&mut self, wty: Wty) -> u32 {
+        let slot = self.n_params + self.locals.len() as u32;
+        self.locals.push(wty);
+        slot
+    }
+}
+
+impl<'a> Parser<'a> {
+    /// Whole-body statement lowerer. Cursor sits just inside the body
+    /// `{`; on success it is past the matching `}` and the return value
+    /// is `(extra_locals, ops, access_sites)`. None = fall back to stub
+    /// (caller restores the cursor; no parser state was mutated).
+    fn try_lower_stmts(
+        &mut self,
+        params: &[Wty],
+        param_meta: &[(String, Option<usize>)],
+        results: &[Wty],
+    ) -> Option<(Vec<Wty>, Vec<crate::Op>, Vec<crate::AccessSite>)> {
+        let mut cx = Lower {
+            names: HashMap::new(),
+            handles: HashMap::new(),
+            locals: Vec::new(),
+            n_params: params.len() as u32,
+            ops: Vec::new(),
+            accesses: Vec::new(),
+            used_regions: Vec::new(),
+        };
+        // Prologue: copy each region param into a base local (its single
+        // use), bind scalar params by name.
+        for (i, (name, region)) in param_meta.iter().enumerate() {
+            match region {
+                Some(r) => {
+                    let slot = cx.alloc(Wty::I32);
+                    cx.ops.push(crate::Op::LocalGet(i as u32));
+                    cx.ops.push(crate::Op::LocalSet(slot));
+                    if !name.is_empty() {
+                        cx.handles.insert(name.clone(), (*r, slot));
+                    }
+                    cx.used_regions.push(*r);
+                }
+                None => {
+                    if !name.is_empty() {
+                        cx.names.insert(name.clone(), (i as u32, params[i]));
+                    }
+                }
+            }
+        }
+
+        let ended_with_return = self.lower_block(&mut cx, results)?;
+        if !results.is_empty() && !ended_with_return {
+            return None; // fall-off-the-end of a value-returning body
+        }
+        for r in cx.used_regions.clone() {
+            self.ensure_memory_for_region(r);
+        }
+        Some((cx.locals, cx.ops, cx.accesses))
+    }
+
+    /// Lower statements until the closing `}` (consumed). Returns whether
+    /// the LAST top-level statement was a `return`.
+    fn lower_block(&mut self, cx: &mut Lower, results: &[Wty]) -> Option<bool> {
+        let mut last_was_return = false;
+        loop {
+            self.skip_whitespace();
+            if self.try_char('}') {
+                return Some(last_was_return);
+            }
+            if self.pos >= self.src.len() {
+                return None;
+            }
+            last_was_return = self.lower_stmt(cx, results)?;
+        }
+    }
+
+    /// Lower one statement. Returns Some(true) iff it was a `return`.
+    fn lower_stmt(&mut self, cx: &mut Lower, results: &[Wty]) -> Option<bool> {
+        self.skip_whitespace();
+        if self.try_keyword("region") {
+            if !self.try_char('.') {
+                return None;
+            }
+            if self.try_keyword("get") {
+                return self.lower_region_get(cx).map(|_| false);
+            }
+            if self.try_keyword("set") {
+                return self.lower_region_set(cx).map(|_| false);
+            }
+            return None; // alloc / free / scan / place: unsupported here
+        }
+        if self.try_keyword("let") {
+            self.try_keyword("mut");
+            let name = self.parse_ident();
+            if name.is_empty() || !self.try_char(':') {
+                return None;
+            }
+            let tyname = self.parse_ident();
+            let wty = wty_from_type_name(&tyname)?;
+            if !self.try_char('=') {
+                return None;
+            }
+            let got = self.lower_expr(cx, Some(wty))?;
+            if got != wty || !self.try_char(';') {
+                return None;
+            }
+            let slot = cx.alloc(wty);
+            cx.ops.push(crate::Op::LocalSet(slot));
+            cx.names.insert(name, (slot, wty));
+            return Some(false);
+        }
+        if self.try_keyword("if") {
+            self.lower_if(cx, results)?;
+            return Some(false);
+        }
+        if self.try_keyword("while") {
+            // block { loop { <cond> eqz br_if 1 ; <body> ; br 0 } }
+            cx.ops.push(crate::Op::Block);
+            cx.ops.push(crate::Op::Loop);
+            if self.lower_expr(cx, None)? != Wty::I32 {
+                return None;
+            }
+            cx.ops.push(crate::Op::I32Eqz);
+            cx.ops.push(crate::Op::BrIf(1));
+            if !self.try_char('{') {
+                return None;
+            }
+            self.lower_block(cx, results)?;
+            cx.ops.push(crate::Op::Br(0));
+            cx.ops.push(crate::Op::End);
+            cx.ops.push(crate::Op::End);
+            return Some(false);
+        }
+        if self.try_keyword("return") {
+            if self.try_char(';') {
+                if !results.is_empty() {
+                    return None; // bare return in a value-returning body
+                }
+                cx.ops.push(crate::Op::Return);
+                return Some(true);
+            }
+            let &want = results.first()?;
+            self.try_char('$'); // optional `$` on a returned binding
+            if self.lower_expr(cx, Some(want))? != want || !self.try_char(';') {
+                return None;
+            }
+            cx.ops.push(crate::Op::Return);
+            return Some(true);
+        }
+        if self.try_keyword("proof") {
+            // Inline proof annotation: no runtime ops.
+            let _name = self.parse_ident();
+            if !self.try_char('{') {
+                return None;
+            }
+            self.skip_to_brace_close();
+            return Some(false);
+        }
+        // Assignment: `name = expr ;` (rejecting `==`).
+        let save = self.pos;
+        let name = self.parse_ident();
+        if name.is_empty() {
+            return None;
+        }
+        let &(slot, wty) = cx.names.get(&name)?;
+        self.skip_whitespace();
+        if self.src.as_bytes().get(self.pos) != Some(&b'=')
+            || self.src.as_bytes().get(self.pos + 1) == Some(&b'=')
+        {
+            self.pos = save;
+            return None;
+        }
+        self.pos += 1;
+        if self.lower_expr(cx, Some(wty))? != wty || !self.try_char(';') {
+            return None;
+        }
+        cx.ops.push(crate::Op::LocalSet(slot));
+        Some(false)
+    }
+
+    /// `if <cond> { … } [else { … }]` — statement position, no value.
+    fn lower_if(&mut self, cx: &mut Lower, results: &[Wty]) -> Option<()> {
+        if self.lower_expr(cx, None)? != Wty::I32 {
+            return None;
+        }
+        if !self.try_char('{') {
+            return None;
+        }
+        cx.ops.push(crate::Op::If);
+        self.lower_block(cx, results)?;
+        if self.try_keyword("else") {
+            cx.ops.push(crate::Op::Else);
+            if !self.try_char('{') {
+                return None;
+            }
+            self.lower_block(cx, results)?;
+        }
+        cx.ops.push(crate::Op::End);
+        Some(())
+    }
+
+    /// Push the address of `$handle` or `$handle[index]`; cursor ends
+    /// after the optional `]`. Returns the region index.
+    fn lower_region_addr(&mut self, cx: &mut Lower) -> Option<usize> {
+        if !self.try_char('$') {
+            return None;
+        }
+        let hname = self.parse_ident();
+        let &(region, base) = cx.handles.get(&hname)?;
+        cx.ops.push(crate::Op::LocalGet(base));
+        if self.try_char('[') {
+            if self.lower_expr(cx, Some(Wty::I32))? != Wty::I32 || !self.try_char(']') {
+                return None;
+            }
+            let stride = self.regions.get(region)?.byte_size;
+            cx.ops.push(crate::Op::I32Const(i32::try_from(stride).ok()?));
+            cx.ops.push(crate::Op::I32Mul);
+            cx.ops.push(crate::Op::I32Add);
+        }
+        Some(region)
+    }
+
+    /// `region.get $h[i]? .field -> name ;` — typed load into a fresh local.
+    fn lower_region_get(&mut self, cx: &mut Lower) -> Option<()> {
+        let region = self.lower_region_addr(cx)?;
+        if !self.try_char('.') {
+            return None;
+        }
+        let field = self.parse_ident();
+        let (field_idx, offset, scalar) = self.resolve_field(region, &field)?;
+        let load_at = cx.ops.len();
+        cx.ops.push(scalar_load_op(&scalar, offset as u64));
+        cx.accesses.push(crate::AccessSite {
+            region,
+            field: field_idx,
+            instr_index: Some(load_at),
+        });
+        if !self.try_str("->") {
+            return None;
+        }
+        let name = self.parse_ident();
+        if name.is_empty() || !self.try_char(';') {
+            return None;
+        }
+        let wty = wty_from_scalar(&scalar);
+        let slot = cx.alloc(wty);
+        cx.ops.push(crate::Op::LocalSet(slot));
+        cx.names.insert(name, (slot, wty));
+        Some(())
+    }
+
+    /// `region.set $h[i]? .field , expr ;` — typed store.
+    fn lower_region_set(&mut self, cx: &mut Lower) -> Option<()> {
+        let region = self.lower_region_addr(cx)?;
+        if !self.try_char('.') {
+            return None;
+        }
+        let field = self.parse_ident();
+        let (field_idx, offset, scalar) = self.resolve_field(region, &field)?;
+        if !self.try_char(',') {
+            return None;
+        }
+        let wty = wty_from_scalar(&scalar);
+        if self.lower_expr(cx, Some(wty))? != wty || !self.try_char(';') {
+            return None;
+        }
+        let store_at = cx.ops.len();
+        cx.ops.push(scalar_store_op(&scalar, offset as u64));
+        cx.accesses.push(crate::AccessSite {
+            region,
+            field: field_idx,
+            instr_index: Some(store_at),
+        });
+        Some(())
+    }
+
+    // --- Typed expression lowering (precedence: cmp > add > mul > primary).
+    // `expected` seeds literal typing; operands of a binary op must agree
+    // exactly (no implicit promotion — a mismatch bails the whole body).
+
+    fn lower_expr(&mut self, cx: &mut Lower, expected: Option<Wty>) -> Option<Wty> {
+        let lty = self.lower_add(cx, expected)?;
+        self.skip_whitespace();
+        let cmp = if self.try_str("==") {
+            "=="
+        } else if self.try_str("!=") {
+            "!="
+        } else if self.try_str("<=") {
+            "<="
+        } else if self.try_str(">=") {
+            ">="
+        } else if self.src.as_bytes().get(self.pos) == Some(&b'<') {
+            self.pos += 1;
+            "<"
+        } else if self.src.as_bytes().get(self.pos) == Some(&b'>') {
+            self.pos += 1;
+            ">"
+        } else {
+            return Some(lty);
+        };
+        if self.lower_add(cx, Some(lty))? != lty {
+            return None;
+        }
+        use crate::Op::*;
+        cx.ops.push(match (lty, cmp) {
+            (Wty::I32, "==") => I32Eq,
+            (Wty::I32, "!=") => I32Ne,
+            (Wty::I32, "<") => I32LtS,
+            (Wty::I32, "<=") => I32LeS,
+            (Wty::I32, ">") => I32GtS,
+            (Wty::I32, ">=") => I32GeS,
+            (Wty::F32, "==") => F32Eq,
+            (Wty::F32, "!=") => F32Ne,
+            (Wty::F32, "<") => F32Lt,
+            (Wty::F32, "<=") => F32Le,
+            (Wty::F32, ">") => F32Gt,
+            (Wty::F32, ">=") => F32Ge,
+            (Wty::F64, "==") => F64Eq,
+            (Wty::F64, "!=") => F64Ne,
+            (Wty::F64, "<") => F64Lt,
+            (Wty::F64, "<=") => F64Le,
+            (Wty::F64, ">") => F64Gt,
+            (Wty::F64, ">=") => F64Ge,
+            _ => return None, // i64 comparisons: unsupported
+        });
+        Some(Wty::I32)
+    }
+
+    fn lower_add(&mut self, cx: &mut Lower, expected: Option<Wty>) -> Option<Wty> {
+        let ty = self.lower_mul(cx, expected)?;
+        loop {
+            self.skip_whitespace();
+            let op = match self.src.as_bytes().get(self.pos) {
+                Some(&b'+') => crate::Op::I32Add,
+                Some(&b'-') => crate::Op::I32Sub,
+                _ => return Some(ty),
+            };
+            let plus = matches!(op, crate::Op::I32Add);
+            self.pos += 1;
+            if self.lower_mul(cx, Some(ty))? != ty {
+                return None;
+            }
+            use crate::Op::*;
+            cx.ops.push(match (ty, plus) {
+                (Wty::I32, true) => I32Add,
+                (Wty::I32, false) => I32Sub,
+                (Wty::I64, true) => I64Add,
+                (Wty::I64, false) => I64Sub,
+                (Wty::F32, true) => F32Add,
+                (Wty::F32, false) => F32Sub,
+                (Wty::F64, true) => F64Add,
+                (Wty::F64, false) => F64Sub,
+            });
+        }
+    }
+
+    fn lower_mul(&mut self, cx: &mut Lower, expected: Option<Wty>) -> Option<Wty> {
+        let ty = self.lower_primary(cx, expected)?;
+        loop {
+            self.skip_whitespace();
+            let times = match self.src.as_bytes().get(self.pos) {
+                Some(&b'*') => true,
+                Some(&b'/') if self.src.as_bytes().get(self.pos + 1) != Some(&b'/') => false,
+                _ => return Some(ty),
+            };
+            self.pos += 1;
+            if self.lower_primary(cx, Some(ty))? != ty {
+                return None;
+            }
+            use crate::Op::*;
+            cx.ops.push(match (ty, times) {
+                (Wty::I32, true) => I32Mul,
+                (Wty::I32, false) => I32DivS,
+                (Wty::I64, true) => I64Mul,
+                (Wty::I64, false) => return None, // i64 division: unsupported
+                (Wty::F32, true) => F32Mul,
+                (Wty::F32, false) => F32Div,
+                (Wty::F64, true) => F64Mul,
+                (Wty::F64, false) => F64Div,
+            });
+        }
+    }
+
+    fn lower_primary(&mut self, cx: &mut Lower, expected: Option<Wty>) -> Option<Wty> {
+        self.skip_whitespace();
+        let &b = self.src.as_bytes().get(self.pos)?;
+        if b == b'(' {
+            self.pos += 1;
+            let ty = self.lower_expr(cx, expected)?;
+            if !self.try_char(')') {
+                return None;
+            }
+            return Some(ty);
+        }
+        if b == b'-' || b.is_ascii_digit() {
+            return self.lower_literal(cx, expected);
+        }
+        let save = self.pos;
+        let ident = self.parse_ident();
+        if ident.is_empty() {
+            return None;
+        }
+        match ident.as_str() {
+            "true" => {
+                cx.ops.push(crate::Op::I32Const(1));
+                return Some(Wty::I32);
+            }
+            "false" => {
+                cx.ops.push(crate::Op::I32Const(0));
+                return Some(Wty::I32);
+            }
+            "cast" => {
+                if !self.try_char('<') {
+                    return None;
+                }
+                let target = wty_from_type_name(&self.parse_ident())?;
+                if !self.try_char('>') || !self.try_char('(') {
+                    return None;
+                }
+                let src_ty = self.lower_expr(cx, None)?;
+                if !self.try_char(')') {
+                    return None;
+                }
+                use crate::Op::*;
+                cx.ops.push(match (src_ty, target) {
+                    (Wty::F32, Wty::I32) => I32TruncF32S,
+                    (Wty::F64, Wty::I32) => I32TruncF64S,
+                    (Wty::I32, Wty::F32) => F32ConvertI32S,
+                    (Wty::I32, Wty::F64) => F64ConvertI32S,
+                    _ => return None,
+                });
+                return Some(target);
+            }
+            _ => {}
+        }
+        if let Some(&(slot, wty)) = cx.names.get(&ident) {
+            cx.ops.push(crate::Op::LocalGet(slot));
+            return Some(wty);
+        }
+        self.pos = save;
+        None // unknown ident: is_null / sizeof / handle-as-value / call
+    }
+
+    /// Numeric literal, typed by `expected` (default: `.`-bearing → F32,
+    /// integer → I32). Rejects range overflows — including a finite
+    /// literal that would round to ±inf as f32 — by bailing.
+    fn lower_literal(&mut self, cx: &mut Lower, expected: Option<Wty>) -> Option<Wty> {
+        self.skip_whitespace();
+        let start = self.pos;
+        if self.src.as_bytes().get(self.pos) == Some(&b'-') {
+            self.pos += 1;
+        }
+        let mut is_float = false;
+        while self.pos < self.src.len() {
+            let c = self.src.as_bytes()[self.pos];
+            if c == b'.' {
+                is_float = true;
+                self.pos += 1;
+            } else if c.is_ascii_alphanumeric() || c == b'_' {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        let tok = self.src.get(start..self.pos)?;
+        if is_float {
+            let v: f64 = tok.parse().ok()?;
+            return match expected {
+                Some(Wty::F64) => {
+                    cx.ops.push(crate::Op::F64Const(v));
+                    Some(Wty::F64)
+                }
+                Some(Wty::F32) | None => {
+                    let f = v as f32;
+                    if f.is_infinite() && v.is_finite() {
+                        return None;
+                    }
+                    cx.ops.push(crate::Op::F32Const(f));
+                    Some(Wty::F32)
+                }
+                _ => None,
+            };
+        }
+        let value: i64 = if let Some(hex) = tok.strip_prefix("0x").or_else(|| tok.strip_prefix("0X"))
+        {
+            u64::from_str_radix(hex, 16).ok()? as i64
+        } else {
+            tok.parse::<i64>().ok()?
+        };
+        match expected {
+            Some(Wty::I64) => {
+                cx.ops.push(crate::Op::I64Const(value));
+                Some(Wty::I64)
+            }
+            Some(Wty::F32) => {
+                cx.ops.push(crate::Op::F32Const(value as f32));
+                Some(Wty::F32)
+            }
+            Some(Wty::F64) => {
+                cx.ops.push(crate::Op::F64Const(value as f64));
+                Some(Wty::F64)
+            }
+            Some(Wty::I32) | None => {
+                let v = i32::try_from(value)
+                    .or_else(|_| u32::try_from(value).map(|u| u as i32))
+                    .ok()?;
+                cx.ops.push(crate::Op::I32Const(v));
+                Some(Wty::I32)
+            }
+        }
+    }
+}
+
+/// `.twasm` scalar type NAME (as written in `let x: ty` / `cast<ty>`)
+/// → wasm value type.
+fn wty_from_type_name(name: &str) -> Option<Wty> {
+    match name {
+        "i8" | "i16" | "i32" | "u8" | "u16" | "u32" | "bool" => Some(Wty::I32),
+        "i64" | "u64" => Some(Wty::I64),
+        "f32" => Some(Wty::F32),
+        "f64" => Some(Wty::F64),
+        _ => None,
     }
 }
 

@@ -31,8 +31,10 @@
 //!   emitted whenever the source declares discipline (`own` / `&mut` /
 //!   `&` qualifiers) — the parser records them into [`Module::ownership`]
 //!   and `emit` writes the carrier (exercised by `tests/example03.rs`).
-//! * Full function-body semantics (indexing, `region.scan`, null checks):
-//!   v0 emits type-correct representative bodies, not the full lowering.
+//! * Function bodies lower for real where the statement lowerer covers
+//!   them (`let`, assignment, `if`/`else`, `while`, indexed access,
+//!   `cast<>` — see `parser.rs`); `region.scan` closures and `opt<T>`
+//!   null-checks still fall back to type-correct representative stubs.
 
 use typed_wasm_verify::section::{
     build_access_sites_section_payload, AccessSiteEntry, ACCESS_SITE_UNPINNED, NO_TARGET_REGION,
@@ -47,7 +49,7 @@ use typed_wasm_verify::{
     REGION_IMPORTS_SECTION_NAME,
 };
 use wasm_encoder::{
-    CodeSection, CustomSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
+    BlockType, CodeSection, CustomSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
     ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module as WasmModule,
     NameMap, NameSection, TypeSection, ValType,
 };
@@ -239,6 +241,61 @@ pub enum Op {
     Call(u32),
     /// Drop the top stack value — consumes a value exactly once.
     Drop,
+    // --- Locals + control flow + arithmetic (front-end statement
+    // lowering, ADR-0006: `let`, assignment, `if`/`else`, `while`) ---
+    LocalSet(u32),
+    LocalTee(u32),
+    /// `block (empty)` — the `while` exit target.
+    Block,
+    /// `loop (empty)` — the `while` back-edge target.
+    Loop,
+    /// `if (empty)` — statement-position conditional (no result value).
+    If,
+    Else,
+    End,
+    Br(u32),
+    BrIf(u32),
+    Return,
+    I32Eqz,
+    I32Add,
+    I32Sub,
+    I32Mul,
+    I32DivS,
+    I32Eq,
+    I32Ne,
+    I32LtS,
+    I32LeS,
+    I32GtS,
+    I32GeS,
+    I64Add,
+    I64Sub,
+    I64Mul,
+    F32Add,
+    F32Sub,
+    F32Mul,
+    F32Div,
+    F32Eq,
+    F32Ne,
+    F32Lt,
+    F32Le,
+    F32Gt,
+    F32Ge,
+    F64Add,
+    F64Sub,
+    F64Mul,
+    F64Div,
+    F64Eq,
+    F64Ne,
+    F64Lt,
+    F64Le,
+    F64Gt,
+    F64Ge,
+    /// `cast<i32>(f32/f64 expr)` — saturating-free truncation (traps on
+    /// NaN/overflow, matching wasm core `i32.trunc_f*_s`).
+    I32TruncF32S,
+    I32TruncF64S,
+    F32ConvertI32S,
+    F64ConvertI32S,
 }
 
 /// Ownership discipline for a function parameter, emitted into the
@@ -297,6 +354,11 @@ pub struct Func {
     pub name: String,
     pub params: Vec<Wty>,
     pub results: Vec<Wty>,
+    /// Extra (non-param) locals, indexed after the params. Statement
+    /// lowering allocates these for `let` bindings, `region.get`
+    /// destinations, and the per-handle base-pointer copies that keep
+    /// L7/L10 param-use counts at exactly one.
+    pub locals: Vec<Wty>,
     pub body: Vec<Op>,
     pub accesses: Vec<AccessSite>,
     pub export: bool,
@@ -399,6 +461,54 @@ fn op_to_instruction(op: Op) -> Instruction<'static> {
         Op::F64Store { offset } => Instruction::F64Store(memarg(offset, 3)),
         Op::Call(i) => Instruction::Call(i),
         Op::Drop => Instruction::Drop,
+        Op::LocalSet(i) => Instruction::LocalSet(i),
+        Op::LocalTee(i) => Instruction::LocalTee(i),
+        Op::Block => Instruction::Block(BlockType::Empty),
+        Op::Loop => Instruction::Loop(BlockType::Empty),
+        Op::If => Instruction::If(BlockType::Empty),
+        Op::Else => Instruction::Else,
+        Op::End => Instruction::End,
+        Op::Br(d) => Instruction::Br(d),
+        Op::BrIf(d) => Instruction::BrIf(d),
+        Op::Return => Instruction::Return,
+        Op::I32Eqz => Instruction::I32Eqz,
+        Op::I32Add => Instruction::I32Add,
+        Op::I32Sub => Instruction::I32Sub,
+        Op::I32Mul => Instruction::I32Mul,
+        Op::I32DivS => Instruction::I32DivS,
+        Op::I32Eq => Instruction::I32Eq,
+        Op::I32Ne => Instruction::I32Ne,
+        Op::I32LtS => Instruction::I32LtS,
+        Op::I32LeS => Instruction::I32LeS,
+        Op::I32GtS => Instruction::I32GtS,
+        Op::I32GeS => Instruction::I32GeS,
+        Op::I64Add => Instruction::I64Add,
+        Op::I64Sub => Instruction::I64Sub,
+        Op::I64Mul => Instruction::I64Mul,
+        Op::F32Add => Instruction::F32Add,
+        Op::F32Sub => Instruction::F32Sub,
+        Op::F32Mul => Instruction::F32Mul,
+        Op::F32Div => Instruction::F32Div,
+        Op::F32Eq => Instruction::F32Eq,
+        Op::F32Ne => Instruction::F32Ne,
+        Op::F32Lt => Instruction::F32Lt,
+        Op::F32Le => Instruction::F32Le,
+        Op::F32Gt => Instruction::F32Gt,
+        Op::F32Ge => Instruction::F32Ge,
+        Op::F64Add => Instruction::F64Add,
+        Op::F64Sub => Instruction::F64Sub,
+        Op::F64Mul => Instruction::F64Mul,
+        Op::F64Div => Instruction::F64Div,
+        Op::F64Eq => Instruction::F64Eq,
+        Op::F64Ne => Instruction::F64Ne,
+        Op::F64Lt => Instruction::F64Lt,
+        Op::F64Le => Instruction::F64Le,
+        Op::F64Gt => Instruction::F64Gt,
+        Op::F64Ge => Instruction::F64Ge,
+        Op::I32TruncF32S => Instruction::I32TruncF32S,
+        Op::I32TruncF64S => Instruction::I32TruncF64S,
+        Op::F32ConvertI32S => Instruction::F32ConvertI32S,
+        Op::F64ConvertI32S => Instruction::F64ConvertI32S,
     }
 }
 
@@ -443,7 +553,8 @@ pub fn emit(module: &Module) -> Vec<u8> {
         let global_idx = import_count + local_i as u32;
         funcs.function(global_idx);
 
-        let mut f = Function::new([]);
+        let mut f =
+            Function::new_with_locals_types(func.locals.iter().map(|l| l.to_val_type()));
         for op in &func.body {
             f.instruction(&op_to_instruction(*op));
         }
@@ -606,6 +717,7 @@ pub fn example01() -> Module {
             name: "get_player_hp".into(),
             params: vec![Wty::I32, Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
             accesses: vec![AccessSite {
                 region: 1,
@@ -619,6 +731,7 @@ pub fn example01() -> Module {
             name: "damage_player".into(),
             params: vec![Wty::I32, Wty::I32, Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::LocalGet(2), Op::I32Store { offset: 0 }],
             accesses: vec![AccessSite {
                 region: 1,
@@ -633,6 +746,7 @@ pub fn example01() -> Module {
             name: "get_enemy_target_hp".into(),
             params: vec![Wty::I32, Wty::I32, Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
             accesses: vec![
                 AccessSite {
@@ -653,6 +767,7 @@ pub fn example01() -> Module {
             name: "count_active_enemies".into(),
             params: vec![Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![Op::I32Const(0)],
             accesses: vec![AccessSite {
                 region: 2,
@@ -666,6 +781,7 @@ pub fn example01() -> Module {
             name: "move_player".into(),
             params: vec![Wty::I32, Wty::I32, Wty::F32, Wty::F32],
             results: vec![],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0),
                 Op::LocalGet(2),
@@ -746,6 +862,7 @@ pub fn paint_type_tile() -> Module {
             name: "alloc_tile".into(),
             params: vec![Wty::I32, Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::Drop, Op::I32Const(0)],
             accesses: vec![],
             export: true,
@@ -756,6 +873,7 @@ pub fn paint_type_tile() -> Module {
             name: "free_tile".into(),
             params: vec![Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::Drop],
             accesses: vec![],
             export: true,
@@ -766,6 +884,7 @@ pub fn paint_type_tile() -> Module {
             name: "fill_tile".into(),
             params: vec![Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0), Op::Drop,
                 Op::LocalGet(1), Op::Drop,
@@ -784,6 +903,7 @@ pub fn paint_type_tile() -> Module {
             name: "read_pixel".into(),
             params: vec![Wty::I32, Wty::I32, Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0), Op::Drop,
                 Op::LocalGet(1), Op::Drop,
@@ -800,6 +920,7 @@ pub fn paint_type_tile() -> Module {
             name: "write_pixel".into(),
             params: vec![Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32, Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0), Op::Drop,
                 Op::LocalGet(1), Op::Drop,
@@ -820,6 +941,7 @@ pub fn paint_type_tile() -> Module {
             name: "blit_tile".into(),
             params: vec![Wty::I32, Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0), Op::Drop,
                 Op::LocalGet(1), Op::Drop,
@@ -893,6 +1015,7 @@ pub fn paint_type_layer() -> Module {
             name: "stack_new".into(),
             params: vec![],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![Op::I32Const(0)],
             accesses: vec![],
             export: true,
@@ -902,6 +1025,7 @@ pub fn paint_type_layer() -> Module {
             name: "stack_free".into(),
             params: vec![Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::Drop],
             accesses: vec![],
             export: true,
@@ -911,6 +1035,7 @@ pub fn paint_type_layer() -> Module {
             name: "push_layer".into(),
             params: vec![Wty::I32, Wty::I32, Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0), Op::Drop,
                 Op::LocalGet(1), Op::Drop,
@@ -929,6 +1054,7 @@ pub fn paint_type_layer() -> Module {
             name: "get_id_at".into(),
             params: vec![Wty::I32, Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0), Op::Drop,
                 Op::LocalGet(1), Op::Drop,
@@ -944,6 +1070,7 @@ pub fn paint_type_layer() -> Module {
             name: "set_opacity".into(),
             params: vec![Wty::I32, Wty::I32, Wty::I32],
             results: vec![Wty::I32],
+            locals: vec![],
             body: vec![
                 Op::LocalGet(0), Op::Drop,
                 Op::LocalGet(1), Op::Drop,
@@ -1003,6 +1130,7 @@ pub fn multimodule_callee() -> Module {
             name: "consume".into(),
             params: vec![Wty::I32],
             results: vec![],
+            locals: vec![],
             body: vec![Op::LocalGet(0), Op::Drop], // uses the Linear param once
             accesses: vec![],
             export: true,
@@ -1035,6 +1163,7 @@ pub fn multimodule_caller(call_count: u32) -> Module {
             name: "use_resource".into(),
             params: vec![Wty::I32],
             results: vec![],
+            locals: vec![],
             body,
             accesses: vec![],
             export: false,

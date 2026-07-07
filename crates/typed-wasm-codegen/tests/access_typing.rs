@@ -122,6 +122,7 @@ fn teeth_wrong_width_is_type_mismatch() {
         name: "bad".into(),
         params: vec![Wty::I32],
         results: vec![Wty::I32],
+        locals: vec![],
         body: vec![Op::LocalGet(0), Op::I32Load { offset: 4 }],
         accesses: vec![pinned(0, 1, 1)], // field 1 = b (u8)
         export: true,
@@ -147,6 +148,7 @@ fn teeth_wrong_offset_is_offset_mismatch() {
         name: "bad".into(),
         params: vec![Wty::I32],
         results: vec![Wty::I32],
+        locals: vec![],
         body: vec![Op::LocalGet(0), Op::I32Load { offset: 99 }],
         accesses: vec![pinned(0, 0, 1)], // field 0 = a (i32 @0)
         export: true,
@@ -174,6 +176,7 @@ fn teeth_non_memory_op_is_rejected() {
         name: "bad".into(),
         params: vec![Wty::I32],
         results: vec![],
+        locals: vec![],
         body: vec![Op::LocalGet(0), Op::Drop],
         accesses: vec![pinned(0, 0, 1)], // index 1 = Drop
         export: true,
@@ -196,6 +199,7 @@ fn teeth_index_past_end_is_out_of_range() {
         name: "bad".into(),
         params: vec![Wty::I32],
         results: vec![Wty::I32],
+        locals: vec![],
         body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
         accesses: vec![pinned(0, 0, 9)], // body has 3 ops incl End
         export: true,
@@ -228,6 +232,7 @@ fn teeth_field_past_region_size_is_out_of_region() {
         name: "bad".into(),
         params: vec![Wty::I32],
         results: vec![Wty::I64],
+        locals: vec![],
         body: vec![Op::LocalGet(0), Op::I64Load { offset: 0 }],
         accesses: vec![pinned(0, 0, 1)],
         export: true,
@@ -257,6 +262,7 @@ fn teeth_correct_handbuilt_site_type_verifies() {
         name: "good".into(),
         params: vec![Wty::I32],
         results: vec![Wty::I32],
+        locals: vec![],
         body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
         accesses: vec![pinned(0, 0, 1)], // field 0 = a (i32 @0)
         export: true,
