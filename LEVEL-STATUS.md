@@ -129,8 +129,9 @@ this crate re-checks them on the emitted IR to catch codegen bugs.
 | Source checker | Source program respects discipline | `hyperpolymath/affinescript:lib/codegen.ml` (QTT pass), upcoming `.twasm` parser/checker |
 | **Post-codegen verifier** | **Emitted wasm respects discipline** | **`crates/typed-wasm-verify/` (Rust)** + `hyperpolymath/affinescript:lib/{tw_verify,tw_interface}.ml` (OCaml, reference impl) |
 
-The Rust crate is a faithful port of the OCaml reference; the OCaml
-files remain the spec of record. The synthetic-fixture cross-compat
+The Rust crate + Idris2 `VerifierSpec.idr` are the **spec of record**
+(ADR-0008, 2026-07-07); the OCaml files are a conforming
+implementation. The synthetic-fixture cross-compat
 suite at `crates/typed-wasm-verify/tests/cross_compat.rs` is the
 parity oracle; **C5.1** (`tests/cross_compat_real.rs`, landed
 2026-05-27 via PR #81) cross-checks it against real

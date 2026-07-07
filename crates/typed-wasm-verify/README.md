@@ -24,12 +24,7 @@ for each entry:
 
 ## Spec of record
 
-This crate is a Rust port of `hyperpolymath/affinescript`:
-
-- `lib/tw_verify.ml` — intra-function verifier (~246 LOC OCaml)
-- `lib/tw_interface.ml` — cross-module boundary verifier (~245 LOC OCaml)
-
-The OCaml files remain the spec of record until behavioural parity is established by the cross-compat test suite (workspace task C5).
+**This crate + the Idris2 `VerifierSpec.idr` ARE the spec of record** (ADR-0008, 2026-07-07). The crate began as a Rust port of `hyperpolymath/affinescript`'s `lib/tw_verify.ml` / `lib/tw_interface.ml`; the parity criterion those files were pinned behind (workspace task C5) was met by `tests/cross_compat.rs` (synthetic table) + `tests/cross_compat_real.rs` (real producer bytes), and the crate has since grown past the OCaml reference (L13 both forms, L2/L15 carriers, link-graph certification, third-producer conformance). The OCaml files are a conforming implementation; on divergence, they are presumed wrong unless `src/abi/TypedWasm/ABI/VerifierSpec.idr` says otherwise.
 
 ## Consumers
 

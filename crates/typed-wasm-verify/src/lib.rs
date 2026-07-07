@@ -8,12 +8,11 @@
 // section, then runs per-path min/max use-range analysis on every
 // function body in the module.
 //
-// Rust port of hyperpolymath/affinescript:
-//   - lib/tw_verify.ml    (intra-function verifier, ~246 lines OCaml)
-//   - lib/tw_interface.ml (cross-module boundary verifier, ~245 lines OCaml)
-//
-// The OCaml files are the spec of record until this crate reaches
-// behavioural parity (tracked by C5 in the workspace task list).
+// SPEC OF RECORD (ADR-0008): this crate, with the formal statement in
+// src/abi/TypedWasm/ABI/VerifierSpec.idr (+ MultiModule.idr for the
+// cross-module layer). Historically a Rust port of affinescript's
+// lib/tw_verify.ml / lib/tw_interface.ml — those OCaml files are now a
+// conforming implementation, pinned by the cross_compat parity suites.
 
 use thiserror::Error;
 
