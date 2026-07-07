@@ -1,0 +1,123 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+= Proposal 0005: Effects Carrier Section (`typedwasm.effects`)
+:toc: preamble
+:icons: font
+
+[cols="1,3"]
+|===
+| Status       | draft — for owner ratification
+| Author       | hyperpolymath
+| Date         | 2026-07-07
+| Level        | L8 (effect tracking) on emitted bytes
+| Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (regions), link:0002-access-site-carrier.adoc[Proposal 0002] (access-sites)
+| Sibling      | link:0006-lifetime-intervals-carrier.adoc[Proposal 0006] (L9 lifetime intervals — drafted together so producers adopt both in one codegen pass)
+|===
+
+== Context
+
+L8 is proven at the spec level (`Effects.idr`: `MemEffect`,
+`EffectSet`, `EffectSubsumes`, the A5 composition theorems ending in
+`subsumeCompose`) and declared at the source level (the `effects
+{ … }` clause, which the canonical front-end parses and currently
+discards). Nothing carries the declaration to the bytes, so a "pure"
+function that secretly writes memory is undetectable post-codegen —
+exactly the failure class L8 exists for.
+
+Both sibling producers are approaching effect/lifetime analysis now
+(AffineScript via its Polonius sketch, ephapax via choreographic-
+tropical regions). Defining the wire format FIRST is the point of this
+proposal: producers converge on typed-wasm's format instead of
+inventing two.
+
+== Wire format — `typedwasm.effects`
+
+u16le version; LEB128 elsewhere; lenient truncation
+(`section.rs::LenientReader` conventions, byte-identical style to
+proposals 0002/0003).
+
+----
+u16le  version                  (= 1)
+leb    entry_count
+for each entry:
+    leb    func_idx             (GLOBAL function index)
+    leb    effect_count
+    for each effect:
+        u8     kind             (0=Read, 1=Write, 2=Alloc, 3=Free,
+                                 4=ReadRegion, 5=WriteRegion)
+        [kinds 4,5 only:]
+        leb    region_id        (index into typedwasm.regions table)
+----
+
+A module emitting `typedwasm.effects` with any region-scoped effect
+MUST also emit `typedwasm.regions` (`MissingDependentCarrier`
+otherwise). Absence of the section = no L8 claim (not a purity claim).
+A function ABSENT from the table makes no claim; a function PRESENT
+with an empty effect set claims **purity** — the strongest claim.
+
+== Mapping to the spec types
+
+[cols="1,2"]
+|===
+| Wire | Idris2 (`Effects.idr`)
+
+| per-entry effect list | `EffectSet = List MemEffect` (line 80)
+| `kind` 0–5 | `MemEffect` constructors 1:1 (line 38)
+| verifier pass | constructs `EffectSubsumes declared actual` (line 129) via `RegionEffectSubsumes` covers (`Read` covers `ReadRegion r`, etc., line 149)
+| cross-function composition | `subsumeCompose` (A5): concatenated declared sets subsume concatenated actual sets — the pass may check callers against callee summaries additively
+|===
+
+== Verifier obligations (`unstable-l8` cargo feature)
+
+`verify_effects_from_module`:
+
+. Decode each declared function's body. Every memory **load** must be
+  covered by a declared `Read`, or by `ReadRegion(r)` where `r` is the
+  region attributed to that instruction by a pinned
+  `typedwasm.access-sites` entry. Every **store** likewise via
+  `Write`/`WriteRegion`. A load/store with no pinned site requires the
+  blanket form (`Read`/`Write`) — region-scoped declarations are only
+  as precise as the access-site coverage.
+. A function claiming purity (present, empty set) must contain no
+  loads/stores and no calls to non-pure declared functions.
+. `Alloc`/`Free` are carried but **unchecked in v1** — no wasm-level
+  alloc/free instruction exists yet to check against; they become
+  checkable when region.alloc/free lower to calls (documented gap, not
+  silent).
+. Errors: `UndeclaredRead { func_idx, instr }`, `UndeclaredWrite`,
+  `RegionEffectMismatch { declared_region, actual_region }`,
+  `ImpureCall { caller, callee }`, `MissingDependentCarrier`.
+
+== Producer obligations
+
+. The in-tree front-end emits from the already-parsed `effects { … }`
+  clause (currently discarded — emission is wiring, not analysis).
+. Region names in source resolve to `region_id` via the module's own
+  regions table; unresolvable names are a codegen error.
+. Producers MUST NOT declare narrower effects than their bodies
+  perform; the verifier refutes it, but emitting known-false claims is
+  a producer bug.
+
+== Coordination
+
+* `affinescript` — `effects` exist in its type system; emission rides
+  the same codegen pass as `typedwasm.ownership`.
+* `ephapax` — effect discipline is implicit in its linear/affine core;
+  the blanket `Read`/`Write` forms are emittable immediately, region
+  forms after its access-sites adoption (ephapax#251).
+
+== Open questions
+
+. **Call-graph closure.** v1 checks bodies locally + direct calls
+  against callee claims. Indirect calls (`call_indirect`) make every
+  effect possible — v1 requires functions performing indirect calls to
+  declare blanket `Read` + `Write`. Revisit with a table-typing story.
+. **Alloc/Free checkability** — see verifier obligation 3.
+
+== Acceptance criteria
+
+Mirrors proposal 0003: codec + pass behind `unstable-l8` with
+round-trip + refutation tests; in-tree producer emission from the six
+examples' `effects` clauses; spec doc section; cross-repo adoption
+issues. On acceptance, promoted to an ADR.
