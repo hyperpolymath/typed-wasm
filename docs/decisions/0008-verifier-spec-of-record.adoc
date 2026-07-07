@@ -1,0 +1,101 @@
+= Architecture Decision Record: 0008-verifier-spec-of-record
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk> -->
+
+# 8. `typed-wasm-verify` + the Idris2 `VerifierSpec` are the spec of record
+
+Date: 2026-07-07
+
+## Status
+
+Accepted
+
+Owner direction (2026-07-07 session, independence construction path,
+item 4): flip the wire-level verifier's spec-of-record from
+AffineScript's OCaml files to this repository. Companion to
+link:0006-rust-frontend-canonical.adoc[ADR-0006] (which made the
+in-tree Rust parser the canonical front-end); this ADR removes the last
+structural dependency on a sibling repository.
+
+## Context
+
+`crates/typed-wasm-verify` began as a Rust port of
+`hyperpolymath/affinescript`'s `lib/tw_verify.ml` (intra-function
+L7/L10) and `lib/tw_interface.ml` (cross-module boundary). The port's
+own README pinned the handover criterion:
+
+> The OCaml files remain the spec of record until behavioural parity is
+> established by the cross-compat test suite (workspace task C5).
+
+That criterion is met, and exceeded:
+
+* **C5 synthetic parity** — `tests/cross_compat.rs` (10 tests): a
+  hand-built fixture table exercising both verifiers' semantics
+  (accept + reject cases, intra- and cross-module), green.
+* **C5.1 real-producer parity** — `tests/cross_compat_real.rs`
+  (5 tests) against real AffineScript-emitted bytes
+  (`tests/fixtures/c5_real/`, capture pinned to affinescript
+  `21edc159`), green.
+* Since the criterion was written, the Rust crate has grown **past**
+  the OCaml reference: L13 negative-form isolation (PR #37), carrier
+  passes for L2/L15 (`unstable-l2`/`unstable-l15`), L13 positive-form
+  region imports + link-graph certification
+  (link:0007-region-imports-carrier.adoc[ADR-0007]), access-typing,
+  and third-producer conformance (`tests/third_producer_zig.rs`). The
+  OCaml files cannot serve as spec of record for behaviour they do not
+  implement.
+* The formal side already lives here:
+  `src/abi/TypedWasm/ABI/VerifierSpec.idr` (total, no escape hatches)
+  states what the verifier must decide; `MultiModule.idr` grounds the
+  cross-module certificates.
+
+## Decision
+
+1. **Spec of record for wire-level verification is this repository**:
+   the Idris2 `VerifierSpec.idr` (and `MultiModule.idr` for the
+   cross-module layer) as the formal statement, and
+   `crates/typed-wasm-verify` as the executable reference.
+2. **AffineScript's `lib/tw_verify.ml` / `lib/tw_interface.ml` are
+   demoted to a conforming implementation** (and historical origin).
+   On any behavioural divergence, the OCaml side is presumed wrong
+   unless the Idris2 spec says otherwise; fixes flow AffineScript-ward.
+3. **The parity suites remain as regression armour**, not as a
+   pending criterion: `cross_compat.rs` / `cross_compat_real.rs` keep
+   pinning the shared semantics so the demoted implementation cannot
+   silently drift while it remains in use.
+4. AffineScript's eventual adoption of `typed-wasm-verify` as its
+   verifier (its Track B, queued for its v1.0) retires the OCaml files
+   entirely; that is AffineScript's call to schedule.
+
+## Consequences
+
+### Positive
+
+- typed-wasm's verification semantics are defined, proven, implemented,
+  and tested in one repository — the compile-target independence
+  property, completed on the verifier axis.
+- New carriers (ADR-0007 and the coming L8/L9 proposals) have exactly
+  one place to specify behaviour; no cross-repo spec drift is possible.
+
+### Negative
+
+- The OCaml implementation persists in AffineScript until its Track B
+  lands; until then two implementations exist and the parity suites are
+  load-bearing (they already run in CI here).
+
+### Neutral
+
+- No wire-format change; no producer is affected.
+
+## Cross-references
+
+* link:0006-rust-frontend-canonical.adoc[ADR-0006] — front-end
+  canonicalisation (the sibling decision on the parser axis)
+* link:0007-region-imports-carrier.adoc[ADR-0007] — first carrier
+  specified wholly under the new regime
+* `src/abi/TypedWasm/ABI/VerifierSpec.idr`, `MultiModule.idr` — the
+  formal spec layer
+* `crates/typed-wasm-verify/tests/cross_compat.rs`,
+  `tests/cross_compat_real.rs` — the met parity criterion
+* `crates/typed-wasm-verify/tests/third_producer_zig.rs` — producer
+  neutrality under the new regime
