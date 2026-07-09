@@ -276,3 +276,7 @@ MPL-2.0
 == Author
 
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+== Layering contract
+
+Contributors (human/LLM/LAM): read link:CONTRACT.adoc[CONTRACT.adoc] before changing the wire format or dependencies. It is machine-enforced by `tools/check-contract.sh`.

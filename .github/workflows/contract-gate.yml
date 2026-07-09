@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MPL-2.0
+# Layering-contract gate: enforces the inter-project invariants (I1 dependency
+# direction + I3 shared-ABI drift) that keep this repo composable with the rest
+# of the stack. See CONTRACT.adoc. Self-contained (no reusable); runnable
+# locally as tools/check-contract.sh.
+name: Contract Gate
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, master]
+permissions:
+  contents: read
+concurrency:
+  group: contract-gate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contract:
+    name: Layering contract (I1 + I3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4.2.2
+      - name: Run contract gate
+        run: bash tools/check-contract.sh

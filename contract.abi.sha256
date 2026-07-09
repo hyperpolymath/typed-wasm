@@ -1,0 +1,4 @@
+# ABI-anchor digests (abi_version=1). DO NOT hand-edit.
+# Re-seal ONLY with an abi_version bump + an ADR. tools/check-contract.sh --reseal
+ffac6e2342498c4e189461bd3a9e799ab4786bf0e7970e37ea42af62fb116ad0  crates/typed-wasm-verify/src/section.rs::ownership
+ae1625ae210ebbe6e406a215e747d0102948c9169b6551b6e09b8fe482126902  crates/typed-wasm-verify/src/section.rs::regions
