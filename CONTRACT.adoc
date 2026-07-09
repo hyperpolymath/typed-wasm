@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+= typed-wasm — Layering Contract
+:toc: macro
+
+[IMPORTANT]
+====
+This file is the *contract* for anyone — human, LLM, or LAM — working in this
+repo. It states what you *must*, *should*, and *could* do, and what you *must
+not*, *should not*, and *cannot* do, so that independent work here can never
+silently *detach* typed-wasm from the projects it composes with. The
+machine-checked subset is enforced by `tools/check-contract.sh` (config in
+`contract.config.sh`); read "Enforcement" at the bottom.
+====
+
+toc::[]
+
+== Where typed-wasm sits
+
+[source]
+----
+systemet (theory) <- anytype (kernel) <- AffineScript (profile) --emits--> typed-wasm  <--emits-- ephapax
+                                                                             (this repo:
+                                                                              shared target)
+----
+
+typed-wasm is a *language-agnostic, verified compilation target*. It is
+consumed by *multiple independent producers* — today AffineScript and ephapax,
+tomorrow an anytype-derived producer. It is downstream of nobody: it defines a
+contract that others meet.
+
+== The estate invariants (why this file exists)
+
+- *I1 — dependency direction is one-way.* No downstream/sibling repo may be a
+  dependency of typed-wasm. (Enforced.)
+- *I2 — extend, don't redefine.* Additions are fine; redefining a published
+  contract needs an ADR in the owning repo.
+- *I3 — the `typedwasm.*` wire ABI is a multi-producer contract.* It changes
+  only via a coordinated ADR referenced by *every* producer, with an
+  `abi_version` bump. Never unilaterally. (Enforced — the keystone.)
+- *I4 — role purity.* typed-wasm is a *target + verifier*, not a compiler for
+  any one language.
+
+== Rules for this repo
+
+=== MUST
+- Treat the `typedwasm.ownership` / `typedwasm.regions` / capability wire
+  formats as a *versioned, multi-producer ABI*. The verifier's byte codec is
+  the single source of truth; the anchored byte-spec comments in
+  `crates/typed-wasm-verify/src/section.rs` are that truth in prose.
+- Keep the Rust verifier and the Idris2 level proofs the authority; keep
+  cross-producer conformance fixtures green.
+- Bump `CONTRACT_ABI_VERSION` (`contract.config.sh`) + reference a coordinated
+  ADR + re-seal (`tools/check-contract.sh --reseal`) for *any* wire-format
+  change, and land the matching change in every producer in lock-step.
+
+=== SHOULD
+- Add new levels / sections *additively* and behind feature flags
+  (e.g. `unstable-l2`) so existing producers keep verifying unchanged.
+- Version each carrier section explicitly (as `REGIONS_SECTION_VERSION` does).
+
+=== COULD
+- Grow the level proofs, the verifier, the codegen crate, tooling, docs — all
+  role-local and free.
+- Add new producers to the conformance suite.
+
+=== MUST NOT
+- Change an *existing* section's byte format unilaterally, or without a
+  version bump + coordinated ADR + every-producer update. This is the classic
+  detachment: "time to tidy this format" silently breaks AffineScript's and
+  ephapax's emitters. The gate stops it.
+- Assume a single producer, or bake producer-specific lowering into the shared
+  format.
+- Depend on `affinescript`, `ephapax`, `anytype`, or `systemet`.
+
+=== SHOULD NOT
+- Let the prose byte-spec (the anchored comments) drift from the codec.
+
+=== CANNOT (structural — the gate fails the build)
+- Reference a downstream/sibling repo as a dependency (I1).
+- Alter an anchored wire-format region without bumping `abi_version` and
+  re-sealing (I3).
+
+== Enforcement
+
+`tools/check-contract.sh` (wired into CI via `.github/workflows/contract-gate.yml`,
+and runnable locally / as a pre-commit step):
+
+- *I1 (blocking):* scans manifests + `.gitmodules` for a forbidden dependency.
+- *I3 (blocking):* content-hashes the `CONTRACT-ABI-ANCHOR` regions in
+  `section.rs` against sealed digests in `contract.abi.sha256`; any change fails
+  until you bump `abi_version`, cite an ADR, and `--reseal`.
+- *I4 (advisory):* role-purity greps (none for a target).
+
+To change the ABI (the *only* correct way): open a coordinated ADR across
+typed-wasm + AffineScript + ephapax, bump `CONTRACT_ABI_VERSION`, edit the
+format, `tools/check-contract.sh --reseal`, and update every producer's emitter
+in the same landing.

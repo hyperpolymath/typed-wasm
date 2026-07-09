@@ -3,6 +3,7 @@
 //
 // `typedwasm.ownership` custom-section codec.
 //
+// >>> CONTRACT-ABI-ANCHOR ownership  (see /CONTRACT.adoc; change only via a coordinated ADR + abi_version bump)
 // Wire format (little-endian, byte-aligned):
 //
 //   u32le  count
@@ -11,6 +12,7 @@
 //     u8     n_params
 //     u8[n]  param_kinds  (0=Unrestricted, 1=Linear, 2=SharedBorrow, 3=ExclBorrow)
 //     u8     ret_kind
+// <<< CONTRACT-ABI-ANCHOR ownership
 //
 // Rust port of `Tw_verify.parse_ownership_section_payload` plus the
 // inverse encoder mirroring `Codegen.build_ownership_section`. The OCaml
@@ -248,6 +250,7 @@ mod tests {
 // UNSTABLE: the wire format here may change before the proposal moves to
 // [accepted].
 //
+// >>> CONTRACT-ABI-ANCHOR regions  (see /CONTRACT.adoc; change only via a coordinated ADR + abi_version bump)
 // Wire format (little-endian, byte-aligned, lenient on truncation —
 // matches the LenientReader pattern used by ownership):
 //
@@ -266,6 +269,7 @@ mod tests {
 //           u8     nullability   (0=NonNull, 1=Nullable)
 //           u32le  cardinality   (1=single, n>1=fixed array, 0=unbounded/dynamic)
 //       u32le  region_byte_size  (sum-check; verifier may compare to its own calc)
+// <<< CONTRACT-ABI-ANCHOR regions
 //
 // L15 capabilities (`typedwasm.capabilities`) and the access-site mapping
 // from wasm `memarg` back to (region, field) are out of scope of this
