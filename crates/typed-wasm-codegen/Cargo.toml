@@ -19,7 +19,7 @@ path = "src/bin/tw.rs"
 # Pinned to match typed-wasm-verify's wasmparser line exactly; the wasm
 # tooling 0.x series ships API breaks on minor bumps, so keep producer
 # and verifier on the same locked version.
-wasm-encoder = "=0.252.0"
+wasm-encoder = "=0.253.0"
 # WAT (text wasm) rendering for `tw build --emit wat` (Phase 1 deliverable 4, #125).
 wasmprinter = "=0.253.0"
 # The producer reuses the verifier's own carrier encoders so the emitted
