@@ -25,7 +25,8 @@
 //
 // Run:  node tests/property/property_test.mjs
 
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, copyFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -226,6 +227,40 @@ for (const path of EXAMPLES.slice(0, 3)) {
     bad(`${path}: parse result drifted across 5 trials (PRNG / state leak?)`);
   } else {
     ok(`${path}: 5 trials identical`);
+  }
+}
+
+// ----------------------------------------------------------------------
+// P9  Round-trip soundness (verify(codegen(parse(src))) == OK)
+// ----------------------------------------------------------------------
+section("P9. Round-trip soundness (verify(codegen(parse(src))) == OK)");
+
+const TW_BIN = join(ROOT, "target/debug/tw");
+const TW_VERIFY_BIN = join(ROOT, "target/debug/tw-verify");
+const FIXTURES_DIR = join(ROOT, "crates/typed-wasm-verify/tests/fixtures/c5_real");
+
+if (!existsSync(TW_BIN) || !existsSync(TW_VERIFY_BIN)) {
+  skip("P9: Codegen binaries not found (run `cargo build` first)");
+} else {
+  mkdirSync(FIXTURES_DIR, { recursive: true });
+  for (const path of EXAMPLES) {
+    const filename = path.split("/").pop();
+    const tempWasm = join(ROOT, `temp_${filename}.wasm`);
+    const fixturePath = join(FIXTURES_DIR, `${filename.replace(".twasm", ".wasm")}`);
+
+    try {
+      execSync(`${TW_BIN} build ${path} -o ${tempWasm}`, { stdio: 'pipe' });
+      execSync(`${TW_VERIFY_BIN} ${tempWasm}`, { stdio: 'pipe' });
+      copyFileSync(tempWasm, fixturePath);
+      ok(`${path}: verify(codegen) == OK`);
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString() : e.message;
+      bad(`${path}: codegen or verify failed:\n${stderr}`);
+    } finally {
+      if (existsSync(tempWasm)) {
+        try { import("node:fs").then(fs => fs.rmSync(tempWasm)); } catch {}
+      }
+    }
   }
 }
 
