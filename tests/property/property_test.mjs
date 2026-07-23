@@ -26,7 +26,7 @@
 // Run:  node tests/property/property_test.mjs
 
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, copyFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -249,8 +249,8 @@ if (!existsSync(TW_BIN) || !existsSync(TW_VERIFY_BIN)) {
     const fixturePath = join(FIXTURES_DIR, `${filename.replace(".twasm", ".wasm")}`);
 
     try {
-      execSync(`${TW_BIN} build ${path} -o ${tempWasm}`, { stdio: 'pipe' });
-      execSync(`${TW_VERIFY_BIN} ${tempWasm}`, { stdio: 'pipe' });
+      execFileSync(TW_BIN, ['build', path, '-o', tempWasm], { stdio: 'pipe' });
+      execFileSync(TW_VERIFY_BIN, [tempWasm], { stdio: 'pipe' });
       copyFileSync(tempWasm, fixturePath);
       ok(`${path}: verify(codegen) == OK`);
     } catch (e) {
