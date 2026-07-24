@@ -453,9 +453,10 @@ console.log(
 // provide ECHIDNA with proof-of-absence obligations that can be independently
 // verified.
 
-import { readFileSync as _readFileSync } from "node:fs";
+import { readFileSync as _readFileSync, writeFileSync as _writeFileSync, rmSync as _rmSync, existsSync as _existsSync } from "node:fs";
 import { resolve as _resolve } from "node:path";
 import { fileURLToPath as _fileURLToPath } from "node:url";
+import { execSync as _execSync } from "node:child_process";
 
 // _thisFile is the path to this harness file, not a directory.
 // The resolve chain strips the filename (first ..) then navigates to the layout dir.
@@ -557,6 +558,54 @@ console.log(listCheck.ok ? "  ✓ Stdlib.idr: List uses WHT_Var 0 (no placeholde
                          : `  ✗ list-layout: ${listCheck.reason}`);
 
 // ============================================================================
+// Property 6: Fuzzing Round-Trip Soundness (verify(codegen(parse)))
+// ============================================================================
+console.log("\nProperty 6: Fuzzing Round-Trip Soundness");
+
+const TW_BIN = _resolve(_thisFile, "..", "..", "..", "target", "debug", "tw");
+const TW_VERIFY_BIN = _resolve(_thisFile, "..", "..", "..", "target", "debug", "tw-verify");
+
+let soundnessPass = 0;
+let soundnessFail = 0;
+let soundnessSkipped = 0;
+
+if (!_existsSync(TW_BIN) || !_existsSync(TW_VERIFY_BIN)) {
+  console.log("  SKIP: Codegen binaries not found. Run `cargo build` first.");
+  soundnessSkipped = Math.min(iterations, 50);
+} else {
+  const maxIterations = process.env.EXHAUSTIVE_FUZZ ? iterations : Math.min(iterations, 50);
+  if (!process.env.EXHAUSTIVE_FUZZ && iterations > 50) {
+    console.log(`  (Capping codegen fuzzing to 50 iterations. Set EXHAUSTIVE_FUZZ=1 for all ${iterations})`);
+  }
+  
+  for (let i = 0; i < maxIterations; i++) {
+    const rng = new RNG(i + 50000);
+    const prog = genProgram(rng);
+    const result = parseModule(prog);
+
+    if (result.TAG === "Ok") {
+      property(`round-trip soundness seed=${i}`, () => {
+        const tempSrc = _resolve(_thisFile, "..", `temp_${i}.twasm`);
+        const tempWasm = _resolve(_thisFile, "..", `temp_${i}.wasm`);
+        try {
+          _writeFileSync(tempSrc, prog);
+          _execSync(`${TW_BIN} build ${tempSrc} -o ${tempWasm}`, { stdio: 'pipe' });
+          _execSync(`${TW_VERIFY_BIN} ${tempWasm}`, { stdio: 'pipe' });
+          soundnessPass++;
+        } catch (e) {
+          soundnessFail++;
+          const stderr = e.stderr ? e.stderr.toString() : e.message;
+          throw new Error(`Codegen or verify failed: ${stderr}`);
+        } finally {
+          try { _rmSync(tempSrc); } catch {}
+          try { _rmSync(tempWasm); } catch {}
+        }
+      });
+    }
+  }
+}
+
+// ============================================================================
 // ECHIDNA Submission
 // ============================================================================
 
@@ -623,6 +672,16 @@ try {
             : `Stripping effects from .twasm source left the AST structurally ` +
               `unchanged modulo proof-only keys (effects, caps, loc) in ` +
               `${erasureMatched}/${erasurePairs} successful pairs.`,
+        },
+        {
+          name: "fuzz-round-trip-soundness",
+          status: soundnessSkipped > 0 ? "info" : (soundnessFail === 0 && soundnessPass > 0 ? "proved" : "failed"),
+          successes: soundnessPass,
+          failures: soundnessFail,
+          skipped: soundnessSkipped,
+          detail: soundnessSkipped > 0 
+            ? "Skipped due to missing codegen binaries" 
+            : `${soundnessPass} passed, ${soundnessFail} failed round-trip`,
         },
       ],
     }),
