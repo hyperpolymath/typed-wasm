@@ -30,7 +30,7 @@ typed-wasm-verify = { path = "../typed-wasm-verify", features = ["unstable-l2", 
 [dev-dependencies]
 # Round-trip test validates the emitted module is well-formed wasm before
 # handing it to the verifier.
-wasmparser = "=0.253.0"
+wasmparser = "=0.254.0"
 # In-process wasm engine for the Tier-1 differential execution gate
 # (tests/execute_lowering.rs): proves lowered store/load bodies COMPUTE the
 # right memory semantics at runtime, not just that they validate. Pure-Rust so
