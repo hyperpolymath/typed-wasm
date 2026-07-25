@@ -204,7 +204,7 @@ dependencies = [
  "typed-wasm-verify",
  "wasm-encoder",
  "wasmi",
- "wasmparser 0.253.0",
+ "wasmparser 0.254.0",
  "wasmprinter",
 ]
 
@@ -223,8 +223,8 @@ name = "typed-wasm-verify"
 version = "0.1.0"
 dependencies = [
  "thiserror",
- "wasm-encoder",
- "wasmparser 0.253.0",
+ "wasm-encoder 0.253.0",
+ "wasmparser 0.254.0",
 ]
 
 [[package]]
@@ -307,10 +307,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19db11f87d2486580e1e8b6f494c54df7e0566b87d0b599db843c24019667339"
 dependencies = [
  "bitflags",
- "hashbrown 0.17.1",
  "indexmap",
  "semver",
- "serde",
 ]
 
 [[package]]
@@ -320,8 +318,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5769a29f799fbab136aaf65b4fe5384cd7d93fe6fc9ba0dcb6c8382a1f16e27"
 dependencies = [
  "bitflags",
+ "hashbrown 0.17.1",
  "indexmap",
  "semver",
+ "serde",
 ]
 
 [[package]]
