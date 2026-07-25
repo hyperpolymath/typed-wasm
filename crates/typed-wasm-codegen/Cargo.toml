@@ -21,7 +21,7 @@ path = "src/bin/tw.rs"
 # and verifier on the same locked version.
 wasm-encoder = "=0.254.0"
 # WAT (text wasm) rendering for `tw build --emit wat` (Phase 1 deliverable 4, #125).
-wasmprinter = "=0.253.0"
+wasmprinter = "=0.254.0"
 # The producer reuses the verifier's own carrier encoders so the emitted
 # typedwasm.regions / typedwasm.access-sites bytes cannot drift from the
 # decoder the verifier runs. `unstable-l2` gates those encoders.
