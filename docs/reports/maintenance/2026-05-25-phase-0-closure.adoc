@@ -53,7 +53,7 @@ Phase 1.
        `tests/proof/regression.mjs` (25 + optional idris2 layer).
        The new security-envelope caught two real bugs the moment it
        ran: `.well-known/security.txt` still had template placeholders
-       (`{{SECURITY_EMAIL}}`, `{{PGP_KEY_URL}}`, `{{FORGE}}`,
+       (`{{SECURITY_EMAIL}}`, `{{PGP_KEY_URL}}`, `github.com`,
        `{{WEBSITE}}`), and `ffi/zig/src/main.zig` plus
        `.machine_readable/scripts/forge/git-cleanup.sh` were missing
        SPDX headers. Fixed in the same commit.
