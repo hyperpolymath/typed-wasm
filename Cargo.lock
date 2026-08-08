@@ -202,7 +202,7 @@ name = "typed-wasm-codegen"
 version = "0.1.0"
 dependencies = [
  "typed-wasm-verify",
- "wasm-encoder",
+ "wasm-encoder 0.255.0",
  "wasmi",
  "wasmparser 0.255.0",
  "wasmprinter",
@@ -223,7 +223,7 @@ name = "typed-wasm-verify"
 version = "0.1.0"
 dependencies = [
  "thiserror",
- "wasm-encoder",
+ "wasm-encoder 0.255.0",
  "wasmparser 0.255.0",
 ]
 
@@ -247,6 +247,16 @@ checksum = "09480d646178e5fdd12bb06e812d0af9a3a191dbc9cd697fdc86687beade7393"
 dependencies = [
  "leb128fmt",
  "wasmparser 0.254.0",
+]
+
+[[package]]
+name = "wasm-encoder"
+version = "0.255.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b524283fb5df62eec102ed0574838961bdd7ba5ac9c50d38e2756c51c971a42"
+dependencies = [
+ "leb128fmt",
+ "wasmparser 0.255.0",
 ]
 
 [[package]]
@@ -345,7 +355,7 @@ dependencies = [
  "leb128fmt",
  "memchr",
  "unicode-width",
- "wasm-encoder",
+ "wasm-encoder 0.254.0",
 ]
 
 [[package]]
