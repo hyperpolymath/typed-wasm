@@ -62,6 +62,12 @@ const HandleImpl = struct {
 };
 
 /// Recover the implementation struct from an opaque handle pointer.
+/// 
+/// SAFETY: Handle is an opaque type (line 54) meaning C code only holds *Handle
+/// pointers and never accesses the implementation. The cast from *Handle to
+/// *HandleImpl is alignment-preserving (@alignCast) and the pointer is always
+/// valid (allocated via allocator.create in typed_wasm_init). The HandleImpl
+/// layout is never exposed to C, maintaining the opacity invariant.
 inline fn impl(handle: *Handle) *HandleImpl {
     return @ptrCast(@alignCast(handle));
 }
@@ -87,6 +93,10 @@ export fn typed_wasm_init() ?*Handle {
     };
 
     clearError();
+    // SAFETY: self is a valid *HandleImpl allocated above (line 78). Casting to
+    // *Handle (opaque) is safe because Handle has no fields and C code only uses
+    // the pointer, never dereferences it directly. The impl() function (line 65)
+    // recovers the HandleImpl from the Handle pointer.
     return @ptrCast(self);
 }
 
