@@ -204,7 +204,7 @@ dependencies = [
  "typed-wasm-verify",
  "wasm-encoder 0.255.0",
  "wasmi",
- "wasmparser 0.255.0",
+ "wasmparser 0.256.0",
  "wasmprinter",
 ]
 
@@ -224,7 +224,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror",
  "wasm-encoder 0.255.0",
- "wasmparser 0.255.0",
+ "wasmparser 0.256.0",
 ]
 
 [[package]]
@@ -318,7 +318,6 @@ checksum = "d5769a29f799fbab136aaf65b4fe5384cd7d93fe6fc9ba0dcb6c8382a1f16e27"
 dependencies = [
  "bitflags",
  "indexmap",
- "semver",
 ]
 
 [[package]]
@@ -326,6 +325,17 @@ name = "wasmparser"
 version = "0.255.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8e329ef4b5d46e73b91d3ac6924417cad55a8cbbf869c199283383427c3320b"
+dependencies = [
+ "bitflags",
+ "indexmap",
+ "semver",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.256.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60bd825ffedc6cba8a642924ba7ae424afbc47811cffbcb7b92031ec24e59b4c"
 dependencies = [
  "bitflags",
  "hashbrown 0.17.1",
