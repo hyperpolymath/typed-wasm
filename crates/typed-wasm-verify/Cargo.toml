@@ -50,4 +50,4 @@ wasmparser = "=0.256.0"
 thiserror = "2"
 
 [dev-dependencies]
-wasm-encoder = "=0.255.0"
+wasm-encoder = "=0.256.0"
