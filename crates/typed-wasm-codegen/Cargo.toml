@@ -21,7 +21,7 @@ path = "src/bin/tw.rs"
 # and verifier on the same locked version.
 wasm-encoder = "=0.256.0"
 # WAT (text wasm) rendering for `tw build --emit wat` (Phase 1 deliverable 4, #125).
-wasmprinter = "=0.255.0"
+wasmprinter = "=0.256.0"
 # The producer reuses the verifier's own carrier encoders so the emitted
 # typedwasm.regions / typedwasm.access-sites bytes cannot drift from the
 # decoder the verifier runs. `unstable-l2` gates those encoders.
@@ -30,7 +30,7 @@ typed-wasm-verify = { path = "../typed-wasm-verify", features = ["unstable-l2", 
 [dev-dependencies]
 # Round-trip test validates the emitted module is well-formed wasm before
 # handing it to the verifier.
-wasmparser = "=0.255.0"
+wasmparser = "=0.256.0"
 # In-process wasm engine for the Tier-1 differential execution gate
 # (tests/execute_lowering.rs): proves lowered store/load bodies COMPUTE the
 # right memory semantics at runtime, not just that they validate. Pure-Rust so
