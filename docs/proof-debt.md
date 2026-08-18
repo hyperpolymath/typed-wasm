@@ -1,7 +1,6 @@
 <!--
-SPDX-License-Identifier: CC-BY-SA-4.0
+SPDX-License-Identifier: MPL-2.0
 SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
-Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 -->
 
 # Proof Debt — typed-wasm
@@ -10,11 +9,7 @@ Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 
 ## Current state
 
-**Zero soundness-relevant escape hatches** in this repo as of 2026-05-26;
-**re-confirmed 2026-06-16** (`idris2 --build src/abi/typed-wasm.ipkg` → exit 0,
-24/24 modules; marker grep for `believe_me` / `assert_total` / `postulate` /
-`sorry` / `Admitted` / `assert_smaller` / holes returns only docstring
-disclaimers).
+**Zero soundness-relevant escape hatches** in this repo as of 2026-05-26.
 
 Verified by `scripts/check-trusted-base.sh` from
 [hyperpolymath/standards](https://github.com/hyperpolymath/standards) —
@@ -22,13 +17,6 @@ all matches found by syntactic scan were inside docstrings explicitly
 stating the file does NOT use `believe_me` / `assert_total` /
 `postulate` / `sorry` / `Admitted` (the "no escape hatches"
 discipline pattern).
-
-> **Scope note.** This ledger covers the _Idris-model_ proof axis (escape-hatch
-> freedom in `src/abi/`). The complementary _codegen→verified-wasm_ assurance
-> axis (T1 execution gate … T5 wasm-semantics tie-back) is tracked in
-> [`PROOF-NEEDS.md`](../PROOF-NEEDS.md) §"RECONCILIATION 2026-06-16 (codegen
-> climb)". Those tiers are tests / decode-time checks in the Rust trusted base,
-> not Idris proof obligations, so they introduce no escape-hatch debt here.
 
 ## (a) DISCHARGED in this repo
 
