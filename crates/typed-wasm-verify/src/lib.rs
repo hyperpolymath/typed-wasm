@@ -88,12 +88,8 @@ pub enum OwnershipError {
         count: u32,
     },
 
-    #[error("L7 (aliasing): function #{func_idx} parameter #{param_idx} is an ExclBorrow (&mut) reference but {count} simultaneous borrows occur on some control-flow path; at most one is permitted")]
-    ExclBorrowAliased {
-        func_idx: u32,
-        param_idx: u32,
-        count: u32,
-    },
+    #[error("Level 7 violation: function {func_idx}, param {param_idx} — ExclBorrow (mut) param aliased ({count} simultaneous references; at most 1 permitted)")]
+    ExclBorrowAliased { func_idx: u32, param_idx: u32, count: u32 },
 
     /// Level 13 (module isolation, negative form). Mirrors OCaml
     /// `Tw_verify.ModuleNotIsolated` (affinescript PR #280, issue #35):
@@ -101,7 +97,7 @@ pub enum OwnershipError {
     /// or table — a cross-module shared-state channel outside the
     /// declared function-import boundary. Carrier-free (standard
     /// import/memory sections only; no ownership-section ABI change).
-    #[error("L13 (module isolation): {reason}")]
+    #[error("Level 13 violation: {reason}")]
     ModuleNotIsolated { reason: String },
 }
 
