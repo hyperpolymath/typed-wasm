@@ -28,18 +28,7 @@ pub use verify::{count_uses_range, verify_function};
 #[cfg(feature = "unstable-l2")]
 pub use section::{
     build_regions_section_payload, parse_regions_section_payload, FieldEntry, FieldKind,
-    Nullability, RegionEntry, WasmTy, ACCESS_SITE_UNPINNED, REGIONS_SECTION_VERSION,
-};
-#[cfg(feature = "unstable-l13-imports")]
-pub use section::{
-    build_region_imports_section_payload, parse_region_imports_section_payload,
-    RegionImportEntry, REGION_IMPORTS_SECTION_VERSION,
-};
-
-#[cfg(feature = "unstable-l13-imports")]
-pub use section::{
-    build_region_imports_section_payload, parse_region_imports_section_payload,
-    ImportedFieldEntry, RegionImportEntry, IMPORT_TABLE_BASE, REGION_IMPORTS_SECTION_VERSION,
+    Nullability, RegionEntry, WasmTy, REGIONS_SECTION_VERSION,
 };
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
@@ -161,71 +150,6 @@ pub const OWNERSHIP_SECTION_NAME: &str = "typedwasm.ownership";
 /// UNSTABLE: wire format may change before the proposal is [accepted].
 #[cfg(feature = "unstable-l2")]
 pub const REGIONS_SECTION_NAME: &str = "typedwasm.regions";
-
-/// Custom-section name carrying L15 capability lattice (proposal 0001).
-/// UNSTABLE.
-#[cfg(feature = "unstable-l15")]
-pub const CAPABILITIES_SECTION_NAME: &str = "typedwasm.capabilities";
-
-/// Custom-section name carrying per-instruction `(region_id, field_id)`
-/// mapping (proposal 0002, typed-wasm#86). UNSTABLE.
-#[cfg(feature = "unstable-l2")]
-pub const ACCESS_SITES_SECTION_NAME: &str = "typedwasm.access-sites";
-
-/// L15 capability-section violation (parsing succeeded, content invalid).
-#[cfg(feature = "unstable-l15")]
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum CapabilitiesError {
-    #[error("Level 15 violation: function index {func_idx} (entry {entry_idx}) is out of bounds for wasm function section (function_count = {function_count})")]
-    FuncIdxOutOfRange {
-        entry_idx: u32,
-        func_idx: u32,
-        function_count: u32,
-    },
-
-    #[error("Level 15 violation: capability index {cap_idx} in function entry {entry_idx} (func_idx = {func_idx}) is out of bounds for capability table (capability_count = {capability_count})")]
-    CapabilityIdxOutOfRange {
-        entry_idx: u32,
-        func_idx: u32,
-        cap_idx: u32,
-        capability_count: u32,
-    },
-}
-
-/// L2 access-site-section violation.
-#[cfg(feature = "unstable-l2")]
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum AccessSiteError {
-    /// Hard error per proposal 0002 §"Producer obligations" #2: a module
-    /// with a `typedwasm.access-sites` section must also have a
-    /// `typedwasm.regions` section — the access-site entries reference
-    /// `region_id` + `field_id` keys with nothing to resolve them
-    /// against otherwise.
-    #[error("Level 2 violation: typedwasm.access-sites section emitted without companion typedwasm.regions section (MissingDependentCarrier)")]
-    MissingDependentRegions,
-
-    #[error("Level 2 violation: access-site entry {entry_idx}: func_idx {func_idx} is out of bounds for wasm function section (function_count = {function_count})")]
-    FuncIdxOutOfRange {
-        entry_idx: u32,
-        func_idx: u32,
-        function_count: u32,
-    },
-
-    #[error("Level 2 violation: access-site entry {entry_idx}: region_id {region_id} is out of bounds for typedwasm.regions table (region_count = {region_count})")]
-    RegionIdOutOfRange {
-        entry_idx: u32,
-        region_id: u32,
-        region_count: u32,
-    },
-
-    #[error("Level 2 violation: access-site entry {entry_idx}: field_id {field_id} is out of bounds for region {region_id}'s field table (field_count = {field_count})")]
-    FieldIdOutOfRange {
-        entry_idx: u32,
-        region_id: u32,
-        field_id: u32,
-        field_count: u32,
-    },
-}
 
 // ----------------------------------------------------------------------
 // Public entry points (stubbed in C1; implementations land in C2-C4).
