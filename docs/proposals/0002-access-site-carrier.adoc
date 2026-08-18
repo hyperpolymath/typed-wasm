@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 
 = Proposal 0002: Access-Site Carrier Section (`typedwasm.access-sites`)
@@ -7,25 +7,14 @@
 
 [cols="1,3"]
 |===
-| Status       | review
+| Status       | draft
 | Author       | hyperpolymath
 | Date         | 2026-05-28
-| Last-updated | 2026-05-30
+| Last-updated | 2026-05-28
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/78[#78]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
 | Builds on    | link:0001-multi-producer-carrier-section.adoc[Proposal 0001] (multi-producer carrier sections)
-| Review-state | Paired producer sign-off received 2026-05-30 alongside 0001 (https://github.com/hyperpolymath/ephapax/issues/165[ephapax#165], https://github.com/hyperpolymath/affinescript/issues/402[affinescript#402])
 |===
-
-== Tracking issues for `[review]` → `[accepted]` promotion
-
-Shares the gating set with link:0001-multi-producer-carrier-section.adoc[Proposal 0001]. 0002-specific items:
-
-* https://github.com/hyperpolymath/typed-wasm/issues/93[#93] — annotate the access-site carrier's per-instruction encoding for unused codepoints (currently all 4 LEB128 fields are exercised by v0 producers as soon as one emits — less surface than 0001 in this respect).
-* https://github.com/hyperpolymath/typed-wasm/issues/97[#97] — producer-readiness checklist appendix MUST cover the 0002-specific obligation that the section be emitted AFTER any post-codegen wasm rewrite (`wasm-opt`, etc.) — `instruction_byte_offset` is fragile.
-* `AccessSiteMisalignment` diagnostic and `MissingDependentCarrier` error must be added to `crates/typed-wasm-verify/` before `[accepted]` — currently spec-only.
-
-The shared `WBool` (#94), region-imports (#95), capability-grants (#96), and producer-side preconditions (affinescript#444, ephapax#221) gating items are listed in 0001's tracking section and apply equally here for any module that emits access-sites without first emitting regions (rejected with `MissingDependentCarrier`).
 
 == Context
 
@@ -219,34 +208,6 @@ A conforming producer that emits `typedwasm.access-sites` MUST:
   manipulation that the producer chose to leave outside the type
   system). The verifier interprets an entry as a claim that the
   access IS typed.
-
-=== Producer-readiness (cross-reference)
-
-See link:0001-multi-producer-carrier-section.adoc#_appendix_b_producer_readiness_checklist_closes_97[proposal 0001 §"Appendix B — Producer-readiness checklist"]
-for the IR prerequisites of all carrier sections. Access-sites
-specifically requires (in addition to that appendix's
-`typedwasm.regions` row):
-
-* **Per-instruction tracking of typed accesses** through the
-  codegen pipeline. A typed `region.get $r .f` (or equivalent)
-  produces a wasm opcode somewhere in the function body; the
-  producer must record at which **post-rewrite** byte offset the
-  opcode lands.
-* **Post-rewrite hook**. The access-site list must be finalised
-  AFTER every wasm-rewrite pass the producer runs (`wasm-opt`,
-  `snip`, `wasm-gc`, custom passes). Producers using `wasm-encoder`
-  directly can record byte offsets during emission; producers
-  using an IR-to-wasm lowering pass need to capture offsets at the
-  lowering boundary and re-validate post-rewrite.
-* **Region-index stability across sections**. The `(region_id,
-  field_id)` foreign keys in `typedwasm.access-sites` MUST match
-  the indices the producer emits in `typedwasm.regions` for the
-  same module (proposal 0001 §"Producer obligations" ¶2).
-
-Status (v1): **NOT YET EMITTABLE** in either AffineScript or
-Ephapax — both depend on the `typedwasm.regions` IR prerequisites
-landing first. Tracked at affinescript#462 and the ephapax
-companion issue (per #106).
 
 === Consumer obligations (verifier)
 
