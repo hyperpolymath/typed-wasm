@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 
 = Proposal 0001: Multi-Producer Carrier Sections for L2–L6 and L15
@@ -7,26 +7,13 @@
 
 [cols="1,3"]
 |===
-| Status       | review
+| Status       | draft
 | Author       | hyperpolymath
 | Date         | 2026-05-27
-| Last-updated | 2026-05-30
+| Last-updated | 2026-05-27
 | Tracks issue | https://github.com/hyperpolymath/typed-wasm/issues/34[#34]
 | Phase        | Phase 2 (https://github.com/hyperpolymath/typed-wasm/issues/50[#50]) — multi-producer adoption
-| Review-state | Paired producer sign-off received 2026-05-30 (https://github.com/hyperpolymath/ephapax/issues/165[ephapax#165], https://github.com/hyperpolymath/affinescript/issues/402[affinescript#402])
 |===
-
-== Tracking issues for `[review]` → `[accepted]` promotion
-
-The 2026-05-30 paired producer reviews surfaced the following open questions; each has a tracking issue and resolution is a precondition for `[accepted]` promotion. None block landing the v0 codec behind cargo features (already done in PR #77).
-
-* https://github.com/hyperpolymath/typed-wasm/issues/93[#93] — annotate v0 producer surface (unused `WasmType` / `PtrKind` / `cardinality` / `capabilities` codepoints as `reserved`).
-* https://github.com/hyperpolymath/typed-wasm/issues/94[#94] — pin `WBool` wire width (4-byte canonical vs lenient mixed-width validation).
-* https://github.com/hyperpolymath/typed-wasm/issues/95[#95] — proposal 0003 (`typedwasm.region-imports`) placeholder for cross-module region foreign keys (Open Question §5).
-* https://github.com/hyperpolymath/typed-wasm/issues/96[#96] — `typedwasm.capability-grants` (L15-C per-call-site, v1.4.x follow-up).
-* https://github.com/hyperpolymath/typed-wasm/issues/97[#97] — producer-readiness checklist appendix + canonical multi-section emit ordering.
-* https://github.com/hyperpolymath/affinescript/issues/444[affinescript#444] — extract `Tw_section.{Encode,Decode}` (dedup `build_section` before two more sections land).
-* https://github.com/hyperpolymath/ephapax/issues/221[ephapax#221] — surface `Ty::Borrow` → `OwnershipKind::SharedBorrow` / `ExclBorrow` at emission (producer-readiness precondition).
 
 == Context
 
@@ -114,42 +101,6 @@ for each region (in index order, 0..region_count-1):
                               cross-checks)
 ----
 
-==== WBool wire width — pinned at 4 bytes (resolves #94)
-
-`WBool` (wire codepoint `10`) occupies **4 bytes on the wire**, accessed
-via wasm's standard `i32.store` / `i32.load` opcodes (with the
-convention `0 = false`, nonzero = `true`). Producers SHALL NOT emit
-`i32.store8` / `i32.load8` for `WBool` fields in v1 — the narrower
-encoding is reserved for a future `WBoolPacked` variant in a v2 of this
-section (separate `wasm_ty` codepoint, not a width-flag on `WBool`).
-
-Rationale:
-
-. **Producer reality.** Both current producers
-  (https://github.com/hyperpolymath/affinescript[AffineScript] —
-  `lib/codegen.ml:180-190+:373`,
-  https://github.com/hyperpolymath/ephapax[Ephapax] —
-  `src/ephapax-wasm/src/lib.rs:2937-2944`) lower source-language
-  `Bool` → `ValType::I32` and emit `i32.store` / `i32.load`. Pinning
-  at 4 bytes matches every shipping producer without codegen changes.
-. **Spec self-consistency.** `Region.idr` is amended in this PR to
-  `sizeOf WBool = 4` (was `1`) so that `schemaSize` and `computeOffsets`
-  agree with the wire reality. `alignOf = sizeOf` (Region.idr:113)
-  carries the change through to field-alignment math.
-. **Verifier simplicity.** A single canonical width means no new
-  `MixedWidthBoolean` error variant; `region_byte_size` cross-check is
-  deterministic per schema.
-. **Future flexibility.** A 1-byte `WBoolPacked` (or named-equivalent)
-  remains the v2 escape hatch for size-conscious producers — additive,
-  not a wire-width flag on the existing `WBool` codepoint.
-
-The lenient mixed-width resolution sketched in
-https://github.com/hyperpolymath/typed-wasm/issues/94[#94]'s
-"Recommendation §A" is rejected because it makes `region_byte_size`
-producer-choice-dependent (the same schema would have different
-`schemaSize` values depending on which producer emitted it) and forces
-a new verifier error variant for marginal flexibility.
-
 Mapping to the spec types:
 
 [cols="1,3"]
@@ -194,45 +145,6 @@ Mapping to `ResourceCapabilities.idr`:
   v1.4.x** (per LEVEL-STATUS) and needs a separate per-call-site grant
   record; out of scope for v1.
 
-=== v0 producer surface
-
-As of v0 (proposal acceptance), no shipping producer exercises the full
-wire surface defined above.  Concretely:
-
-* `wasm_ty` codepoints `0`–`5` (`U8, U16, U32, U64, I8, I16`) — no
-  producer language surfaces narrow integer types at the type-system
-  level.  AffineScript emits `{I32, I64, F32, F64}` only (`lib/wasm.ml`);
-  Ephapax exposes `BaseTy { Unit, Bool, I32, I64, F32, F64 }` only
-  (`src/ephapax-syntax/`).  `WBool` (codepoint `10`) is emitted by
-  both producers but lowered to `i32` on the wire.
-* `kind` codepoints `1`–`3` (`PtrOwning, PtrBorrow, PtrExclusive`) are
-  exercised only by AffineScript.  Ephapax codegen erases the borrow
-  distinction (`SharedBorrow`/`ExclBorrow`) before wasm emission and
-  collapses to `Linear`/`Unrestricted` only, so an ephapax-emitted
-  `typedwasm.regions` section would carry `kind ∈ {0, 1}` exclusively.
-* `cardinality` values other than `1` — variable-cardinality fields
-  require array-as-field support, which no producer ships at v0.
-  AffineScript arrays are length-prefixed runtime objects;  Ephapax
-  uses runtime list handles.  Neither emits fixed-array struct fields.
-* The `typedwasm.capabilities` section as a whole — L15 has **no
-  producer at v0**.  The wire format is specified for forward
-  compatibility, but no current producer emits this section.
-
-These codepoints are **reserved** (forward-compatible): consumers
-MUST accept them when they appear (the lenient-reader contract
-applies) and MUST NOT reject a v0 module that omits them.  A producer
-that begins emitting a reserved codepoint in v1.x triggers either:
-
-. an **additive** version bump if only the wire shape extends, or
-. a **breaking** version bump if the semantics of an existing codepoint
-  change.
-
-Implementations of `crates/typed-wasm-verify/` should NOT preallocate
-handling for reserved codepoints at v0; hitting one in a v0 module
-signals either a future-version producer (reject with
-`UnsupportedCarrierVersion`) or a producer bug (reject with the
-appropriate `OwnershipError` variant).
-
 === Versioning policy
 
 Both new sections start with `u16le version = 1`.  Future versions:
@@ -260,26 +172,6 @@ A conforming producer that emits either new section MUST:
   unlisted fields" and L2 will flag any access to an unlisted field.
 . For L15: emit only capabilities actually declared by the source
   module; do not synthesise.
-. **Canonical emit order** (recommended, not enforced):
-+
-[loweralpha]
-.. `typedwasm.ownership`
-.. `typedwasm.regions`
-.. `typedwasm.region-imports` (proposal 0003)
-.. `typedwasm.capabilities`
-.. `typedwasm.access-sites` (proposal 0002)
-.. `typedwasm.capability-grants` (proposal 0004)
-+
-Rationale: matches the runtime dependency graph — `access-sites`
-foreign-keys into `regions`, `capability-grants` foreign-keys into
-`capabilities`, and `region-imports` companions `regions`.
-**Consumers MUST NOT depend on this order**: the verifier reads
-sections by custom-section name, so a non-conforming producer that
-emits in any other order is still parseable. The canonical order
-exists solely so that two producers' emission of the same logical
-module produces byte-equal carrier-section sequences (useful for
-cross-producer module comparison via `cmp` or `diff`, and for
-deterministic content-addressing of typed-wasm modules).
 
 === Consumer obligations (verifier)
 
@@ -421,7 +313,7 @@ verification, not debug info, and must not be optimised out.
   `ephapax` (the only current producers of `typedwasm.ownership`).
 . Wire format reviewed against the Idris2 spec types in `Region.idr`,
   `Pointer.idr`, `ResourceCapabilities.idr` — every wire field maps
-  cleanly to a spec witness. *(Satisfied — see Appendix A below.)*
+  cleanly to a spec witness.
 . A draft codec lands in `crates/typed-wasm-verify/src/section.rs`
   behind cargo features (`unstable-l2`, `unstable-l15`); round-trip
   tests show parse(build(x)) = x for non-empty fixtures.
@@ -458,348 +350,3 @@ backed)" status columns for L2–L6 and L15.
   `src/abi/TypedWasm/ABI/Pointer.idr`,
   `src/abi/TypedWasm/ABI/MultiModule.idr`,
   `src/abi/TypedWasm/ABI/ResourceCapabilities.idr` — spec types.
-
-== Appendix A — Wire-vs-Idris2-spec mapping (Criterion 2)
-
-This appendix satisfies acceptance Criterion 2 ("wire format reviewed
-against the Idris2 spec types — every wire field maps cleanly to a spec
-witness"). Each wire field below is paired with the Idris2 type / value
-that it encodes, and every cross-section invariant the wire carries is
-named against the spec lemma it corresponds to. The reference codec is
-`crates/typed-wasm-verify/src/section.rs` (landed in PR #107).
-
-=== A.1 `typedwasm.regions` ↔ `Region.idr` + `Pointer.idr`
-
-[cols="2,3,2", options="header"]
-|===
-| Wire field
-| Idris2 spec witness
-| Notes
-
-| `u16le version = 1`
-| (codec invariant — no spec mapping)
-| Future major bumps land in a separate proposal; v1 verifier rejects
-  unknown versions per `parse_regions_section_payload` (section.rs:418).
-
-| `u32le region_count`
-| `length : List Region -> Nat` applied to the per-module region list
-| The wire-side list is dense (region IDs are 0..region_count-1);
-  matches `Region.idr`'s record-of-list shape.
-
-| Per-region `utf8 name`
-| `Region.regionName : String` (Region.idr:253)
-| UTF-8 byte sequence with explicit length prefix; no NUL terminator.
-  String identity (not embedding) is what cross-module agreement
-  reasons over.
-
-| Per-region `u32le field_count`
-| `length : Schema -> Nat` where `Schema = List Field` (Region.idr:158)
-| Empty schema (`field_count = 0`) is admissible — corresponds to
-  `LayoutNil` and a region with `schemaSize = 0`.
-
-| Per-field `utf8 field_name`
-| `Field.MkField` name component (Region.idr:127); extracted by
-  `fieldName : Field -> String` (line 132)
-| Field-name injectivity (Region.idr:360 `fieldNameInj`) holds on the
-  Idris2 side; the wire format preserves the same identity because
-  identical bytes ↔ identical `String`.
-
-| Per-field `u8 kind` (0=Scalar, 1=PtrOwning, 2=PtrBorrow, 3=PtrExclusive)
-| `Pointer.idr::PtrKind` (line 39): Owning/Borrowing/Exclusive plus the
-  out-of-band "not a pointer" case
-| `Scalar` is a wire-side discriminant carrying the "this field stores
-  an inline value, not a pointer" case that `Pointer.idr` represents
-  implicitly by not using `Ptr` at all. The bijection on the
-  three pointer cases is exact.
-
-| Per-field `u8 wasm_ty` (0..10 = U8..WBool, 0xFF = NotApplicable)
-| `Region.idr::WasmType` (line 34): 11 variants
-| `NotApplicable` (0xFF) is emitted when `kind != Scalar` (the field
-  type semantics come from the target region). v1 has no `WBool`
-  store-width pin (see open question #94 / typed-wasm#94).
-
-| Per-field `u32le target_region`
-| Spec-side: `Ptr kind (lookupField target_region).schema life null`
-  parameterisation (Pointer.idr:74)
-| Foreign key into the same section's region table. `NO_TARGET_REGION`
-  (0xFFFFFFFF) sentinel when `kind == Scalar`. Verifier enforces
-  `target_region < region_count` when `kind != Scalar` — this is the
-  operational form of the spec-level `Schema` indexing on `Ptr`.
-
-| Per-field `u8 nullability` (0=NonNull, 1=Nullable)
-| `Pointer.idr::Nullability` (via Levels.idr) — used as the `null`
-  parameter of `Ptr kind schema life null`
-| The lenient decode (`Nullability::from_byte`) treats unknown bytes
-  as `NonNull`, which is the safer interpretation per the spec's
-  L4 (null safety) discipline.
-
-| Per-field `u32le cardinality`
-| `Region.count : Nat` (Region.idr:258)
-| Sentinel `0 = unbounded/dynamic`; matches the spec only when
-  cardinality > 0 (open question §"Cardinality `0 = unbounded`
-  sentinel" defers full coverage to L5 verifier downgrade).
-
-| Per-region `u32le region_byte_size`
-| `schemaSize : Schema -> Nat` (Region.idr:204)
-| Redundant w.r.t. the field list; verifier MAY recompute and compare
-  (proposal §"Producer obligations" ¶4). When the producer's value
-  diverges from the recomputed `schemaSize`, the verifier flags a
-  carrier-self-inconsistency error.
-|===
-
-=== A.2 `typedwasm.capabilities` ↔ `ResourceCapabilities.idr`
-
-[cols="2,3,2", options="header"]
-|===
-| Wire field
-| Idris2 spec witness
-| Notes
-
-| `u16le version = 1`
-| (codec invariant)
-| Same versioning policy as regions.
-
-| `u32le capability_count`
-| `length : CapabilitySet -> Nat` applied to `ModuleCaps.declared`
-  (ResourceCapabilities.idr:218)
-| The wire capability table IS the module's declared capability set —
-  one wire entry per `CapabilityName` in `declared`.
-
-| Per-capability `utf8 name`
-| `CapabilityName.capName : String` (ResourceCapabilities.idr:67)
-| The newtype wrapping discipline (`MkCapabilityName`) preserves
-  identity on the wire as raw UTF-8 — type system on the spec side
-  refuses to confuse capability names with arbitrary strings; wire
-  side simply names the bytes.
-
-| `u32le function_count`
-| Per-module count of `FunctionCaps owner` values
-| Not directly a spec witness; bridges wire to the per-function
-  records below.
-
-| Per-function `u32le func_idx`
-| (wasm function index — bridges spec to emitted wasm)
-| No direct spec mapping; the Idris2 side reasons in terms of
-  `FunctionCaps owner` records, not wasm function indices. The wire
-  side names the index because that is what the verifier needs to
-  attach the requirement to a concrete code-section function.
-
-| Per-function `u32le required_count`
-| `length : CapabilitySet -> Nat` applied to `FunctionCaps.required`
-  (line 241)
-| Producer MAY emit 0 — corresponds to `pureFunctionCaps`
-  (ResourceCapabilities.idr:248) and `FunctionCaps.required = []`.
-
-| Per-function `u32le[] required` (strictly increasing)
-| `FunctionCaps.required : CapabilitySet` (line 241), with the
-  strict-increasing invariant encoding `DistinctCaps` (line 104) AND
-  serving as the verifier's foreign-key check
-| The strict-increasing invariant is the *operational counterpart* of
-  three spec-side facts at once:
-
-   1. **`DistinctCaps required`** — no index appears twice. The
-      strict-increasing form trivially implies uniqueness.
-
-   2. **`ContainedIn required declared`** (L15-B soundness, line 312)
-      — each index < `capability_count`. The verifier's
-      `verify_capabilities_from_module` pass (PR #109) checks this
-      directly, raising `CapabilityIdxOutOfRange` on violation.
-
-   3. **Canonical-order producer obligation** — equal `required` sets
-      have equal wire byte sequences (encoding determinism).
-
-  Parser-side `sort_unstable` + `dedup` (section.rs:760) is a
-  defence-in-depth normalisation: a producer that regresses on the
-  strict-increasing obligation still yields a verifier result
-  consistent with the spec, but the wire-level guarantee is degraded.
-|===
-
-=== A.3 What is NOT carried on the wire (deliberate)
-
-The Idris2 spec types have several relations and proofs that v1 of the
-carriers deliberately does NOT encode:
-
-[cols="2,3", options="header"]
-|===
-| Spec construct
-| Why not on the wire / where it lives
-
-| `ContainedIn required declared`
-  (L15-B explicit proof witness)
-| The verifier RECONSTRUCTS the proof obligation by checking each
-  `required[i] < capability_count`. The reconstructed check is sound
-  because the verifier IS the trusted base for L15-B on emitted
-  wasm; carrying the explicit witness would duplicate the same
-  information.
-
-| `CallCompatible caller callee`
-  (L15-C call-graph monotonicity)
-| Deferred to a separate `typedwasm.capability-grants` section
-  (typed-wasm#96) in a v1.4.x follow-up proposal. v1 enforces L15-A
-  (DistinctCaps) and L15-B (ContainedIn) only; L15-C falls back to
-  the producer's source-level checker.
-
-| `LayoutValid schema`
-  (per-field offset fits within instance size; no field overlap)
-| The verifier RECOMPUTES `computeOffsets`/`schemaSize` from the
-  wire-carried field list and compares to the wire-carried
-  `region_byte_size`. The proof obligation is operational, not
-  carried.
-
-| `SchemaEq s1 s2`
-  (cross-module schema equivalence — Region.idr:306)
-| v1 is single-module. Cross-module schema agreement is the explicit
-  scope of a future `typedwasm.region-imports` follow-up (open
-  question #5 / typedwasm#95) — the comparison logic uses the
-  wire-carried region + field tables directly without an
-  intermediate witness.
-
-| `RegionDisjoint r1 r2`
-  (byte-disjoint regions — Region.idr:439)
-| Runtime / loader concern; the wire format intentionally does not
-  pin region base addresses (those are wasm-side `(memory ...)` init
-  data). Disjointness is enforced at allocation time by the host
-  runtime, not by the carrier verifier.
-
-| `ExclusiveWitness schema`
-  (Pointer.idr:163 — no-aliasing for exclusive pointers)
-| L7 (aliasing safety) is carried by the `typedwasm.ownership`
-  section (Linear/SharedBorrow/ExclBorrow tags per parameter), NOT
-  the regions carrier. The regions carrier only attests to schema
-  structure, not to per-handle aliasing facts.
-|===
-
-=== A.4 Soundness shape
-
-Combining the per-field mappings (A.1) with the operational
-reconstructions (A.3) gives the following claim, which proposal 0001
-asserts (and the verifier in PR #109 + the codec in PR #107 enforce):
-
-[NOTE]
-====
-For any module emitting `typedwasm.regions` and `typedwasm.capabilities`,
-**there exists a corresponding Idris2 spec-level
-`(Region[], ModuleCaps, FunctionCaps[])` value** whose constructor
-inhabitation requires exactly the proofs the verifier already checks at
-the wire level — namely:
-
-* `WasmType` decoder soundness (lenient by design — unknown ⇒ safer
-  default per A.1 nullability + WasmTy notes).
-* `FieldKind` ↔ `PtrKind` bijection on the three pointer cases.
-* `target_region` foreign-key check (when `kind != Scalar`).
-* `region_byte_size` self-consistency vs `schemaSize`.
-* `DistinctCaps` via strict-increasing `required[]` (degraded but
-  recoverable via parser-side `sort + dedup`).
-* `ContainedIn required declared` via `required[i] < capability_count`
-  (verifier pass — PR #109).
-
-L15-C (`CallCompatible`), `SchemaEq` (cross-module), `RegionDisjoint`,
-and `ExclusiveWitness` are explicitly out of scope of v1 and tracked
-under the open-questions section above.
-====
-
-This satisfies Criterion 2 *as a write-up*. A future task — not
-required for `[accepted]` — is to encode the same mapping as Idris2
-property tests (`src/abi/` would gain a `WireSchemaEquiv.idr` showing
-`encode/decode` round-trips preserve the spec witnesses listed in A.1
-+ A.2). That work is filed as a follow-up after acceptance.
-
-== Appendix B — Producer-readiness checklist (closes #97)
-
-Surfaced in the paired producer reviews of proposals 0001 + 0002
-(ephapax#165 §3 + §6 + affinescript#402 §4 + §7, both 2026-05-30):
-the §"Producer obligations" section enumerates what a conforming
-producer must *do at emission time*, but understates **what a producer
-must already have in its IR** to be capable of emitting populated
-sections at all.
-
-This appendix tabulates the IR prerequisites for each carrier
-section, the producer-side status at v1, and the roadmap-issue
-identifier in each producer's tracker where the gap is named.
-
-NOTE: A producer that emits a carrier section without satisfying its
-IR prerequisites will emit an empty or synthetic section that the
-verifier will treat as "no claim made about anything," falsifying
-the intent of the carrier. **The all-or-nothing rule from §"Producer
-obligations" ¶3 implies: do not emit a section you cannot populate.**
-
-=== B.1 Per-carrier IR prerequisites
-
-[cols="2,3,2,3", options="header"]
-|===
-| Carrier
-| IR prerequisites in the producer
-| Status (v1)
-| Roadmap reference
-
-| `typedwasm.ownership`
-| Per-function-parameter + per-return ownership-kind tracking
-  (`Unrestricted` / `Linear` / `SharedBorrow` / `ExclBorrow`)
-| **SHIPPING** in both producers
-| AffineScript `lib/borrow.ml`; Ephapax `src/ephapax-types/`
-
-| `typedwasm.regions`
-| Per-region declaration in source language (field names + wasm
-  types + nullability + cardinality); stable per-module region
-  index assignment; field offset computation from schema
-| **NOT YET EMITTABLE**
-| AffineScript Roadmap C1 (region inference) DEFERRED at
-  `lib/borrow.ml:1724-1730`; Ephapax `Codegen.region_stack` DEAD
-  CODE at `src/ephapax-wasm/src/lib.rs:271`
-
-| `typedwasm.capabilities`
-| Per-function capability declaration; module-level capability
-  budget; effect-tracking IR for capability-affecting operations
-| **NOT YET EMITTABLE**
-| AffineScript Roadmap C2 (capability tracking) NOT STARTED;
-  Ephapax `ExprKind::Perform` / `Handle` codegen stubs to
-  `Instruction::Unreachable` (`src/ephapax-wasm/src/lib.rs`)
-
-| `typedwasm.region-imports` (proposal 0003)
-| All `typedwasm.regions` prerequisites **plus** cross-module
-  region declaration tracking; wasm-module-name resolution; the
-  high-bit `target_region` convention from proposal 0003
-| **NOT YET EMITTABLE**
-| AffineScript `lib/tw_interface.ml` has L10/L13 boundary
-  scaffolding but Roadmap C3 (multi-module region emission) is
-  the prerequisite; Ephapax cross-module emission not on roadmap
-
-| `typedwasm.access-sites` (proposal 0002)
-| All `typedwasm.regions` prerequisites **plus** per-instruction
-  tracking of typed accesses through codegen; post-rewrite byte
-  offset recording (must run AFTER `wasm-opt` etc.); stable
-  `(region_id, field_id)` matching the regions section
-| **NOT YET EMITTABLE**
-| Depends on regions carrier landing first;
-  affinescript#462 / ephapax issue pending
-
-| `typedwasm.capability-grants` (proposal 0004)
-| All `typedwasm.capabilities` prerequisites **plus**
-  per-call-site grant tracking IR; post-rewrite call-instruction
-  byte offset recording; stable capability-index matching
-| **NOT YET EMITTABLE**
-| Depends on capabilities carrier landing first
-|===
-
-=== B.2 Status legend
-
-* **SHIPPING** — producer emits this carrier on every module today;
-  consumers can rely on its presence.
-* **NOT YET EMITTABLE** — producer-side IR cannot populate this
-  carrier; emitting an empty section would falsify the all-or-nothing
-  contract.
-
-=== B.3 Use this checklist
-
-When any producer's tracker (AffineScript Roadmap C1/C2/C3 issues,
-Ephapax codegen issues, future third-party producer tickets) opens
-a work item for emitting a new carrier, that issue SHOULD
-cross-reference this appendix and the corresponding §B.1 row. This
-makes the multi-quarter IR work explicit rather than discovering it
-ad-hoc during downstream codegen sessions.
-
-The verifier-side adoption (codecs + verify passes in
-`crates/typed-wasm-verify/`) is INDEPENDENT of producer-side
-readiness — the verifier can ship parsing + validation for a carrier
-that no producer yet emits (the verifier just sees an absent section
-and returns `Ok(())`). This appendix only tracks the producer side.
