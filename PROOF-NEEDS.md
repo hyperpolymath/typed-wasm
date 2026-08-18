@@ -1,9 +1,8 @@
 <!--
-SPDX-License-Identifier: CC-BY-SA-4.0
+SPDX-License-Identifier: MPL-2.0
 Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 -->
 # PROOF-NEEDS.md
-
 **Scope:** handoff document for the Claude instance that will deepen
 typed-wasm's formal verification. Read this file in full before
 touching `src/abi/TypedWasm/ABI/*.idr`. Written 2026-04-13 by the
@@ -23,128 +22,102 @@ compile time" (true) and "here is a lemma proving it is forbidden"
 claims — a reviewer asking _"where is the theorem?"_ currently has no
 answer to point at.
 
-## RECONCILIATION 2026-06-16 (codegen climb — the second assurance axis: T1 execution gate landed, T2 in progress)
+## RECONCILIATION 2026-06-02 (P0/P1 sweep — five silent closures + #102 → ground truth)
 
-> **The honest summary above concerns the _Idris-model_ axis ("where is the
-> theorem?"). This block introduces the _codegen→verified-wasm_ axis — the
-> assurance that the Rust producer's emitted bytes are what an independent
-> verifier accepts and a wasm engine executes correctly. The two axes are
-> complementary: the Idris ABI proves the _protocol_; the climb proves the
-> _running implementation honours it_. (Module count is now 22, not the
-> "eleven" of the 2026-04-13 summary — later reconciliations supersede it.)**
+> Ground-truth audit of `src/abi/TypedWasm/ABI/*.idr` against the
+> P0/P1 priority order below.  All five remaining-unmarked items
+> are **already proven in code with concrete bodies** under
+> `idris2 --build src/abi/typed-wasm.ipkg` (rc=0, 22/22 modules,
+> `%default total` everywhere, zero `believe_me` / `assert_total` /
+> `assert_smaller` / `postulate` / `sorry`).  The §P0/§P1 prose
+> below was written before A6-A14 landed and was never reconciled
+> against the post-A6 file state.  Per-item status:
 >
-> **The assurance ladder (`.twasm` source → IR → emitted wasm → verified):**
+> * **P0.1 Tropical semiring laws — DONE.**  All eight axioms are in
+>   `Tropical.idr`:
+>     - `tropAddLeftId` / `tropAddRightId`  (additive identity)
+>     - `tropAddComm` / `tropAddAssoc`      (additive monoid)
+>     - `tropMulLeftId` / `tropMulRightId`  (multiplicative identity)
+>     - `tropMulComm` / `tropMulAssoc`      (multiplicative monoid)
+>     - `tropMulLeftAnn` / `tropMulRightAnn` (Infinity annihilation)
+>     - `tropMulDistrib` / `tropMulDistribR` (distributivity both sides)
+>   Plus the structural `tropMin` (the proof-friendly replacement for
+>   `Prelude.min` the 007 file pioneered) and the supporting nat
+>   lemmas `plusComm'` / `plusAssoc'` / `plusDistribOverTropMin`.
+>   File is in the ipkg and standalone-checks clean.
 >
-> | Tier | Obligation | Status (2026-06-16) |
-> |---|---|---|
-> | **T1** Execution gate | emitted store/load bodies _compute_ the intended memory semantics (width, offset, sign/zero-extension, no-clobber) | ✅ **landed** — `crates/typed-wasm-codegen/tests/execute_lowering.rs` instantiates the lowered module in **wasmi** (pure-Rust, runs in CI without a system wasmtime) and round-trips every scalar width + proves a narrow store touches **only** its own bytes. Proven non-vacuous by mutation (reintroducing a narrow-width bug fails the gate). |
-> | **T2** Verifier self-certification | the verifier independently _decodes the code section_ and checks each pinned access lands on a load/store of the field's exact type/width/offset, in-region | 🟡 **in progress** (this session). Producer half: access sites pinned to a body-instruction index (`AccessSite.instr_index: Option<usize>`; the hand-built `example01` / paint-type representative sites are carried **declared-only**, honestly _not_ type-checked). Verifier half: `verify_access_typing_from_module` + `AccessTypingReport { type_verified, declared_only, errors }`, surfaced by `tw-verify`. Closes proposal-0002's deferred `AccessSiteMisalignment`. |
-> | **T3** Parser totality | the `.twasm` parser never panics on any input | ⚠️ **partial** — v0 hardened against malformed/truncated input (PR #168), but **3 pre-existing arithmetic panics remain** (div-by-zero / overflow in `parse_array_size_expr` + `compute_region_byte_size`). Deferred to a hardening PR. |
-> | **T4** Layout-equivalence lemma | `Layout/ABI.idr` field offsets **=** Rust `resolve_field` offsets | ❌ **open** — two independent implementations of the same field-offset arithmetic, with no proof they agree. The next formal bridge. |
-> | **T5a** Verifier↔spec link | the Rust verifier _refines_ `VerifierSpec.idr` | ◐ **trusted-base** — ADR-0005 pins audit invariants (I1 provenance / I2 witness fidelity / I3 module shape) at the `MkTrustedFixture` boundary; the Rust verifier remains the trusted base. Constructive soundness (path 2) and WasmCert tie-back (path 1) are future superseding ADRs. |
-> | **T5b** Wasm-semantics tie-back | emitted bytes mean what we claim under a mechanised wasm semantics (WasmCert-Isabelle/Coq) | ❌ **open** — multi-week external dependency. T1's execution gate is the empirical stand-in. |
+> * **P0.2 Linear.idr explicit consumption theorem — DONE.**
+>   `LinHandleU : Usage -> Nat -> Type` is exactly the usage-counter
+>   encoding §P0.2 sketched.  The trio
+>     - `distinctUsage : Fresh = Consumed -> Void`
+>     - `noReuse : LinHandleU Consumed tok -> Consumed = Fresh -> Void`
+>     - `noReuseEcho : LinHandleU Consumed tok -> LinHandleU Fresh tok
+>                    -> Consumed = Fresh -> Void`
+>   establishes that no total function `LinHandleU Consumed tok ->
+>   LinHandleU Fresh tok` exists in the safe fragment — the
+>   "double-free is impossible" theorem the file's introductory
+>   comment claims.  `consumePreservesData` adds the behavioural
+>   guarantee that `consume` doesn't mutate the underlying offset.
 >
-> **Climb position.** Front-end staircase (languages → typed-region IR) is
-> stop-gapped by the `.twasm` parser seam (ADR-0004 _Proposed_; real
-> AffineScript/ephapax AST bridge deferred). Back-end staircase (IR → verified
-> wasm) is where the climb is: Steps 1 (field readers, #169) + 2 (field writers
-> + width-exact scalar accesses, #171) merged; the T1 gate landed alongside;
-> T2 self-certification is the active work, then the T4 layout lemma, then the
-> T5a verifier↔spec link.
+> * **P0.3 Lifetime.idr Outlives preorder + loadSafe — DONE.**
+>   `Lifetime.idr` ships:
+>     - `outlivesRefl : (l : Lifetime) -> Outlives l l`
+>     - `outlivesTrans : Outlives a b -> Outlives b c -> Outlives a c`
+>     - `outlivesTransitive` (curried variant for downstream chaining)
+>     - `loadSafe : Outlives scope refLife -> a` (plus the
+>       `loadSafeOffset` and `loadSafeIrrelevant` corollaries)
+>   The §P0.3 worry — "Outlives might be opaque, you have to add
+>   constructors first" — is also addressed: the relation has real
+>   constructors used by `weakenLifetime` and the borrowing path.
 >
-> **Ground truth re-verified 2026-06-16:** `idris2 --build src/abi/typed-wasm.ipkg`
-> → exit 0, **22/22 modules**; zero `believe_me` / `postulate` / `sorry` /
-> `Admitted` / `assert_total` / holes (every scanner hit is a docstring
-> disclaimer). The `docs/proof-debt.md` zero-debt invariant holds.
+> * **P0.4 Effects.idr EffectSubsumes preorder + composition — DONE.**
+>   `Effects.idr` ships:
+>     - `effectSubsumesRefl` / `subsumeRefl`
+>     - `subsumeTrans : EffectSubsumes xs ys -> EffectSubsumes ys zs
+>                    -> EffectSubsumes xs zs`
+>     - `subsumeCompose : EffectSubsumes d1 a1 -> EffectSubsumes d2 a2
+>                      -> EffectSubsumes (d1 ++ d2) (a1 ++ a2)`
+>     - the supporting `hasEffectTrans` / `hasEffectCombineL` /
+>       `hasEffectCombineR` / `subsumePrepend` / `subsumeAppend` chain
+>   that §P0.4 names verbatim.  `runMemOp` uses the witness via
+>   `{auto prf : EffectSubsumes declared required}` — the "L8 is a
+>   fiction" risk §P0.4 worried about is closed.
 >
-> **Governance note.** The whole `crates/typed-wasm-verify/src/` (`verify.rs`,
-> `section.rs`, `lib.rs`) carried the SPDX tag but was **missing the literal
-> owner `Copyright` line** — invisible drift that trips the strict pre-commit
-> hook on any commit touching those files (so T2's verifier half was
-> commit-blocked). Surfaced and corrected under a one-time owner authorisation
-> this session; the hook is kept strict.
+> * **P1.2 Epistemic Level12Proof implies freshness — DONE.**
+>   `epistemicFreshness : (p : Level12Proof) -> Fresh p.reader p.field
+>   p.knownVersion p.currentVersion` is the named projector (was
+>   inline `.freshness` record access; landed as a named lemma in
+>   A10).  Standalone check passes; the file has been in the ipkg
+>   since the 2026-04-18 Layout fix.
 >
-> **No `believe_me` / `assert_total` / `postulate` / `sorry` / `assert_smaller`
-> introduced; `%default total` preserved. T1 is an executable test, not a proof
-> obligation; T2 is a decode-time check _inside_ the (trusted-base) Rust
-> verifier — it strengthens the trusted base's self-consistency, it does not
-> reduce the trusted base.**
-
-## RECONCILIATION 2026-06-16 (A15/A16 — estate-axis accommodation)
-
-> L11/L12/Echo have been **cross-documented and mirrored to the canonical
-> estate repos** after an adversarially-verified audit found them
-> internally-sound but un-accommodated (sourced/ported from non-canonical
-> origins). New, machine-checked (idris2 0.8.0, full `typed-wasm.ipkg` green):
+> **A14 (2026-06-02) — new closure.**  PR #152 ("proof(epistemic): pin
+> Fresh to FieldVersion") closes issue #102 by re-indexing `Fresh`
+> on a canonical `FieldVersion` value, symmetric to A11's `WriteSync`
+> tightening.  `MkFresh Refl` no longer types; freshness cannot be
+> minted ex nihilo.  `ExplicitSync` inherits the pin via its embedded
+> `Fresh` argument.  This closes Epistemic.idr's residual-debt block.
 >
-> - **Tropical.idr** — dioid order `tropLe` (refl/trans + add/mul monotonicity),
->   MinMax bottleneck `tropMax` + `hubCeiling`, `ResidueMeasure`, and a new
->   `Level11BottleneckProof` + `bottleneckCeilsEdges` wired into
->   `Proofs.attestL11_Bottleneck`/`_Sound`. Mirrors `tropical-resource-typing`
->   `Resource.{Algebra.Ordered, Instances.MinMax, Bridge, EchoBridge}` @ 2e35229.
-> - **Echo.idr** — `EchoR` + `echoToResidue` (mirrors `echo-types`
->   `EchoResidue.agda` @ 2bbdb49); header re-characterised: an echo-type is a
->   **tropically-graded modality of structured information loss** (grade = min-plus
->   = `Tropical.TropCost`), exact-on-a-fiber recoverability — the
->   monad/comonad/adjunction VARIANCE is deferred to upstream `--safe` Agda
->   (RETRACTION R-2026-05-18 + experimental R0–R4), NOT asserted here.
-> - **Epistemic.idr** — ADDITIVE `syncGrade` (∞ = never-synced) reusing the
->   sibling `Tropical.TropCost`; extant A10–A14 Nat-indexed proofs untouched.
->   Header IS-NOT note: read-consistency is a *different* problem from canonical
->   `epistemic-types`' standpoint-indexed modality.
+> **What's actually still open in §P0/§P1.**
 >
-> Three extend-upstream drafts prepped local/unpushed (Lean closure functor;
-> Agda re-sync liveness `AccessibleModality` instance; Agda `DispHom` packaging),
-> each verified by its own prover. See LEVEL-STATUS.md "Estate-axis accommodation".
-
-## RECONCILIATION 2026-06-02 (audit-boundary half of post-A10 items 7 + 8 promoted to ADR-0005 — read this FIRST)
-
-> **The "Full proof bodies for `VerifierSpecAgreement` /
-> `SourceVerifierAgreement`" long-tail item (issue #103) is now
-> closed via path (3) — explicit ADR.**
+> * **#103 — Full proof bodies for `VerifierSpecAgreement` /
+>   `SourceVerifierAgreement`.**  Statement-level records landed in
+>   PR #79; full bodies require either WasmCert-Isabelle tie-back,
+>   a constructive Rust-verifier soundness proof, or an ADR
+>   documenting `TrustedFixture` as the audit boundary.  Multi-week
+>   design work; owner-prioritised.
 >
-> The 2026-05-27 banner below recorded the bodies as TOTAL in PR #79
-> (commit `06ec00e`). What remained per issue #103 was a load-bearing
-> home for the audit-boundary story: every `VADifferential` /
-> `SADifferential` step ultimately routes through a
-> `MkTrustedFixture` construction, and the trust-injection moment
-> needed a single, named, cross-referenced specification rather than
-> an inline docstring.
+> * **Stronger "attestation entails the level's semantic property"
+>   reindexing.**  The `attestLN_Sound` family (Proofs.idr §A9) proves
+>   `LevelAchievedIn N [attestLN witness]` for every level — the
+>   "witness ⟹ certificate-claims-level" bridge.  The stronger form
+>   that re-indexes `LevelAttestation` itself by the witness type
+>   (so the attestation value statically pins the level's semantic
+>   property, not just the level number) remains future work tracked
+>   under estate epic standards#130.
 >
-> **ADR-0005**
-> (`docs/decisions/0005-trustedfixture-audit-boundary.adoc`,
-> 2026-06-02) pins three inspection invariants every
-> `MkTrustedFixture m` construction site is audited against:
->
-> * **I1 — Provenance.** The pair `(trustedFixtureName,
->   trustedFixtureId)` must correspond to an existing row in the
->   Rust differential harness
->   (`crates/typed-wasm-verify/tests/cross_compat.rs`).
-> * **I2 — Witness fidelity.** The `FunctionsAccepted m.functions`
->   payload must be the structural witness the harness's ACCEPT
->   verdict establishes; rejected fixtures yield no `MkTrustedFixture`.
-> * **I3 — Module shape.** The indexing `ModuleSummary` must mirror
->   the harness's `ModuleSummary` reconstruction for the same
->   fixture bytes (function order + decoded ownership intents).
->
-> **What this is not.** ADR-0005 is not a constructive proof of
-> Rust-verifier soundness; the Rust verifier remains the trusted
-> base for the differential path. The two supersession paths from
-> issue #103 — WasmCert-Isabelle tie-back (path 1) or constructive
-> Rust-verifier soundness (path 2) — remain valid future upgrades
-> and would each ship as a fresh ADR superseding 0005.
->
-> **Source-code cross-reference.** A docstring near `MkTrustedFixture`
-> in `src/abi/TypedWasm/ABI/VerifierSpec.idr` points at ADR-0005, so
-> a reader landing on the record's definition can find the
-> invariants without rediscovering them. Single grep point for
-> trust injections: `git grep MkTrustedFixture`.
->
-> **No `believe_me` / `assert_total` / `postulate` / `sorry` /
-> `assert_smaller` introduced; `%default total` preserved across
-> the arc. The closure work was an ADR + a docstring cross-reference
-> + a proof-debt banner — no new proof obligations, no new code
-> behind the lemma bodies that PR #79 already shipped.**
+> §P2 parser items and §P3.1(a) emitted-wasm byte-equality are still
+> blocked on producer-side dependencies (parser port to Idris2 +
+> `.twasm → .wasm` emitter) — unchanged.
 
 ## RECONCILIATION 2026-05-30 (carrier-ABI proposals 0001 + 0002 accepted + ADR'd — read this FIRST)
 
@@ -588,7 +561,12 @@ rough difficulty.
 
 ### P0 — Dependability (existence proofs for the structural claims)
 
-**P0.1. Tropical semiring laws — Tropical.idr.** The eight axioms of
+**P0.1. Tropical semiring laws — Tropical.idr. ✅ DONE (silently
+landed prior to 2026-06-02 — see RECONCILIATION 2026-06-02).** All
+eight axioms ship in `Tropical.idr` with concrete bodies; the
+sketch below is preserved for history.
+
+Original task description preserved for history: The eight axioms of
 a commutative semiring with zero. 007 has done this work already in
 `proofs/idris2/TropicalSemiring.idr` (12 theorems, CLEAN, zero
 `believe_me`). Port it. Specifically prove:
@@ -616,7 +594,15 @@ Getting it into `typed-wasm.ipkg` is the entry ticket for L11.
 **Difficulty:** medium. Bulk of the work is Nat-arithmetic case
 splits. The 007 file is 333 LOC and clean, so it's a rehearsed path.
 
-**P0.2. Linear.idr — explicit consumption theorem.** The file says
+**P0.2. Linear.idr — explicit consumption theorem. ✅ DONE
+(silently landed prior to 2026-06-02 — see RECONCILIATION
+2026-06-02).** `Linear.idr` ships the usage-counter encoding
+(`LinHandleU : Usage -> Nat -> Type`) plus the trio
+`distinctUsage` / `noReuse` / `noReuseEcho` that proves no total
+function `LinHandleU Consumed tok -> LinHandleU Fresh tok` is
+constructible.  The sketch below is preserved for history.
+
+Original task description preserved for history: The file says
 "double-free is impossible by construction" in a comment, then
 declares a nullary data type `NoDoubleFree` as a "witness". This is
 documentation, not a proof. Replace with:
@@ -654,7 +640,15 @@ Void`. That is the actual theorem behind the protocol.
 **Difficulty:** medium-hard. The nullary `NoDoubleFree` needs real
 witness manipulation. Budget a session.
 
-**P0.3. Lifetime.idr — Outlives is a preorder.** File declares
+**P0.3. Lifetime.idr — Outlives is a preorder. ✅ DONE (silently
+landed prior to 2026-06-02 — see RECONCILIATION 2026-06-02).**
+`Lifetime.idr` ships `outlivesRefl`, `outlivesTrans`,
+`outlivesTransitive`, `loadSafe`, `loadSafeOffset`, and
+`loadSafeIrrelevant` with concrete bodies; `Outlives` has real
+constructors used by `weakenLifetime` and the borrowing path.
+The sketch below is preserved for history.
+
+Original task description preserved for history: File declares
 `Outlives : Lifetime -> Lifetime -> Type` as an abstract relation. The
 safety of `LiveRef` depends on `Outlives` being at least reflexive and
 transitive. Prove:
@@ -680,7 +674,17 @@ Currently `LiveRef` extracts its offset and hopes for the best.
 **Difficulty:** medium. Depends on how `Outlives` is defined — if it's
 just an opaque type, you have to add constructors first.
 
-**P0.4. Effects.idr — EffectSubsumes preorder + monotonicity.**
+**P0.4. Effects.idr — EffectSubsumes preorder + monotonicity. ✅
+DONE (silently landed prior to 2026-06-02 — see RECONCILIATION
+2026-06-02).** `Effects.idr` ships `effectSubsumesRefl`,
+`subsumeRefl`, `subsumeTrans`, `subsumeCompose`, plus the
+supporting `hasEffectTrans` / `hasEffectCombineL` /
+`hasEffectCombineR` / `subsumePrepend` / `subsumeAppend` chain.
+`runMemOp` consumes the witness via
+`{auto prf : EffectSubsumes declared required}` — L8 is no longer
+content-free.  The sketch below is preserved for history.
+
+Original task description preserved for history:
 `Proofs.idr:171` shows `attestL8_EffectSafe : EffectSubsumes declared
 actual -> LevelAttestation` which takes a witness and discards it.
 For this attestation to mean anything, `EffectSubsumes` must be a
@@ -827,7 +831,16 @@ underlying proofs.
 after each P0 completes.
 
 **P1.2. Epistemic.idr — fix standalone check, then prove Level12Proof
-implies freshness.** Draft-only. First make it type-check in
+implies freshness. ✅ DONE (silently — standalone check fixed at
+the 2026-04-18 Layout pass; `epistemicFreshness` lemma landed at
+A10; A11 + A14 tightened the constructor side — see
+RECONCILIATION 2026-06-02).**  `Epistemic.idr` ships
+`epistemicFreshness : (p : Level12Proof) -> Fresh p.reader p.field
+p.knownVersion p.currentVersion` as the named projector + A14
+(PR #152) pins `Fresh` itself to a canonical `FieldVersion`.
+The sketch below is preserved for history.
+
+Original task description preserved for history: Draft-only. First make it type-check in
 isolation (figure out the missing imports / unresolved variables),
 then state:
 
