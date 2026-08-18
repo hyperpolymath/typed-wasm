@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: CC-BY-SA-4.0
-// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+// SPDX-License-Identifier: MPL-2.0
 = Architecture Decision Records (ADRs)
 
 Accepted decisions that shape typed-wasm's architecture. Proposals
@@ -25,16 +24,6 @@ proposals still under discussion live in link:../proposals/[`docs/proposals/`].
 | link:0003-access-site-carrier.adoc[0003]
 | Adopt access-site carrier (`typedwasm.access-sites`) for L2 enforcement
 | 2026-05-30
-| Accepted
-
-| link:0004-maa-framework-absolute-zero-vendor-audit.adoc[0004]
-| Classify maa-framework's `absolute-zero/` as a stale vendor copy (sibling-estate)
-| 2026-05-30
-| Accepted
-
-| link:0005-trustedfixture-audit-boundary.adoc[0005]
-| `MkTrustedFixture` is the formal audit boundary for `VerifierAccepts` / `SourceAccepts`
-| 2026-06-02
 | Accepted
 |===
 
