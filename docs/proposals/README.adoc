@@ -27,13 +27,15 @@ Status legend:
 | link:0002-access-site-carrier.adoc[0002]
 | Access-site carrier section (`typedwasm.access-sites`) for L2 enforcement
 | `[review]`
-|===
 
-NOTE: Proposals 0001 and 0002 were promoted to
-link:../decisions/[ADR-0002 and ADR-0003] on 2026-05-30. The proposal
-files remain in `docs/proposals/` as the canonical wire-format and
-producer-obligation references; the ADRs record the decisions and
-their consequences.
+| link:0003-region-imports-carrier.adoc[0003]
+| Region imports carrier section (`typedwasm.region-imports`) for L13 cross-module schema agreement
+| `[draft]`
+
+| link:0004-capability-grants-carrier.adoc[0004]
+| Capability grants carrier section (`typedwasm.capability-grants`) for L15-C per-call-site enforcement
+| `[draft]`
+|===
 
 The strategic decisions (D1–D6) from
 link:../PRODUCTION-PATH.adoc[`docs/PRODUCTION-PATH.adoc`] §"Load-bearing
