@@ -1093,357 +1093,136 @@ pub fn verify_access_sites_from_module(
 }
 
 // ----------------------------------------------------------------------
-// L2 access-TYPING verifier pass (proposal 0002 `AccessSiteMisalignment`,
-// discharged at decode time)
+// L13 region-imports verifier pass (proposal 0003, typed-wasm#140 refs #95).
+//
+// In-module self-consistency only — no link-graph traversal. See
+// `lib.rs::verify_region_imports_from_module` for the public API
+// documentation and the deferred scope.
 // ----------------------------------------------------------------------
 
-/// Canonical tag for the typed memory load/store opcodes the producer
-/// emits. Lets the typing check compare an instruction against a field
-/// type without re-matching every `wasmparser::Operator` variant.
-#[cfg(feature = "unstable-l2")]
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum MemOp {
-    I32Load,
-    I32Store,
-    I32Load8U,
-    I32Load8S,
-    I32Store8,
-    I32Load16U,
-    I32Load16S,
-    I32Store16,
-    I64Load,
-    I64Store,
-    F32Load,
-    F32Store,
-    F64Load,
-    F64Store,
-}
+#[cfg(feature = "unstable-l13-imports")]
+use crate::section::{parse_region_imports_section_payload, FieldKind, IMPORT_TABLE_BASE};
+#[cfg(feature = "unstable-l13-imports")]
+use crate::{RegionImportsError, REGION_IMPORTS_SECTION_NAME};
 
-#[cfg(feature = "unstable-l2")]
-impl MemOp {
-    fn name(self) -> &'static str {
-        match self {
-            MemOp::I32Load => "i32.load",
-            MemOp::I32Store => "i32.store",
-            MemOp::I32Load8U => "i32.load8_u",
-            MemOp::I32Load8S => "i32.load8_s",
-            MemOp::I32Store8 => "i32.store8",
-            MemOp::I32Load16U => "i32.load16_u",
-            MemOp::I32Load16S => "i32.load16_s",
-            MemOp::I32Store16 => "i32.store16",
-            MemOp::I64Load => "i64.load",
-            MemOp::I64Store => "i64.store",
-            MemOp::F32Load => "f32.load",
-            MemOp::F32Store => "f32.store",
-            MemOp::F64Load => "f64.load",
-            MemOp::F64Store => "f64.store",
-        }
-    }
-}
-
-/// Classify an operator as a typed memory op, returning its tag and
-/// static memarg offset. `None` for any non-memory operator.
-#[cfg(feature = "unstable-l2")]
-fn classify_mem_op(op: &Operator<'_>) -> Option<(MemOp, u64)> {
-    use wasmparser::Operator as O;
-    let pair = match op {
-        O::I32Load { memarg } => (MemOp::I32Load, memarg.offset),
-        O::I32Store { memarg } => (MemOp::I32Store, memarg.offset),
-        O::I32Load8U { memarg } => (MemOp::I32Load8U, memarg.offset),
-        O::I32Load8S { memarg } => (MemOp::I32Load8S, memarg.offset),
-        O::I32Load16U { memarg } => (MemOp::I32Load16U, memarg.offset),
-        O::I32Load16S { memarg } => (MemOp::I32Load16S, memarg.offset),
-        O::I32Store8 { memarg } => (MemOp::I32Store8, memarg.offset),
-        O::I32Store16 { memarg } => (MemOp::I32Store16, memarg.offset),
-        O::I64Load { memarg } => (MemOp::I64Load, memarg.offset),
-        O::I64Store { memarg } => (MemOp::I64Store, memarg.offset),
-        O::F32Load { memarg } => (MemOp::F32Load, memarg.offset),
-        O::F32Store { memarg } => (MemOp::F32Store, memarg.offset),
-        O::F64Load { memarg } => (MemOp::F64Load, memarg.offset),
-        O::F64Store { memarg } => (MemOp::F64Store, memarg.offset),
-        _ => return None,
-    };
-    Some(pair)
-}
-
-/// A short token naming an operator, for error messages. Memory ops use
-/// their canonical wasm name; others use the leading word of the Debug
-/// form (e.g. `LocalGet`, `I32Const`, `Drop`).
-#[cfg(feature = "unstable-l2")]
-fn operator_token(op: &Operator<'_>) -> String {
-    if let Some((m, _)) = classify_mem_op(op) {
-        return m.name().to_string();
-    }
-    let dbg = format!("{op:?}");
-    dbg.split([' ', '(', '{'])
-        .next()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("<op>")
-        .to_string()
-}
-
-/// Is `m` a legal load OR store for a field of type `wty`? Loads carry
-/// signedness (so an `i8` field demands `load8_s`, a `u8` field
-/// `load8_u`); stores collapse signedness (only `store8` / `store16`
-/// exist). Mirrors the producer's `scalar_load_op` / `scalar_store_op`.
-#[cfg(feature = "unstable-l2")]
-fn mem_op_matches_field(m: MemOp, wty: WasmTy) -> bool {
-    use MemOp::*;
-    let allowed: &[MemOp] = match wty {
-        WasmTy::U8 | WasmTy::WBool => &[I32Load8U, I32Store8],
-        WasmTy::I8 => &[I32Load8S, I32Store8],
-        WasmTy::U16 => &[I32Load16U, I32Store16],
-        WasmTy::I16 => &[I32Load16S, I32Store16],
-        WasmTy::U32 | WasmTy::I32 => &[I32Load, I32Store],
-        WasmTy::U64 | WasmTy::I64 => &[I64Load, I64Store],
-        WasmTy::F32 => &[F32Load, F32Store],
-        WasmTy::F64 => &[F64Load, F64Store],
-        WasmTy::NotApplicable => &[],
-    };
-    allowed.contains(&m)
-}
-
-/// Byte size of a field's storage: a scalar's natural width, or a 4-byte
-/// handle for a pointer field. Mirrors the producer's `resolve_field`
-/// sizing so the two offset computations agree.
-#[cfg(feature = "unstable-l2")]
-fn field_byte_size(f: &FieldEntry) -> u32 {
-    f.wasm_ty.byte_width().unwrap_or(4)
-}
-
-/// The byte offset of `field_id` within `region`: the saturating sum of
-/// the sizes (× cardinality) of the fields before it. Same arithmetic as
-/// the producer's `resolve_field`; the T4 layout-equivalence lemma will
-/// prove these two implementations agree.
-#[cfg(feature = "unstable-l2")]
-fn field_byte_offset(region: &RegionEntry, field_id: usize) -> u32 {
-    let mut off: u32 = 0;
-    for f in region.fields.iter().take(field_id) {
-        off = off.saturating_add(field_byte_size(f).saturating_mul(f.cardinality));
-    }
-    off
-}
-
-/// What the decode found at a pinned instruction index.
-#[cfg(feature = "unstable-l2")]
-struct OpProbe {
-    /// Total operator count in the body (incl. the terminating `End`).
-    op_count: u32,
-    /// `true` iff the pinned index is within the operator stream.
-    present: bool,
-    /// `Some((tag, memarg_offset))` iff the pinned op is a memory op.
-    mem: Option<(MemOp, u64)>,
-    /// Short token of the pinned op (empty if the index was past the end).
-    token: String,
-}
-
-/// Decode `body` and report the operator at `index`. Streams once; does
-/// not allocate the operator list.
-#[cfg(feature = "unstable-l2")]
-fn probe_op_at(body: FunctionBody<'_>, index: usize) -> Result<OpProbe, BinaryReaderError> {
-    let reader = body.get_operators_reader()?;
-    let mut op_count: u32 = 0;
-    let mut mem: Option<(MemOp, u64)> = None;
-    let mut token = String::new();
-    let mut present = false;
-    for (i, op_result) in reader.into_iter().enumerate() {
-        let op = op_result?;
-        if i == index {
-            present = true;
-            mem = classify_mem_op(&op);
-            token = operator_token(&op);
-        }
-        op_count += 1;
-    }
-    Ok(OpProbe {
-        op_count,
-        present,
-        mem,
-        token,
-    })
-}
-
-#[cfg(feature = "unstable-l2")]
-pub fn verify_access_typing_from_module(
+#[cfg(feature = "unstable-l13-imports")]
+pub fn verify_region_imports_from_module(
     wasm_bytes: &[u8],
-) -> Result<AccessTypingReport, VerifyError> {
-    // Single pass: both carrier payloads, every function body, and the
-    // import count (to map a global func index to a body index).
+) -> Result<Vec<RegionImportsError>, VerifyError> {
     let parser = Parser::new(0);
-    let mut access_payload: Option<Vec<u8>> = None;
+    let mut region_imports_payload: Option<Vec<u8>> = None;
     let mut regions_payload: Option<Vec<u8>> = None;
-    let mut bodies: Vec<FunctionBody<'_>> = Vec::new();
-    let mut import_count: u32 = 0;
     for payload in parser.parse_all(wasm_bytes) {
-        match payload? {
-            Payload::ImportSection(reader) => {
-                for import in reader.into_imports() {
-                    if matches!(import?.ty, wasmparser::TypeRef::Func(_)) {
-                        import_count += 1;
+        if let Payload::CustomSection(reader) = payload? {
+            match reader.name() {
+                REGION_IMPORTS_SECTION_NAME => {
+                    region_imports_payload = Some(reader.data().to_vec());
+                }
+                REGIONS_SECTION_NAME => {
+                    regions_payload = Some(reader.data().to_vec());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let regions = regions_payload
+        .as_deref()
+        .and_then(parse_regions_section_payload);
+    let mut errors = Vec::new();
+
+    if let Some(payload) = region_imports_payload.as_deref() {
+        // MissingDependentRegions check (proposal 0003 §"Producer
+        // obligations" #1): region-imports present requires regions
+        // present. We treat "regions section absent OR present-but-
+        // unparseable (version mismatch)" identically — there's nothing
+        // to validate the import-table foreign keys against either way.
+        if regions.is_none() {
+            errors.push(RegionImportsError::MissingDependentRegions);
+            return Ok(errors);
+        }
+
+        let Some(imports) = parse_region_imports_section_payload(payload) else {
+            // Unsupported region-imports version: lenient, no errors.
+            return Ok(errors);
+        };
+
+        // Duplicate (producer_module_name, region_name) pairs.
+        let mut seen: std::collections::HashMap<(String, String), u32> =
+            std::collections::HashMap::new();
+        for (idx, imp) in imports.iter().enumerate() {
+            let idx = idx as u32;
+            let key = (imp.producer_module_name.clone(), imp.region_name.clone());
+            if let Some(&first_idx) = seen.get(&key) {
+                errors.push(RegionImportsError::DuplicateImport {
+                    first_idx,
+                    duplicate_idx: idx,
+                    producer_module_name: imp.producer_module_name.clone(),
+                    region_name: imp.region_name.clone(),
+                });
+            } else {
+                seen.insert(key, idx);
+            }
+        }
+
+        // v1 restriction: imported regions are scalar-only.
+        for (import_idx, imp) in imports.iter().enumerate() {
+            let import_idx = import_idx as u32;
+            for (field_idx, f) in imp.expected_fields.iter().enumerate() {
+                if f.kind != FieldKind::Scalar {
+                    errors.push(RegionImportsError::PointerInImportNotSupportedInV1 {
+                        import_idx,
+                        field_idx: field_idx as u32,
+                        field_name: f.name.clone(),
+                        kind: f.kind,
+                    });
+                }
+            }
+        }
+
+        // ImportTargetOutOfRange: every target_region with the import-table
+        // bit set must resolve within the import-table bounds. NO_TARGET_REGION
+        // (0xFFFFFFFF) is the Scalar sentinel and is excluded — we filter
+        // by `kind != Scalar` since the sentinel only appears on Scalar
+        // fields per proposal 0001.
+        if let Some(regions) = regions.as_ref() {
+            let import_count = imports.len() as u32;
+            for (region_idx, r) in regions.iter().enumerate() {
+                let region_idx = region_idx as u32;
+                for (field_idx, f) in r.fields.iter().enumerate() {
+                    let field_idx = field_idx as u32;
+                    if f.kind != FieldKind::Scalar && f.target_region >= IMPORT_TABLE_BASE {
+                        let resolved_idx = f.target_region - IMPORT_TABLE_BASE;
+                        if resolved_idx >= import_count {
+                            errors.push(RegionImportsError::ImportTargetOutOfRange {
+                                region_idx,
+                                field_idx,
+                                target_region: f.target_region,
+                                resolved_idx,
+                                import_count,
+                            });
+                        }
                     }
                 }
             }
-            Payload::CustomSection(reader) => match reader.name() {
-                ACCESS_SITES_SECTION_NAME => access_payload = Some(reader.data().to_vec()),
-                REGIONS_SECTION_NAME => regions_payload = Some(reader.data().to_vec()),
-                _ => {}
-            },
-            Payload::CodeSectionEntry(body) => bodies.push(body),
-            _ => {}
+        }
+    } else if let Some(regions) = regions.as_ref() {
+        // region-imports absent: any target_region with the import bit
+        // set is a dangling foreign key. Emit at most once per module to
+        // avoid spamming when many fields share the problem.
+        for r in regions {
+            for f in &r.fields {
+                if f.kind != FieldKind::Scalar && f.target_region >= IMPORT_TABLE_BASE {
+                    errors.push(RegionImportsError::MissingDependentRegionImports {
+                        target_region: f.target_region,
+                    });
+                    return Ok(errors);
+                }
+            }
         }
     }
 
-    let mut report = AccessTypingReport::default();
-
-    // No access-sites section ⇒ no claim made ⇒ empty report. Without a
-    // regions companion we cannot resolve field types, so there is
-    // nothing to type-check (the bounds pass reports the missing-carrier
-    // hard error separately).
-    let (Some(access_payload), Some(regions_bytes)) = (access_payload, regions_payload) else {
-        return Ok(report);
-    };
-    let (Some(regions), Some(entries)) = (
-        parse_regions_section_payload(&regions_bytes),
-        parse_access_sites_section_payload(&access_payload),
-    ) else {
-        return Ok(report);
-    };
-
-    let region_count = regions.len() as u32;
-
-    for (entry_idx, e) in entries.iter().enumerate() {
-        let entry_idx = entry_idx as u32;
-
-        // Declared-only sites are counted, not checked.
-        if e.instruction_byte_offset == ACCESS_SITE_UNPINNED {
-            report.declared_only += 1;
-            continue;
-        }
-        let instruction_index = e.instruction_byte_offset;
-
-        // Resolve region + field (typing can't proceed without them).
-        if e.region_id >= region_count {
-            report.errors.push(AccessTypingError::UnresolvableEntry {
-                entry_idx,
-                reason: format!(
-                    "region_id {} out of range (region_count = {region_count})",
-                    e.region_id
-                ),
-            });
-            continue;
-        }
-        let region = &regions[e.region_id as usize];
-        let field_count = region.fields.len() as u32;
-        if e.field_id >= field_count {
-            report.errors.push(AccessTypingError::UnresolvableEntry {
-                entry_idx,
-                reason: format!(
-                    "field_id {} out of range for region {} (field_count = {field_count})",
-                    e.field_id, e.region_id
-                ),
-            });
-            continue;
-        }
-        let field = &region.fields[e.field_id as usize];
-
-        // Resolve the function body (imports are opaque — skip).
-        let Some(body_idx) = e.func_idx.checked_sub(import_count) else {
-            report.errors.push(AccessTypingError::UnresolvableEntry {
-                entry_idx,
-                reason: format!(
-                    "func_idx {} is an imported function (no body to inspect)",
-                    e.func_idx
-                ),
-            });
-            continue;
-        };
-        let body_idx = body_idx as usize;
-        if body_idx >= bodies.len() {
-            report.errors.push(AccessTypingError::UnresolvableEntry {
-                entry_idx,
-                reason: format!("func_idx {} has no local body", e.func_idx),
-            });
-            continue;
-        }
-
-        let expected_wty = field.wasm_ty;
-        let field_offset = field_byte_offset(region, e.field_id as usize);
-
-        // A scalar field has a width; a pointer field does not — a pinned
-        // scalar access into a pointer field is a producer error.
-        let Some(field_width) = expected_wty.byte_width() else {
-            report.errors.push(AccessTypingError::AccessTypeMismatch {
-                entry_idx,
-                region_id: e.region_id,
-                field_id: e.field_id,
-                expected: format!("{:?} (pointer field — not a scalar access)", field.kind),
-                found: "pinned scalar load/store".to_string(),
-            });
-            continue;
-        };
-
-        // Field extent must stay inside the declared region size.
-        if field_offset.saturating_add(field_width) > region.region_byte_size {
-            report.errors.push(AccessTypingError::AccessOutOfRegionBounds {
-                entry_idx,
-                region_id: e.region_id,
-                field_id: e.field_id,
-                field_offset,
-                field_width,
-                region_byte_size: region.region_byte_size,
-            });
-            continue;
-        }
-
-        // Decode the pinned instruction.
-        let probe = probe_op_at(bodies[body_idx].clone(), instruction_index as usize)?;
-        if !probe.present {
-            report.errors.push(AccessTypingError::AccessSiteIndexOutOfRange {
-                entry_idx,
-                func_idx: e.func_idx,
-                instruction_index,
-                op_count: probe.op_count,
-            });
-            continue;
-        }
-        let Some((mem_op, memarg_offset)) = probe.mem else {
-            report.errors.push(AccessTypingError::AccessSiteNotAMemoryOp {
-                entry_idx,
-                func_idx: e.func_idx,
-                instruction_index,
-                found: probe.token,
-            });
-            continue;
-        };
-
-        // Width / type agreement.
-        if !mem_op_matches_field(mem_op, expected_wty) {
-            report.errors.push(AccessTypingError::AccessTypeMismatch {
-                entry_idx,
-                region_id: e.region_id,
-                field_id: e.field_id,
-                expected: format!("{expected_wty:?}"),
-                found: mem_op.name().to_string(),
-            });
-            continue;
-        }
-
-        // Static offset agreement.
-        if memarg_offset != field_offset as u64 {
-            report.errors.push(AccessTypingError::AccessOffsetMismatch {
-                entry_idx,
-                region_id: e.region_id,
-                field_id: e.field_id,
-                expected_offset: field_offset,
-                found_offset: memarg_offset,
-            });
-            continue;
-        }
-
-        report.type_verified += 1;
-    }
-
-    Ok(report)
+    Ok(errors)
 }
 
 // ----------------------------------------------------------------------
@@ -1788,213 +1567,279 @@ mod access_sites_verifier_tests {
 }
 
 // ----------------------------------------------------------------------
-// L13 positive-form region imports (proposal 0003 / ADR-0007)
+// Tests — L13 region-imports verifier pass (proposal 0003, typed-wasm#140)
 // ----------------------------------------------------------------------
 
-#[cfg(feature = "unstable-l13-imports")]
-use crate::section::{parse_region_imports_section_payload, FieldKind, RegionImportEntry};
-#[cfg(feature = "unstable-l13-imports")]
-use crate::{
-    CompatCertificate, LinkGraphReport, RegionImportsError, REGION_IMPORTS_SECTION_NAME,
-};
+#[cfg(all(test, feature = "unstable-l13-imports"))]
+mod region_imports_verifier_tests {
+    use super::*;
+    use crate::section::{
+        build_region_imports_section_payload, build_regions_section_payload, FieldEntry, FieldKind,
+        ImportedFieldEntry, Nullability, RegionEntry, RegionImportEntry, WasmTy,
+        IMPORT_TABLE_BASE, NO_TARGET_REGION,
+    };
+    use wasm_encoder::{
+        CodeSection, CustomSection, Function, FunctionSection, Instruction, Module, TypeSection,
+        ValType,
+    };
 
-/// High bit of `target_region`: set = the low 31 bits index the
-/// import table rather than the local region table (proposal 0003
-/// §Cross-section foreign-key extension).
-#[cfg(feature = "unstable-l13-imports")]
-pub const TARGET_REGION_IMPORT_BIT: u32 = 0x8000_0000;
-
-/// Per-module internal-consistency pass over
-/// `typedwasm.region-imports`. Returns the parsed import table (empty
-/// when the section is absent) plus every violation found; cross-module
-/// agreement is `verify_link_graph`'s job.
-#[cfg(feature = "unstable-l13-imports")]
-pub fn verify_region_imports_from_module(
-    wasm_bytes: &[u8],
-) -> Result<(Vec<RegionImportEntry>, Vec<RegionImportsError>), VerifyError> {
-    let parser = Parser::new(0);
-    let mut imports_payload: Option<Vec<u8>> = None;
-    let mut regions_payload: Option<Vec<u8>> = None;
-    for payload in parser.parse_all(wasm_bytes) {
-        if let Payload::CustomSection(reader) = payload? {
-            match reader.name() {
-                REGION_IMPORTS_SECTION_NAME => {
-                    imports_payload = Some(reader.data().to_vec());
-                }
-                REGIONS_SECTION_NAME => {
-                    regions_payload = Some(reader.data().to_vec());
-                }
-                _ => {}
-            }
+    fn scalar_field(name: &str, ty: WasmTy) -> FieldEntry {
+        FieldEntry {
+            name: name.into(),
+            kind: FieldKind::Scalar,
+            wasm_ty: ty,
+            target_region: NO_TARGET_REGION,
+            nullability: Nullability::NonNull,
+            cardinality: 1,
         }
     }
-    let Some(imports_bytes) = imports_payload else {
-        // Absent = "no cross-module regions imported" — trivially clean.
-        return Ok((vec![], vec![]));
-    };
-    let Some(imports) = parse_region_imports_section_payload(&imports_bytes) else {
-        return Ok((vec![], vec![RegionImportsError::UnparseableSection]));
-    };
 
-    let mut errors = Vec::new();
-
-    // MissingDependentCarrier (proposal 0003 §Producer obligations #1).
-    let regions = regions_payload
-        .as_deref()
-        .and_then(parse_regions_section_payload);
-    if regions.is_none() {
-        errors.push(RegionImportsError::MissingDependentRegions);
+    fn ptr_field_to_import(name: &str, import_idx: u32) -> FieldEntry {
+        FieldEntry {
+            name: name.into(),
+            kind: FieldKind::PtrBorrow,
+            wasm_ty: WasmTy::NotApplicable,
+            target_region: IMPORT_TABLE_BASE + import_idx,
+            nullability: Nullability::NonNull,
+            cardinality: 1,
+        }
     }
 
-    // Unique (producer_module, region_name) pairs.
-    let mut seen: std::collections::HashSet<(&str, &str)> = std::collections::HashSet::new();
-    for imp in &imports {
-        if !seen.insert((imp.producer_module.as_str(), imp.region_name.as_str())) {
-            errors.push(RegionImportsError::DuplicateImport {
-                producer_module: imp.producer_module.clone(),
-                region_name: imp.region_name.clone(),
+    fn scalar_import_field(name: &str, ty: WasmTy) -> ImportedFieldEntry {
+        ImportedFieldEntry {
+            name: name.into(),
+            kind: FieldKind::Scalar,
+            wasm_ty: ty,
+            nullability: Nullability::NonNull,
+            cardinality: 1,
+        }
+    }
+
+    fn ptr_import_field(name: &str, kind: FieldKind) -> ImportedFieldEntry {
+        ImportedFieldEntry {
+            name: name.into(),
+            kind,
+            wasm_ty: WasmTy::NotApplicable,
+            nullability: Nullability::Nullable,
+            cardinality: 1,
+        }
+    }
+
+    fn module_with_sections(
+        regions: Option<Vec<RegionEntry>>,
+        imports: Option<Vec<RegionImportEntry>>,
+    ) -> Vec<u8> {
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types
+            .ty()
+            .function(Vec::<ValType>::new(), Vec::<ValType>::new());
+        module.section(&types);
+        let mut funcs = FunctionSection::new();
+        funcs.function(0);
+        module.section(&funcs);
+        let mut code = CodeSection::new();
+        let mut f = Function::new([]);
+        f.instruction(&Instruction::End);
+        code.function(&f);
+        module.section(&code);
+        if let Some(regions) = regions {
+            let bytes = build_regions_section_payload(&regions);
+            module.section(&CustomSection {
+                name: REGIONS_SECTION_NAME.into(),
+                data: (&bytes[..]).into(),
             });
         }
-    }
-
-    // v1 scalar-only expected schemas.
-    for (import_idx, imp) in imports.iter().enumerate() {
-        for f in &imp.expected_fields {
-            if f.kind != FieldKind::Scalar {
-                errors.push(RegionImportsError::PointerInImportNotSupportedInV1 {
-                    import_idx: import_idx as u32,
-                    field_name: f.name.clone(),
-                });
-            }
+        if let Some(imports) = imports {
+            let bytes = build_region_imports_section_payload(&imports);
+            module.section(&CustomSection {
+                name: REGION_IMPORTS_SECTION_NAME.into(),
+                data: (&bytes[..]).into(),
+            });
         }
+        module.finish()
     }
 
-    // High-bit target_region foreign keys in typedwasm.regions must land
-    // within the import table.
-    if let Some(regions) = &regions {
-        let import_count = imports.len() as u32;
-        for (ri, region) in regions.iter().enumerate() {
-            for (fi, f) in region.fields.iter().enumerate() {
-                if f.target_region != crate::section::NO_TARGET_REGION
-                    && f.target_region & TARGET_REGION_IMPORT_BIT != 0
-                {
-                    let import_idx = f.target_region & !TARGET_REGION_IMPORT_BIT;
-                    if import_idx >= import_count {
-                        errors.push(RegionImportsError::ImportTargetOutOfRange {
-                            local_region_idx: ri as u32,
-                            field_idx: fi as u32,
-                            import_idx,
-                            import_count,
-                        });
-                    }
-                }
-            }
-        }
+    #[test]
+    fn module_without_either_section_verifies_trivially() {
+        let bytes = module_with_sections(None, None);
+        assert_eq!(verify_region_imports_from_module(&bytes).unwrap(), vec![]);
     }
 
-    Ok((imports, errors))
-}
-
-/// Whole-link-graph L13 pass: per-module internal consistency, then
-/// `SchemaSub expected actual` for every import against the named
-/// producer's `typedwasm.regions` export. Subset imports are agreement.
-#[cfg(feature = "unstable-l13-imports")]
-pub fn verify_link_graph(modules: &[(&str, &[u8])]) -> Result<LinkGraphReport, VerifyError> {
-    let mut report = LinkGraphReport::default();
-
-    // Producer lookup: module name -> parsed regions table (None until
-    // needed; a producer without a regions section resolves no regions).
-    let mut producer_regions: std::collections::HashMap<&str, Option<Vec<RegionEntry>>> =
-        std::collections::HashMap::new();
-    for (name, bytes) in modules {
-        let parser = Parser::new(0);
-        let mut regions_payload: Option<Vec<u8>> = None;
-        for payload in parser.parse_all(bytes) {
-            if let Payload::CustomSection(reader) = payload? {
-                if reader.name() == REGIONS_SECTION_NAME {
-                    regions_payload = Some(reader.data().to_vec());
-                }
-            }
-        }
-        producer_regions.insert(
-            name,
-            regions_payload
-                .as_deref()
-                .and_then(parse_regions_section_payload),
-        );
+    #[test]
+    fn module_with_regions_only_no_import_bits_verifies_trivially() {
+        let regions = vec![RegionEntry {
+            name: "Player".into(),
+            fields: vec![scalar_field("hp", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let bytes = module_with_sections(Some(regions), None);
+        assert_eq!(verify_region_imports_from_module(&bytes).unwrap(), vec![]);
     }
 
-    for (consumer, bytes) in modules {
-        let (imports, errs) = verify_region_imports_from_module(bytes)?;
-        report.errors.extend(errs);
-
-        for imp in &imports {
-            let Some(regions) = producer_regions
-                .get(imp.producer_module.as_str())
-                .and_then(|r| r.as_ref())
-            else {
-                report.errors.push(RegionImportsError::UnresolvedProducerModule {
-                    consumer: consumer.to_string(),
-                    producer_module: imp.producer_module.clone(),
-                });
-                continue;
-            };
-            let Some(actual) = regions.iter().find(|r| r.name == imp.region_name) else {
-                report.errors.push(RegionImportsError::UnresolvedExportedRegion {
-                    consumer: consumer.to_string(),
-                    producer_module: imp.producer_module.clone(),
-                    region_name: imp.region_name.clone(),
-                });
-                continue;
-            };
-
-            // SchemaSub expected actual: every expected field appears in
-            // the actual schema with matching name/kind/type/nullability/
-            // cardinality (noSpoofing, MultiModule.idr:374).
-            let mut missing_fields = Vec::new();
-            let mut type_mismatches = Vec::new();
-            for exp in &imp.expected_fields {
-                match actual.fields.iter().find(|a| a.name == exp.name) {
-                    None => missing_fields.push(exp.name.clone()),
-                    Some(act) => {
-                        if act.kind != exp.kind
-                            || act.wasm_ty != exp.wasm_ty
-                            || act.nullability != exp.nullability
-                            || act.cardinality != exp.cardinality
-                        {
-                            type_mismatches.push(format!(
-                                "{}: expected {:?}/{:?}/{:?}/x{}, actual {:?}/{:?}/{:?}/x{}",
-                                exp.name,
-                                exp.kind,
-                                exp.wasm_ty,
-                                exp.nullability,
-                                exp.cardinality,
-                                act.kind,
-                                act.wasm_ty,
-                                act.nullability,
-                                act.cardinality
-                            ));
-                        }
-                    }
-                }
-            }
-            if missing_fields.is_empty() && type_mismatches.is_empty() {
-                report.certificates.push(CompatCertificate {
-                    consumer: consumer.to_string(),
-                    producer: imp.producer_module.clone(),
-                    region_name: imp.region_name.clone(),
-                });
-            } else {
-                report.errors.push(RegionImportsError::SchemaImportMismatch {
-                    consumer: consumer.to_string(),
-                    producer_module: imp.producer_module.clone(),
-                    region_name: imp.region_name.clone(),
-                    missing_fields,
-                    type_mismatches,
-                });
-            }
-        }
+    #[test]
+    fn import_section_without_regions_is_missing_dependent_carrier() {
+        let imports = vec![RegionImportEntry {
+            producer_module_name: "world".into(),
+            region_name: "Player".into(),
+            expected_fields: vec![scalar_import_field("hp", WasmTy::I32)],
+        }];
+        let bytes = module_with_sections(None, Some(imports));
+        let errors = verify_region_imports_from_module(&bytes).unwrap();
+        assert_eq!(errors, vec![RegionImportsError::MissingDependentRegions]);
     }
 
-    Ok(report)
+    #[test]
+    fn import_bit_without_import_section_is_flagged_once() {
+        // Two pointer fields claiming imports, but no region-imports
+        // section to resolve them. Emitter reports the first dangling
+        // value only — further would spam.
+        let regions = vec![RegionEntry {
+            name: "Caller".into(),
+            fields: vec![
+                ptr_field_to_import("a", 0),
+                ptr_field_to_import("b", 1),
+            ],
+            region_byte_size: 8,
+        }];
+        let bytes = module_with_sections(Some(regions), None);
+        let errors = verify_region_imports_from_module(&bytes).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            errors[0],
+            RegionImportsError::MissingDependentRegionImports { target_region }
+                if target_region == IMPORT_TABLE_BASE
+        ));
+    }
+
+    #[test]
+    fn well_formed_import_table_verifies_clean() {
+        let regions = vec![RegionEntry {
+            name: "Caller".into(),
+            fields: vec![
+                scalar_field("local", WasmTy::I32),
+                ptr_field_to_import("remote", 0),
+            ],
+            region_byte_size: 8,
+        }];
+        let imports = vec![RegionImportEntry {
+            producer_module_name: "world".into(),
+            region_name: "Player".into(),
+            expected_fields: vec![scalar_import_field("hp", WasmTy::I32)],
+        }];
+        let bytes = module_with_sections(Some(regions), Some(imports));
+        assert_eq!(verify_region_imports_from_module(&bytes).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn duplicate_import_is_flagged() {
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let imports = vec![
+            RegionImportEntry {
+                producer_module_name: "world".into(),
+                region_name: "Player".into(),
+                expected_fields: vec![],
+            },
+            RegionImportEntry {
+                producer_module_name: "world".into(),
+                region_name: "Player".into(),
+                expected_fields: vec![],
+            },
+        ];
+        let bytes = module_with_sections(Some(regions), Some(imports));
+        let errors = verify_region_imports_from_module(&bytes).unwrap();
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            RegionImportsError::DuplicateImport {
+                first_idx: 0,
+                duplicate_idx: 1,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn pointer_in_import_is_flagged() {
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let imports = vec![RegionImportEntry {
+            producer_module_name: "world".into(),
+            region_name: "Container".into(),
+            expected_fields: vec![ptr_import_field("child", FieldKind::PtrOwning)],
+        }];
+        let bytes = module_with_sections(Some(regions), Some(imports));
+        let errors = verify_region_imports_from_module(&bytes).unwrap();
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            RegionImportsError::PointerInImportNotSupportedInV1 {
+                import_idx: 0,
+                field_idx: 0,
+                kind: FieldKind::PtrOwning,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn import_target_out_of_range_is_flagged() {
+        // Regions points to import-table index 5, but only 1 import declared.
+        let regions = vec![RegionEntry {
+            name: "Caller".into(),
+            fields: vec![ptr_field_to_import("remote", 5)],
+            region_byte_size: 4,
+        }];
+        let imports = vec![RegionImportEntry {
+            producer_module_name: "world".into(),
+            region_name: "Player".into(),
+            expected_fields: vec![],
+        }];
+        let bytes = module_with_sections(Some(regions), Some(imports));
+        let errors = verify_region_imports_from_module(&bytes).unwrap();
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            RegionImportsError::ImportTargetOutOfRange {
+                region_idx: 0,
+                field_idx: 0,
+                resolved_idx: 5,
+                import_count: 1,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn no_target_region_sentinel_is_not_flagged_as_import() {
+        // A Scalar field carries target_region = NO_TARGET_REGION (0xFFFFFFFF),
+        // which is numerically >= IMPORT_TABLE_BASE. The verifier must
+        // skip Scalar fields when checking the import-bit convention.
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let bytes = module_with_sections(Some(regions), None);
+        // No import section and no import-bit fields → trivial verify.
+        assert_eq!(verify_region_imports_from_module(&bytes).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn empty_import_table_verifies_clean() {
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let imports: Vec<RegionImportEntry> = vec![];
+        let bytes = module_with_sections(Some(regions), Some(imports));
+        // Empty import_count = 0 is wasteful but legal (proposal 0003
+        // §"Open questions" #6).
+        assert_eq!(verify_region_imports_from_module(&bytes).unwrap(), vec![]);
+    }
 }

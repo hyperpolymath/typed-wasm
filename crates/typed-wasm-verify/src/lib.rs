@@ -36,6 +36,12 @@ pub use section::{
     RegionImportEntry, REGION_IMPORTS_SECTION_VERSION,
 };
 
+#[cfg(feature = "unstable-l13-imports")]
+pub use section::{
+    build_region_imports_section_payload, parse_region_imports_section_payload,
+    ImportedFieldEntry, RegionImportEntry, IMPORT_TABLE_BASE, REGION_IMPORTS_SECTION_VERSION,
+};
+
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
 /// Wire encoding in the `typedwasm.ownership` custom section: a single
 /// u8 per kind, values 0/1/2/3 as below.
@@ -170,124 +176,13 @@ pub const CAPABILITIES_SECTION_NAME: &str = "typedwasm.capabilities";
 #[cfg(feature = "unstable-l2")]
 pub const ACCESS_SITES_SECTION_NAME: &str = "typedwasm.access-sites";
 
-/// Custom-section name for the L13 positive-form cross-module region
-/// import table (proposal 0003 / ADR-0007).
+/// Custom-section name carrying cross-module region-import declarations
+/// (proposal 0003, typed-wasm#140 refs #95). Companion to
+/// `typedwasm.regions`: a module's `target_region` foreign keys with the
+/// import-table bit set (`>= IMPORT_TABLE_BASE`) resolve through this
+/// section's entries. UNSTABLE.
 #[cfg(feature = "unstable-l13-imports")]
 pub const REGION_IMPORTS_SECTION_NAME: &str = "typedwasm.region-imports";
-
-/// L13 region-imports violation (proposal 0003 §Consumer obligations).
-#[cfg(feature = "unstable-l13-imports")]
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum RegionImportsError {
-    /// `typedwasm.region-imports` present but `typedwasm.regions` absent
-    /// or unparseable — the import table's foreign keys dangle.
-    #[error("Level 13 violation: typedwasm.region-imports present without a parseable typedwasm.regions section (MissingDependentCarrier)")]
-    MissingDependentRegions,
-
-    /// The section is present but its version is unsupported / payload
-    /// unparseable by this verifier.
-    #[error("Level 13: typedwasm.region-imports section present but not parseable as version {expected} (unsupported carrier version or malformed payload)", expected = section::REGION_IMPORTS_SECTION_VERSION)]
-    UnparseableSection,
-
-    /// Duplicate `(producer_module, region_name)` pair — a producer bug.
-    #[error("Level 13 violation: duplicate import of region '{region_name}' from module '{producer_module}' (import-table entries must be unique per (producer, region) pair)")]
-    DuplicateImport {
-        producer_module: String,
-        region_name: String,
-    },
-
-    /// v1 restriction: expected schemas are scalar-only.
-    #[error("Level 13 violation: import {import_idx} field '{field_name}' is pointer-typed — pointer fields in imported region schemas are not supported in v1 (proposal 0003 §Open Questions #1)")]
-    PointerInImportNotSupportedInV1 {
-        import_idx: u32,
-        field_name: String,
-    },
-
-    /// A `target_region` high-bit foreign key in `typedwasm.regions`
-    /// points past the import table.
-    #[error("Level 13 violation: region {local_region_idx} field {field_idx} has target_region import-key {import_idx}, out of bounds for the import table (import_count = {import_count})")]
-    ImportTargetOutOfRange {
-        local_region_idx: u32,
-        field_idx: u32,
-        import_idx: u32,
-        import_count: u32,
-    },
-
-    /// Link graph: no module with the named wasm module name.
-    #[error("Level 13 violation: consumer '{consumer}' imports from producer module '{producer_module}', which is not present in the link graph")]
-    UnresolvedProducerModule {
-        consumer: String,
-        producer_module: String,
-    },
-
-    /// Link graph: the producer exists but exports no such region.
-    #[error("Level 13 violation: producer '{producer_module}' has no region named '{region_name}' in its typedwasm.regions table (imported by '{consumer}')")]
-    UnresolvedExportedRegion {
-        consumer: String,
-        producer_module: String,
-        region_name: String,
-    },
-
-    /// Link graph: the producer's actual exported schema does not
-    /// satisfy the importer's expected schema (`SchemaSub` fails —
-    /// `noSpoofing`, MultiModule.idr).
-    #[error("Level 13 violation: schema mismatch importing '{region_name}' from '{producer_module}' into '{consumer}': missing fields {missing_fields:?}; type mismatches {type_mismatches:?}")]
-    SchemaImportMismatch {
-        consumer: String,
-        producer_module: String,
-        region_name: String,
-        missing_fields: Vec<String>,
-        type_mismatches: Vec<String>,
-    },
-}
-
-/// A verified cross-module import: `consumer`'s expected schema for
-/// `region_name` is satisfied by `producer`'s actual export. The wire
-/// realisation of `MultiModule.idr::CompatCertificate`.
-#[cfg(feature = "unstable-l13-imports")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompatCertificate {
-    pub consumer: String,
-    pub producer: String,
-    pub region_name: String,
-}
-
-/// Result of a whole-link-graph L13 pass: one certificate per resolved
-/// import, plus every violation found. Agreement holds iff
-/// `errors.is_empty()`.
-#[cfg(feature = "unstable-l13-imports")]
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct LinkGraphReport {
-    pub certificates: Vec<CompatCertificate>,
-    pub errors: Vec<RegionImportsError>,
-}
-
-/// Verify the internal consistency of a module's
-/// `typedwasm.region-imports` section: dependent regions carrier
-/// present, unique `(producer, region)` pairs, v1 scalar-only expected
-/// schemas, and high-bit `target_region` foreign keys within the import
-/// table. Modules without the section verify trivially. Cross-module
-/// schema agreement is [`verify_link_graph`]'s job.
-#[cfg(feature = "unstable-l13-imports")]
-pub fn verify_region_imports_from_module(
-    wasm_bytes: &[u8],
-) -> Result<Vec<RegionImportsError>, VerifyError> {
-    verify::verify_region_imports_from_module(wasm_bytes).map(|(_, errs)| errs)
-}
-
-/// Verify L13 positive-form schema agreement across a link graph of
-/// `(wasm_module_name, wasm_bytes)` pairs: every region import in every
-/// module must resolve to a producer in the graph whose actual exported
-/// schema satisfies the importer's expected schema (`SchemaSub` —
-/// every expected field present in the actual schema with matching
-/// name, kind, type, nullability, and cardinality). Subset imports are
-/// sound: importing 5 of 12 fields is agreement on those 5.
-#[cfg(feature = "unstable-l13-imports")]
-pub fn verify_link_graph(
-    modules: &[(&str, &[u8])],
-) -> Result<LinkGraphReport, VerifyError> {
-    verify::verify_link_graph(modules)
-}
 
 /// L15 capability-section violation (parsing succeeded, content invalid).
 #[cfg(feature = "unstable-l15")]
@@ -344,98 +239,60 @@ pub enum AccessSiteError {
     },
 }
 
-/// L2 access-*typing* violation — the deep per-site check that decodes
-/// the function body and confirms a pinned access lands on a load/store
-/// of the target field's exact type, width, and offset, in-region.
-/// This is the obligation proposal 0002 deferred as
-/// `AccessSiteMisalignment`; here it is discharged at decode time.
-///
-/// Bounds errors (func/region/field id out of range) are the province of
-/// [`AccessSiteError`]; this enum assumes a resolvable entry and reports
-/// only the typing-layer faults. An entry that cannot be resolved is
-/// reported as [`AccessTypingError::UnresolvableEntry`] and skipped.
-#[cfg(feature = "unstable-l2")]
+/// L13 region-imports section violation. Self-consistency only; cross-
+/// module schema-agreement (`SchemaSub expected actual`, `SchemaImportMismatch`)
+/// belongs to a future `verify_link_graph` pass (proposal 0003 §"Open
+/// questions" #4 default option a).
+#[cfg(feature = "unstable-l13-imports")]
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum AccessTypingError {
-    /// The entry's func/region/field id is out of range, or the pinned
-    /// function is an import with no body — the typing pass cannot resolve
-    /// what to check. (The bounds detail is [`AccessSiteError`]'s job.)
-    #[error("Level 2 access-typing: entry {entry_idx} is unresolvable for typing ({reason})")]
-    UnresolvableEntry { entry_idx: u32, reason: String },
+pub enum RegionImportsError {
+    /// Proposal 0003 §"Producer obligations" #1: a module emitting
+    /// `typedwasm.region-imports` MUST also emit `typedwasm.regions` (the
+    /// import-table foreign keys in `typedwasm.regions`'s field entries
+    /// would otherwise dangle).
+    #[error("Level 13 violation: typedwasm.region-imports section emitted without companion typedwasm.regions section (MissingDependentCarrier)")]
+    MissingDependentRegions,
 
-    /// The pinned instruction index is past the end of the function's
-    /// operator stream.
-    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins instruction index {instruction_index}, but the body has only {op_count} operators")]
-    AccessSiteIndexOutOfRange {
-        entry_idx: u32,
-        func_idx: u32,
-        instruction_index: u32,
-        op_count: u32,
+    /// Inverse companion check: a `typedwasm.regions` field entry has a
+    /// `target_region` value with the import-table bit set, but no
+    /// `typedwasm.region-imports` section is present to resolve it
+    /// against. Emitted at most once per module (further occurrences
+    /// would spam).
+    #[error("Level 13 violation: typedwasm.regions has target_region with import-table bit set (value {target_region:#010x}) but no typedwasm.region-imports section present to resolve it")]
+    MissingDependentRegionImports { target_region: u32 },
+
+    /// Proposal 0003 §"Wire format" Notes: imports MUST have unique
+    /// `(producer_module_name, region_name)` pairs.
+    #[error("Level 13 violation: duplicate import: (producer_module_name = {producer_module_name:?}, region_name = {region_name:?}) appears at import-table indices {first_idx} and {duplicate_idx}")]
+    DuplicateImport {
+        first_idx: u32,
+        duplicate_idx: u32,
+        producer_module_name: String,
+        region_name: String,
     },
 
-    /// The pinned instruction is not a memory load/store at all.
-    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins instruction index {instruction_index}, which is `{found}` — not a typed memory load/store")]
-    AccessSiteNotAMemoryOp {
-        entry_idx: u32,
-        func_idx: u32,
-        instruction_index: u32,
-        found: String,
+    /// Proposal 0003 §"Producer obligations" #5: imported regions MUST
+    /// have scalar-only expected schemas in v1. Transitive pointer-chain
+    /// resolution is deferred to v2 (see proposal 0003 §"Open questions" #1).
+    #[error("Level 13 violation: import-table entry {import_idx}: expected field {field_idx} ({field_name:?}) has pointer kind {kind:?}; pointer fields are not supported in imported regions in v1 (proposal 0003 §Producer obligations 5)")]
+    PointerInImportNotSupportedInV1 {
+        import_idx: u32,
+        field_idx: u32,
+        field_name: String,
+        kind: FieldKind,
     },
 
-    /// The pinned instruction is a memory op, but of the wrong width/type
-    /// for the field it claims to access (e.g. `i32.load` into a `u8`
-    /// field, or `i64.store` into an `f64` field).
-    #[error("Level 2 access-typing: entry {entry_idx}: field {region_id}.{field_id} has type {expected}, but the pinned instruction is `{found}`")]
-    AccessTypeMismatch {
-        entry_idx: u32,
-        region_id: u32,
-        field_id: u32,
-        expected: String,
-        found: String,
+    /// A `typedwasm.regions` field entry has a `target_region` value
+    /// with the import-table bit set, but the resolved index points past
+    /// the end of the `typedwasm.region-imports` table.
+    #[error("Level 13 violation: typedwasm.regions region {region_idx} field {field_idx}: target_region value {target_region:#010x} resolves to import-table index {resolved_idx} but only {import_count} imports are declared")]
+    ImportTargetOutOfRange {
+        region_idx: u32,
+        field_idx: u32,
+        target_region: u32,
+        resolved_idx: u32,
+        import_count: u32,
     },
-
-    /// The memory op's static offset immediate does not equal the field's
-    /// computed byte offset within its region.
-    #[error("Level 2 access-typing: entry {entry_idx}: field {region_id}.{field_id} is at byte offset {expected_offset}, but the pinned instruction uses memarg offset {found_offset}")]
-    AccessOffsetMismatch {
-        entry_idx: u32,
-        region_id: u32,
-        field_id: u32,
-        expected_offset: u32,
-        found_offset: u64,
-    },
-
-    /// The field's `[offset, offset+width)` extent runs past the
-    /// producer-declared region byte size.
-    #[error("Level 2 access-typing: entry {entry_idx}: field {region_id}.{field_id} spans bytes [{field_offset}, {field_offset}+{field_width}) which exceeds region byte size {region_byte_size}")]
-    AccessOutOfRegionBounds {
-        entry_idx: u32,
-        region_id: u32,
-        field_id: u32,
-        field_offset: u32,
-        field_width: u32,
-        region_byte_size: u32,
-    },
-}
-
-/// The outcome of the L2 access-typing pass. `type_verified` and
-/// `declared_only` partition the access sites the pass examined;
-/// `errors` is empty iff every pinned site type-checked. This is the
-/// "knowable what was actually checked" artifact: a caller (or
-/// `tw-verify`) can report `N type-verified, M declared-only` so a
-/// reader knows which sites carry a machine-checked typing guarantee and
-/// which are merely asserted by the producer.
-#[cfg(feature = "unstable-l2")]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AccessTypingReport {
-    /// Pinned sites whose pinned instruction matched the field's
-    /// type/width/offset and stayed in-region — machine-checked.
-    pub type_verified: u32,
-    /// Sites the producer carried as declared-only (unpinned): asserted,
-    /// not checked here.
-    pub declared_only: u32,
-    /// Typing faults found among the pinned sites.
-    pub errors: Vec<AccessTypingError>,
 }
 
 // ----------------------------------------------------------------------
@@ -495,24 +352,34 @@ pub fn verify_access_sites_from_module(
     verify::verify_access_sites_from_module(wasm_bytes)
 }
 
-/// Verify the L2 access-*typing* constraints: for every pinned
-/// access-site, decode the function body, take the pinned instruction,
-/// and confirm it is a memory load/store of the target field's exact
-/// type and width, whose static offset equals the field's byte offset,
-/// and whose extent stays within the region. Declared-only (unpinned)
-/// sites are counted but not checked.
+/// Verify the L13 region-imports section's in-module self-consistency by
+/// reading its embedded `typedwasm.region-imports` and `typedwasm.regions`
+/// custom sections. Modules emitting neither section verify trivially.
 ///
-/// Returns an [`AccessTypingReport`]; `report.errors.is_empty()` iff
-/// every pinned site type-checked. Modules without an access-sites
-/// section return an empty report (nothing claimed). This is strictly
-/// deeper than [`verify_access_sites_from_module`], which checks only
-/// that the id fields are in range and never decodes the code section —
-/// run both: bounds first, then typing.
-#[cfg(feature = "unstable-l2")]
-pub fn verify_access_typing_from_module(
+/// Checks:
+///
+/// 1. `MissingDependentRegions`: region-imports present without regions
+///    is a hard error (proposal 0003 §"Producer obligations" #1).
+/// 2. `MissingDependentRegionImports`: regions present with at least one
+///    `target_region` value `>= IMPORT_TABLE_BASE` (i.e. claiming an
+///    import) without region-imports is a hard error (emitted at most
+///    once per module).
+/// 3. `DuplicateImport`: imports MUST have unique
+///    `(producer_module_name, region_name)` pairs.
+/// 4. `PointerInImportNotSupportedInV1`: imported regions' expected
+///    fields MUST all be `kind == Scalar` in v1.
+/// 5. `ImportTargetOutOfRange`: every `target_region` value with the
+///    import-table bit set MUST resolve within the import-table bounds.
+///
+/// Does NOT verify cross-module schema agreement (`SchemaSub expected
+/// actual` from `MultiModule.idr`); that requires the producer module's
+/// bytes and is the subject of a future `verify_link_graph(modules)` pass
+/// (proposal 0003 §"Open questions" #4 default option a).
+#[cfg(feature = "unstable-l13-imports")]
+pub fn verify_region_imports_from_module(
     wasm_bytes: &[u8],
-) -> Result<AccessTypingReport, VerifyError> {
-    verify::verify_access_typing_from_module(wasm_bytes)
+) -> Result<Vec<RegionImportsError>, VerifyError> {
+    verify::verify_region_imports_from_module(wasm_bytes)
 }
 
 /// Ownership-annotated signature for one exported function.
