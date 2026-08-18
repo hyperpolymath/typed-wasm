@@ -22,19 +22,11 @@ Status legend:
 
 | link:0001-multi-producer-carrier-section.adoc[0001]
 | Multi-producer carrier sections for L2–L6 and L15
-| `[accepted]` (2026-05-30) → promoted to link:../decisions/0002-multi-producer-carrier-sections.adoc[ADR-0002]
+| `[review]`
 
 | link:0002-access-site-carrier.adoc[0002]
 | Access-site carrier section (`typedwasm.access-sites`) for L2 enforcement
-| `[accepted]` (2026-05-30) → promoted to link:../decisions/0003-access-site-carrier.adoc[ADR-0003]
-
-| link:0003-region-imports-carrier.adoc[0003]
-| Region imports carrier section (`typedwasm.region-imports`) for L13 cross-module schema agreement
-| `[draft]`
-
-| link:0004-capability-grants-carrier.adoc[0004]
-| Capability grants carrier section (`typedwasm.capability-grants`) for L15-C per-call-site enforcement
-| `[draft]`
+| `[review]`
 |===
 
 NOTE: Proposals 0001 and 0002 were promoted to
