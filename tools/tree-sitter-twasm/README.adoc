@@ -1,0 +1,96 @@
+== tree-sitter-twasm
+
+Tree-sitter grammar for `+.twasm+` (typed-wasm surface syntax).
+
+=== Status: v1 grammar (Phase 0 grammar extension)
+
+The grammar now covers enough of `+examples/01-single-module.twasm+` to
+parse the full file: region declarations, memory declarations, function
+declarations (parameters / return types / effects), and the statement
+and expression forms used in example 01.
+
+==== What works today
+
+* *Region declarations* — `+region Name { ... }+`, array quantifiers
+`+[N]+`, primitives, region refs (`+@T+`), `+opt<T>+`, fixed-size arrays
+(`+u8[24]+`), `+align N;+`, `+where+` range constraints
+* *Memory declarations* —
+`+memory Name { initial: N; maximum: N; place X at N; ... }+`
+* *Function declarations* —
+`+fn name(params) -> ret effects { ... } { body }+`
+** parameter modes: `+&region<R>+`, `+&mut region<R>+`,
+`+own region<R>+`, and bare typed parameters
+** effects: `+Read+`, `+Write+`, `+Alloc+`, `+Free+`, `+ReadRegion(R)+`,
+`+WriteRegion(R)+`
+* *Statements* — `+region.get+`, `+region.set+`, `+region.scan+`,
+`+let [mut] name [: type] = expr;+`, assignment, `+if ... else+`,
+`+return+`
+* *Expressions* — literals (`+int+`, `+float+`, `+true+`, `+false+`,
+`+null+`), identifiers, `+$region_var+`, binary ops (`++ - * / %+`,
+`+== != < > <= >=+`, `+&& ||+`), unary (`+-+`, `+!+`),
+`+is_null(expr)+`, parenthesised
+* *Field paths* — single and nested (`+.pos.x+`)
+* *`+//+` line comments*
+
+==== What does NOT work yet (next Track A PR)
+
+* Imports / exports (`+import region X from "mod"+`,
+`+export region X+`)
+* Invariant declarations and `+proof+` statements
+* `+const+` declarations
+* Block-expression `+if ... yield+`
+* Match on union regions
+* L13–L16 surface (`+isolated+`, `+session+`, `+capability+`,
+`+choreography+`)
+* L11/L12 surface (`+cost_bound+`, `+fresh+`, `+version_of+`,
+`+region.sync+`)
+* Lifetime annotations on function decls
+* `+striated+` region layout
+
+Scope-wise the v1 grammar covers maybe 60–70% of `+spec/grammar.ebnf+`
+by production count. The remainder is sequenced for the next Track A PR.
+
+=== Why in-tree first
+
+Production-path Phase 0 §Track A specifies "`in-tree at
+`+tools/tree-sitter-twasm/+`, extract later`". Rationale: changes to
+`+spec/grammar.ebnf+` and the tree-sitter grammar move in lockstep
+during the migration; cross-repo coordination overhead while iterating
+would slow Phase 1. When the grammar reaches full EBNF coverage and
+stabilises, it gets extracted to `+hyperpolymath/tree-sitter-twasm+` for
+the Linguist + npm publication step (Phase 4 deliverable).
+
+=== Building and testing
+
+Requires `+tree-sitter-cli+` (install via
+`+npm install -g tree-sitter-cli+` or
+`+cargo install tree-sitter-cli+`):
+
+[source,bash]
+----
+cd tools/tree-sitter-twasm
+tree-sitter generate      # generate parser from grammar.js
+tree-sitter test          # run corpus tests
+tree-sitter parse ../../examples/01-single-module.twasm  # parse a real example
+----
+
+The generated `+src/parser.c+` and `+src/grammar.json+` are gitignored;
+regenerate locally via `+tree-sitter generate+`.
+
+=== How this fits the production path
+
+[width="100%",cols="25%,75%",options="header",]
+|===
+|Phase |This grammar’s role
+|*0* (current) |v1 grammar — parses `+examples/01-single-module.twasm+`
+fully
+
+|*1* |Extend to remaining `+spec/grammar.ebnf+` productions (imports,
+L11-L16, match, proof); back the Idris2 parser
+
+|*4* |Extract to `+hyperpolymath/tree-sitter-twasm+`; publish to npm;
+submit to Linguist
+|===
+
+Tracked under issue
+https://github.com/hyperpolymath/typed-wasm/issues/48[#48 (Phase 0)].
