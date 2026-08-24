@@ -1,0 +1,53 @@
+== `+.claude/+` — Claude Code project configuration
+
+Checked-in, team-shared configuration for Claude Code sessions on
+typed-wasm.
+
+=== Contents
+
+[width="100%",cols="40%,60%",options="header",]
+|===
+|Path |Purpose
+|`+CLAUDE.md+` |Project instructions (overview, architecture,
+build/test, the 10 levels).
+
+|`+settings.json+` |Permissions allowlist + hooks (see below).
+
+|`+hooks/governance-precheck.sh+` |Local mirror of two CI governance
+gates.
+|===
+
+=== `+settings.json+`
+
+==== Permissions (`+permissions.allow+`)
+
+A *read-only* allowlist that cuts permission prompts for the inspection
+commands used routinely in this repo:
+`+git status/log/diff/fetch/show/ls-files/ls-tree/branch/rev-parse/ merge-base/for-each-ref/check-attr+`,
+`+git bundle verify+`/`+list-heads+`, `+diff -rq+`, and `+curl+`
+*restricted to `+https://raw.githubusercontent.com/+`* (used to compare
+sibling-estate repos without a full clone). No write, push, or
+destructive commands are granted — those still prompt.
+
+==== Hooks (`+hooks.SessionStart+`)
+
+Runs `+hooks/governance-precheck.sh+` at session start. *Advisory only —
+never blocks, always exits 0.* It surfaces, before you push, the two CI
+gates most easily tripped by docs changes:
+
+[arabic]
+. *Empty-linter* — invisible/zero-width Unicode (NBSP, ZWSP, BOM, bidi
+marks, NUL) in source files, using the exact byte patterns from
+`+.github/workflows/dogfood-gate.yml+`.
+. *SPDX headers* — `+SPDX-License-Identifier+` presence on any `+.md+` /
+`+.sh+` / `+.adoc+` *changed vs `+origin/main+`* (the push delta — not
+the whole tree, to avoid the pre-existing unlicensed-doc backlog and
+stay accurate to "`catch before push`").
+
+Review or disable hooks anytime via the `+/hooks+` menu.
+
+____
+Note: the settings watcher only picks up `+.claude/settings.json+` if it
+existed when the session started. On the session that first adds this
+file, open `+/hooks+` once (or restart) to load the hook.
+____
