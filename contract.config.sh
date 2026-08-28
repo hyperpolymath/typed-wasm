@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
+# shellcheck shell=bash
 # Layering-contract gate config for typed-wasm. Consumed by tools/check-contract.sh.
 # See CONTRACT.adoc for the human-readable rules.
 
