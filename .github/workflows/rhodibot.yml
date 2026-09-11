@@ -21,7 +21,7 @@ on:
     types: [completed]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 concurrency:
