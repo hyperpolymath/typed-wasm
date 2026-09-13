@@ -37,7 +37,7 @@ jobs:
         id: install
         run: |
           # Try to fetch the latest release binary from the org
-          PA_URL="https://github.com/${REPO_OWNER}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          PA_URL="https://github.com/hyperpolymath/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
           mkdir -p "$HOME/.local/bin"
           if curl -fsSL --head "$PA_URL" >/dev/null 2>&1; then
             curl -fsSL -o "$HOME/.local/bin/panic-attack" "$PA_URL"
@@ -153,7 +153,7 @@ jobs:
         id: build
         continue-on-error: true
         run: |
-          git clone "https://github.com/${REPO_OWNER}/hypatia.git" "$HOME/hypatia" 2>/dev/null || true
+          git clone "https://github.com/hyperpolymath/hypatia.git" "$HOME/hypatia" 2>/dev/null || true
           if [ -f "$HOME/hypatia/mix.exs" ]; then
             cd "$HOME/hypatia"
             if [ ! -f hypatia ] && [ ! -f hypatia-v2 ]; then
@@ -171,12 +171,28 @@ jobs:
         if: steps.build.outputs.ready == 'true'
         run: |
           set +e
-          HYPATIA_FORMAT=json "$HOME/hypatia/hypatia-cli.sh" scan . > hypatia-findings.json 2>&1
+          HYPATIA_FORMAT=json "$HOME/hypatia/hypatia-cli.sh" scan . --exit-zero > hypatia-findings.json
           HYP_EXIT=$?
           set -e
 
-          if [ ! -s hypatia-findings.json ] || ! jq empty hypatia-findings.json 2>/dev/null; then
-            echo "[]" > hypatia-findings.json
+          # --exit-zero is Hypatia's own documented CI recipe (lib/hypatia/cli.ex),
+          # for exactly this case: "use in CI when a downstream step gates on
+          # severity counts". Findings go to stdout, the one-line summary to
+          # stderr, and the process exits 0 unless the SCANNER itself failed.
+          #
+          # Do NOT redirect stderr into the payload with `2>&1`: that folds the
+          # summary line into the JSON, so every parse fails, the old `[]`
+          # fallback substituted a clean result, CRITICAL was always 0, and the
+          # gate below could never fire on any input. Keep stderr on the log.
+          if [ "$HYP_EXIT" -ne 0 ]; then
+            echo "::error::Hypatia scanner execution failed with exit ${HYP_EXIT}"
+            exit "$HYP_EXIT"
+          fi
+          # `jq empty` is NOT sufficient -- it succeeds on any valid JSON,
+          # including a bare string, object or null. Assert the array.
+          if [ ! -s hypatia-findings.json ] || ! jq -e 'type == "array"' hypatia-findings.json >/dev/null; then
+            echo "::error::Hypatia did not produce a valid JSON findings array"
+            exit 1
           fi
 
           TOTAL=$(jq '. | length' hypatia-findings.json 2>/dev/null || echo 0)
@@ -194,13 +210,19 @@ jobs:
       - name: Emit check annotations
         if: steps.build.outputs.ready == 'true'
         run: |
-          jq -r '.[] | select(.file != null) |
+          # Findings carry no `.message` (keys: action,file,line,reason,rule_module,
+          # severity,type), so every annotation read "null". `.file` is an absolute
+          # runner path, which GitHub cannot anchor to the diff, so it is made
+          # workspace-relative here.
+          jq -r --arg ws "$GITHUB_WORKSPACE" '.[] | select(.file != null) |
+            (.file | ltrimstr($ws + "/")) as $f |
+            (.reason // .message // .type // "finding") as $m |
             if .severity == "critical" then
-              "::error file=\(.file),line=\(.line // 1)::[hypatia] \(.message)"
+              "::error file=\($f),line=\(.line // 1)::[hypatia] \($m)"
             elif .severity == "high" then
-              "::error file=\(.file),line=\(.line // 1)::[hypatia] \(.message)"
+              "::error file=\($f),line=\(.line // 1)::[hypatia] \($m)"
             else
-              "::warning file=\(.file),line=\(.line // 1)::[hypatia] \(.message)"
+              "::warning file=\($f),line=\(.line // 1)::[hypatia] \($m)"
             end
           ' hypatia-findings.json || true
 
@@ -256,7 +278,7 @@ jobs:
       - name: Install panic-attack (if available)
         id: install
         run: |
-          PA_URL="https://github.com/${REPO_OWNER}/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
+          PA_URL="https://github.com/hyperpolymath/panic-attack/releases/latest/download/panic-attack-linux-x86_64"
           mkdir -p "$HOME/.local/bin"
           if curl -fsSL --head "$PA_URL" >/dev/null 2>&1; then
             curl -fsSL -o "$HOME/.local/bin/panic-attack" "$PA_URL"
