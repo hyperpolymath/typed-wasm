@@ -1,3 +1,4 @@
+# This workflow is managed by gh actions-lock.
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
@@ -40,17 +41,17 @@ jobs:
 
     steps:
       - name: Checkout typed-wasm
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
 
       - name: Checkout affinescript at pinned SHA
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           repository: hyperpolymath/affinescript
           ref: ${{ env.AFFINESCRIPT_SHA }}
           path: affinescript
 
       - name: Install OCaml
-        uses: ocaml/setup-ocaml@e89b2ded52a6e13f50162220cf5fe47290162032 # v3
+        uses: ocaml/setup-ocaml@v3.8.0
         with:
           ocaml-compiler: '4.14.2'
 
