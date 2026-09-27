@@ -6,7 +6,7 @@ edition = "2021"
 license = "MPL-2.0"
 description = "Load-time enforcement gate: refuse to instantiate wasm that fails typed-wasm verification (Phase 3 slice)"
 repository = "https://github.com/hyperpolymath/typed-wasm"
-readme = "README.md"
+readme = "README.adoc"
 
 [features]
 default = ["wasmi-runtime"]
