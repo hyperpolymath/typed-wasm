@@ -6,7 +6,7 @@ edition = "2021"
 license = "MPL-2.0"
 description = "typed-wasm producer (codegen v0): emits verifier-accepted wasm plus typedwasm.* carrier sections from a typed region IR"
 repository = "https://github.com/hyperpolymath/typed-wasm"
-readme = "README.md"
+readme = "README.adoc"
 
 [lib]
 path = "src/lib.rs"

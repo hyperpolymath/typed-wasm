@@ -28,21 +28,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - name: Build
+      - name: Install Rust toolchain
         run: |
-          echo "Build your artifacts here"
-          # TODO: Replace with your build commands
-          # Examples:
-          #   cargo build --release
-          #   zig build -Doptimize=ReleaseFast
-          #   gleam build
-          #   mix release
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
 
-      # TODO: Upload build artifacts if needed
-      # - uses: actions/upload-artifact@v4
-      #   with:
-      #     name: release-artifacts
-      #     path: target/release/
+      - name: Build and test workspace
+        run: |
+          cargo test --workspace --locked
+          cargo build --workspace --release --locked
 
   changelog:
     name: Generate Changelog
@@ -97,12 +91,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
-
-      # TODO: Download build artifacts if uploading to the release
-      # - uses: actions/download-artifact@v4
-      #   with:
-      #     name: release-artifacts
-      #     path: artifacts/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3.0.3
