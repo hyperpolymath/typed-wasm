@@ -10,12 +10,12 @@ Per-tool config files (.cursorrules, .clinerules, etc.) reference this document.
 ## Session Startup
 
 1. Read `0-AI-MANIFEST.a2ml` FIRST (mandatory gatekeeper).
-2. Read `.machine_readable/STATE.a2ml` for current status and blockers.
+2. Read `.machine_readable/descriptiles/STATE.a2ml` for current status and blockers.
 3. Read `.machine_readable/anchors/ANCHOR.a2ml` for canonical authority boundaries.
 4. Read `.machine_readable/policies/MAINTENANCE-AXES.a2ml` for maintenance/audit sequencing.
 5. Read `.machine_readable/policies/MAINTENANCE-CHECKLIST.a2ml` for baseline controls.
 6. Read `.machine_readable/policies/SOFTWARE-DEVELOPMENT-APPROACH.a2ml` for execution order.
-7. Read `.machine_readable/AGENTIC.a2ml` for agent constraints.
+7. Read `.machine_readable/descriptiles/AGENTIC.a2ml` for agent constraints.
 
 ## License
 
@@ -77,8 +77,8 @@ Use `just` (Justfile) for all build, test, lint, and format tasks.
 ## References
 
 - `0-AI-MANIFEST.a2ml` -- universal AI entry point
-- `.machine_readable/AGENTIC.a2ml` -- agent permissions and constraints
-- `.machine_readable/STATE.a2ml` -- current project state
+- `.machine_readable/descriptiles/AGENTIC.a2ml` -- agent permissions and constraints
+- `.machine_readable/descriptiles/STATE.a2ml` -- current project state
 - `.machine_readable/anchors/ANCHOR.a2ml` -- canonical authority and policy boundary
 - `.machine_readable/policies/MAINTENANCE-AXES.a2ml` -- canonical axis sequencing and audit requirements
 - `.machine_readable/policies/MAINTENANCE-CHECKLIST.a2ml` -- baseline maintenance checklist policy
