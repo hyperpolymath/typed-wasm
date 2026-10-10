@@ -13,7 +13,7 @@ last-updated = "2026-04-11"
 # target = "container"  # container | binary | library | wasm
 
 [incident-response]
-# 1. Check .machine_readable/STATE.a2ml for current status
+# 1. Check .machine_readable/descriptiles/STATE.a2ml for current status
 # 2. Review recent commits and CI results
 # 3. Run `just validate` to check compliance
 # 4. Run `just security` to audit for vulnerabilities

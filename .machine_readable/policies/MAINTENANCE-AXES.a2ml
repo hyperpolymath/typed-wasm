@@ -18,7 +18,7 @@ machine-entrypoints = [
   ".machine_readable/policies/MAINTENANCE-AXES.a2ml",
   ".machine_readable/policies/MAINTENANCE-CHECKLIST.a2ml",
   ".machine_readable/policies/SOFTWARE-DEVELOPMENT-APPROACH.a2ml",
-  ".machine_readable/META.a2ml",
+  ".machine_readable/descriptiles/META.a2ml",
   ".machine_readable/ai/README.adoc",
   ".machine_readable/bot_directives/README.scm",
 ]

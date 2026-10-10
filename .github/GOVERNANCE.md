@@ -44,7 +44,7 @@ release schedules, contributor access, and community standards.
 - ADR statuses: `proposed`, `accepted`, `deprecated`, `superseded`, `rejected`.
 - ADRs provide a historical record of why decisions were made and what alternatives
   were considered.
-- See `.machine_readable/META.a2ml` for the machine-readable ADR index.
+- See `.machine_readable/descriptiles/META.a2ml` for the machine-readable ADR index.
 
 ---
 

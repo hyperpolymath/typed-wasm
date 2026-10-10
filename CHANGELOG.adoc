@@ -8,6 +8,35 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Machine-readable substrate: retired `6a2` layout migrated to `descriptiles` (2026-10-10)
+
+`0-canon/CANONICAL-NAMES.adoc` (owner mandate of 2026-06-30) deprecates the
+directory name `6a2` in favour of `descriptiles`, and requires migration "on
+sight". This repo was the last hold-out: `governance / Workflow security
+linter` was red on `check-descriptile-policy.sh`, which forbids an executable
+file-existence test on `.machine_readable/(6a2/)?(STATE|META|ECOSYSTEM|AGENTIC|
+NEUROSYM|PLAYBOOK|ANCHOR).a2ml`.
+
+* `.machine_readable/6a2/*.a2ml` -> `.machine_readable/descriptiles/*.a2ml`
+  (6 files, `git mv`, content untouched).
+* 49 path references updated across 19 live files (`Justfile`,
+  `0-AI-MANIFEST.a2ml`, `AUDIT.adoc`, `.github/GOVERNANCE.md`, the PR template,
+  `.machine_readable/ai/*`, `.machine_readable/policies/MAINTENANCE-AXES.a2ml`,
+  `docs/`, `spec/async-convergence-abi.adoc`, `src/abi/README.adoc`).
+* Left as historical records, as the mandate permits: `CHANGELOG.adoc` and
+  `docs/reports/maintenance/2026-05-25-phase-0-closure.adoc` keep the spelling
+  of their day (4 references).
+
+Side effect worth knowing: `just info`, `just validate-rsr` and `just
+validate-state` tested paths that had never existed in this repo
+(`.machine_readable/STATE.a2ml`, bare), so their `[ -f ]` guards made them
+silently skip. Retargeted, all five `META.a2ml` axis assertions now run and
+pass. No workflow invokes these recipes, so CI behaviour is unchanged.
+
+Verified with the estate's own gates, run locally: `check-descriptile-policy.sh`
+exit 0 (was 1 on `main`), and `check-canonical-names.sh origin/main` reports no
+deprecated names reintroduced.
+
 ==== Multi-producer carrier ABI: proposals 0001 + 0002 accepted, promoted to ADRs (2026-05-30)
 
 Closes typed-wasm#34 (proposal 0001), typed-wasm#78 (proposal 0002),

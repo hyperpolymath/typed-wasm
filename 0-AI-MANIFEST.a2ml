@@ -15,9 +15,9 @@ id = "typed-wasm-root-manifest"
 level = 0
 
 [canonical_locations]
-state         = ".machine_readable/6a2/STATE.a2ml"
-meta          = ".machine_readable/6a2/META.a2ml"
-ecosystem     = ".machine_readable/6a2/ECOSYSTEM.a2ml"
+state         = ".machine_readable/descriptiles/STATE.a2ml"
+meta          = ".machine_readable/descriptiles/META.a2ml"
+ecosystem     = ".machine_readable/descriptiles/ECOSYSTEM.a2ml"
 grammar       = "spec/grammar.ebnf"
 abi_proofs    = "src/abi/"
 zig_ffi       = "ffi/zig/"

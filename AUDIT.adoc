@@ -70,7 +70,7 @@ For typed-wasm-specific audit posture:
 * `docs/PRODUCTION-PATH.adoc` — 6-phase plan to production-quality compile
   target; current state is Phase 0 (foundation stabilisation), 2 of 3 gates
   met
-* `.machine_readable/6a2/STATE.a2ml` — machine-readable project state
+* `.machine_readable/descriptiles/STATE.a2ml` — machine-readable project state
 * `tests/aspect/claim-envelope.mjs` (53 assertions) +
   `tests/aspect/security-envelope.mjs` (10 assertions) — automated
   drift-detection on cross-document claims
