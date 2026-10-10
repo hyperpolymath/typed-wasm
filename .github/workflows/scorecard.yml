@@ -12,8 +12,13 @@ permissions:
 
 jobs:
   scorecard:
-    uses: hyperpolymath/standards/.github/workflows/scorecard-reusable.yml@81dbf2dd854b1444fd6236fa2352474383b2c2b9
+    uses: hyperpolymath/standards/.github/workflows/scorecard-reusable.yml@da2c748aad55c1a1dcba00b60fe4a35017bc6540
     permissions:
       contents: read
       security-events: write
       id-token: write
+      # standards#1035: scorecard-reusable runs actions/upload-artifact in the same job
+      # (043fb46d, v7.0.1). This block REPLACES the workflow-level map, so actions:read
+      # has to be granted here or the upload step fails - and 3 of 7 estate callers of
+      # this reusable omit it.
+      actions: read

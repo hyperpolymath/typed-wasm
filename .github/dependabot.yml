@@ -9,10 +9,34 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Why a hold lives here at all. `.github/workflows/actions.lock` is what the
+    # estate publishes into the organisation's "specific actions allowed" list, so
+    # a bump that lands WITHOUT a lock refresh moves the workflow onto a ref the
+    # org no longer matches - and GitHub then rejects the whole workflow at
+    # validation time: no jobs, no check run, no annotation. That killed E2E
+    # Validation, Static Analysis Gate and CodeQL Security Analysis here for 9
+    # days (see 87d5bc8). The durable guard is standards' own
+    # `.github/workflows/dependabot-lock-regen.yml`, which regenerates each open
+    # dependabot PR's lockfile. As of 2026-10-10 it sweeps nothing: its two
+    # "Mint an App installation token" steps are `if: vars.APP_ID != ''` and both
+    # are SKIPPED on run 37859881345, because the applier App (STD-R-3) is not
+    # configured - so the job warns and exits 0, by design, rather than pretending
+    # to have swept. Until that credential exists, a bump must be followed by a
+    # manual `gh actions-lock` commit, and refs that must not move are held here.
+    ignore:
+      # Second, independent reason for this one: v4.38.1+ fails workflow-startup
+      # validation estate-wide (hyperpolymath/phantom-metal-taste#71), and
+      # actions.lock resolves this repo's CodeQL to v4.38.0 (b96794f015df).
+      - dependency-name: "github/codeql-action"
     groups:
       actions:
         patterns:
           - "*"
+        # `ignore` alone does not suppress a grouped bump - measured on
+        # phantom-metal-taste#76, where the group rewrote the ref anyway.
+        # exclude-patterns is what actually keeps a held ref out of the group.
+        exclude-patterns:
+          - "github/codeql-action"
     open-pull-requests-limit: 2
 
   # Rust/Cargo
@@ -25,29 +49,16 @@ updates:
         update-types: ["version-update:semver-patch"]
     open-pull-requests-limit: 0
 
-  # Elixir/Mix
-  - package-ecosystem: "mix"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-
-  # Node.js/npm
+  # Node.js/npm - the tree has exactly one JS manifest, the tree-sitter grammar.
+  # This entry declared directory: "/", where no package.json exists, so it scanned
+  # a root with nothing to update while the real manifest went unwatched.
   - package-ecosystem: "npm"
-    directory: "/"
+    directory: "/tools/tree-sitter-twasm"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
 
-  # Python/pip
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-
-  # Nix flakes
-  - package-ecosystem: "nix"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+# Removed 2026-10-10 as dead weight, measured with `git ls-files`: mix (no mix.exs),
+# pip (no pyproject/requirements/setup.py), nix (no flake.nix or shell.nix). An
+# ecosystem with no manifest cannot open a PR, it can only imply coverage. Each is
+# one block to re-add if the manifest ever lands.
