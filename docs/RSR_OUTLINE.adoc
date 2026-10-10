@@ -215,7 +215,7 @@ project/
 * `Justfile`
 * `README.adoc`
 * `LICENSE` (MPL-2.0)
-* `.machine_readable/STATE.a2ml`
+* `.machine_readable/descriptiles/STATE.a2ml`
 * `.well-known/security.txt`
 * `.well-known/ai.txt`
 * `.well-known/humans.txt`

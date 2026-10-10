@@ -24,5 +24,5 @@ often than any docs page and benefit from one-click visibility.
   feeds into phase-gate decisions
 * `docs/wiki/Phase-0-Status.md` — outside-reader view of current
   phase closure state
-* `.machine_readable/6a2/STATE.a2ml` — machine-readable state
+* `.machine_readable/descriptiles/STATE.a2ml` — machine-readable state
   (consumed by agents and dashboards)
