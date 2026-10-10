@@ -230,9 +230,9 @@ divergence: the closure cell converges byte-identically). AffineScript
 
 == References
 
-* typed-wasm ADR-004 (`.machine_readable/6a2/META.a2ml`) — aggregate /
+* typed-wasm ADR-004 (`.machine_readable/descriptiles/META.a2ml`) — aggregate /
   convergence role
-* typed-wasm ADR-005 (this protocol; `.machine_readable/6a2/META.a2ml`)
+* typed-wasm ADR-005 (this protocol; `.machine_readable/descriptiles/META.a2ml`)
 * typed-wasm#31 — convergence-ABI review issue
 * AffineScript: ADR-013 `docs/specs/async-on-wasm-cps.adoc`; #225 (this
   work), #160 (Http primitive), #199 (closure ABI), #205 (Thenable

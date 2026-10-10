@@ -1,7 +1,7 @@
 == src/abi — Idris2 ABI Layer
 
 This directory contains the Idris2 formal proofs for both roles of
-`+typed-wasm+` (see ADR-004 in `+.machine_readable/6a2/META.a2ml+`).
+`+typed-wasm+` (see ADR-004 in `+.machine_readable/descriptiles/META.a2ml+`).
 
 === Directory Layout
 

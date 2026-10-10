@@ -26,7 +26,7 @@ template infrastructure that was inherited and later removed.
                           v                          v
                +--------------------+      +----------------------+
                | Tests and Audits   |      | Papers and Metadata  |
-               | parser/e2e/aspect  |      | README/docs/6a2      |
+               | parser/e2e/aspect  |      | README/docs/descriptiles      |
                | benchmarks         |      | claim envelope       |
                +--------------------+      +----------------------+
 ----

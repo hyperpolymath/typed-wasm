@@ -41,7 +41,7 @@ Not implemented. Closing this gap is a deliverable somewhere between
 Phase 1 (codegen end-to-end) and Phase 2 (C ABI for the verifier) in
 `docs/PRODUCTION-PATH.adoc`. Tracked in:
 
-* `.machine_readable/6a2/STATE.a2ml` milestone "generated/abi/ C
+* `.machine_readable/descriptiles/STATE.a2ml` milestone "generated/abi/ C
   header pipeline" — currently 0%
 * `TEST-NEEDS.md` blocked-on-codegen items reference this gap
 
