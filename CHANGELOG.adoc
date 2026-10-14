@@ -9,6 +9,16 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== occupancy-types pin `6013483` → `8f09c0b` (2026-10-14)
+
+* `scripts/fetch-siblings.sh` pins occupancy-types at `8f09c0b`, the merge of
+  hyperpolymath/occupancy-types#11. The old pin was a commit on that PR's
+  branch, which was deleted at merge, so a fresh clone could no longer fetch
+  it (`fatal: reference is not a tree`) and the kernel-proofs gate could not
+  start. The two trees differ only in occupancy-types' own
+  `scripts/check-agda.sh`; the Agda sources this gate checks are identical.
+* `ResourceAlgebra/MinMax.idr`: a header comment loses a stray "and".
+
 ==== MinMax joins the grade kernel (2026-10-14)
 
 * New `ResourceAlgebra/MinMax.idr` transcribes resource-algebra

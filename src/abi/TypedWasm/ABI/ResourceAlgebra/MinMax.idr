@@ -20,7 +20,7 @@
 --   minMaxSeq = sequence     = MAX (the worst hop)       — the "⊗", unit Finite 0
 --   lossAlt   = alternatives = MIN (the better path)     — the "⊕", unit Infinity
 -- Infinity absorbs under sequence but is the identity for alternatives:
--- and an unreachable alternative is never chosen.
+-- an unreachable alternative is never chosen.
 --
 -- The carrier is shared with Loss ON PURPOSE (upstream Morphism.agda,
 -- `loss-bottleneck`: the identity on the carrier is a lax morphism Loss →
