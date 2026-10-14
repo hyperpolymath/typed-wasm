@@ -175,14 +175,21 @@ reclaimedPlusDrift : (g : HWMGrade) -> reclaimedAt g + drift g = peak g
 reclaimedPlusDrift (MkHWM p n b) = plusMinusLte n p b
 
 ||| A private memory's run stays within its declared maximum (in pages).
+||| `peak g` is the run's absolute live-state peak.  The memory is live from
+||| its initial allocation on, before any phase runs, so the initial
+||| allocation must fit as well: without that bound an empty run (peak 0)
+||| would certify a memory declared with `initial` above `maximum`
+||| (tests/reject/InitialOverMaximum.idr).
 public export
 data WithinMaximum : PrivateMemory -> HWMGrade -> Type where
   ||| No maximum declared.
   NoMaximum    : {pm : PrivateMemory} -> {g : HWMGrade} ->
                  pm.maximum = Nothing -> WithinMaximum pm g
-  ||| The peak does not exceed the declared maximum.
+  ||| Neither the initial allocation nor the peak exceeds the declared
+  ||| maximum.
   UnderMaximum : {pm : PrivateMemory} -> {g : HWMGrade} -> {m : Nat} ->
-                 pm.maximum = Just m -> LTE (peak g) m -> WithinMaximum pm g
+                 pm.maximum = Just m -> LTE pm.initial m -> LTE (peak g) m ->
+                 WithinMaximum pm g
 
 ||| A private memory graded by occupancy: its run, phase by phase, and the
 ||| proof that the run's high-water mark fits the declaration.
