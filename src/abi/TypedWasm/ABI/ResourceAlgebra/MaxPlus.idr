@@ -176,3 +176,20 @@ public export
 IsAnnihilating MaxPlusGrade where
   annihilL = \_ => Refl
   annihilR = maxPlusAnnihilR
+
+-- ============================================================================
+-- typed-wasm additions (NOT in the Agda source): the order, read in ℕ
+-- ============================================================================
+--
+-- The MaxPlus order IS ℕ's on finite grades:  Val m ≼ Val n  iff  m ≤ n.
+-- L11's worst-case bound uses it to read a numeric bound as the kernel order.
+
+||| m ≤ n gives Val m ≼ Val n.
+public export
+maxPlusLeOfLTE : {m, n : Nat} -> LTE m n -> LeG (Val m) (Val n)
+maxPlusLeOfLTE le = cong Val (maximumOfLTE le)
+
+||| Val m ≼ Val n gives m ≤ n.
+public export
+lteOfMaxPlusLe : (m, n : Nat) -> LeG (Val m) (Val n) -> LTE m n
+lteOfMaxPlusLe m n prf = lteOfMaximum m n (valInjective prf)
