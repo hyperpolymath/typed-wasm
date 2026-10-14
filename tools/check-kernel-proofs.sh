@@ -4,8 +4,8 @@
 #
 # check-kernel-proofs.sh — the mechanical falsifiers behind the grade kernel.
 #
-#   1. upstream   resource-algebra's own check at the pin (Agda --safe
-#                 --without-K --no-libraries --double-check + its 3 rejects)
+#   1. upstream   resource-algebra's and occupancy-types' own checks at the pins (Agda --safe
+#                 --without-K --no-libraries --double-check + their rejects)
 #   2. build      idris2 --build src/abi/typed-wasm.ipkg: exit 0 AND no
 #                 `Error:` line (idris2 can exit 0 while printing an error)
 #   3. rejects    every tests/reject/*.idr must FAIL, at its `invalid`
@@ -56,6 +56,16 @@ if (cd "$RA" && AGDA=agda bash scripts/check-agda.sh) > "$OUT/upstream.log" 2>&1
   pass "upstream: $(tail -1 "$OUT/upstream.log")"
 else
   cat "$OUT/upstream.log"; err "upstream resource-algebra check failed at the pin"
+fi
+# occupancy-types (L13's reclamation law), checked against OUR resource-algebra
+# pin: its own pin (b2c9f1f) differs from cf9235c only by a CI workflow file.
+OCC="_build/dependencies/occupancy-types"
+[ -d "$OCC/src/OccupancyTypes" ] || die "occupancy-types not fetched — run scripts/fetch-siblings.sh"
+echo "occupancy-types at $(git -C "$OCC" rev-parse HEAD)"
+if (cd "$OCC" && AGDA=agda RESOURCE_ALGEBRA_SRC="$ROOT/$RA/src" bash scripts/check-agda.sh) > "$OUT/upstream-occupancy.log" 2>&1; then
+  pass "upstream occupancy-types: $(tail -1 "$OUT/upstream-occupancy.log")"
+else
+  cat "$OUT/upstream-occupancy.log"; err "upstream occupancy-types check failed at the pin"
 fi
 
 # 2 — the ABI package ---------------------------------------------------------
