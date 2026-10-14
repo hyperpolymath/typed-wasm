@@ -9,6 +9,28 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== MinMax joins the grade kernel (2026-10-14)
+
+* New `ResourceAlgebra/MinMax.idr` transcribes resource-algebra
+  `Instances/MinMax.agda` (hyperpolymath/resource-algebra#4): the bottleneck
+  sequence `minMaxSeq` (max, ∞ absorbing) on Loss's carrier, with Loss's
+  alternatives. The instance and its dioid, ordered and annihilating layers
+  are named implementations (`@{minMax}`, ...), because Idris2 resolves by
+  carrier and `ResourceAlgebra LossGrade` is Loss.
+* `Tropical.tropMax = minMaxSeq`. It was the one grade operation defined
+  outside the kernel, so `tools/grade-kernel.allow` is now empty and the gate
+  names a third single definition (min-max).
+* `ResourceAlgebra/Nat.idr`: `minOfLTE`, `maxDistribLMin`, `maxDistribRMin`
+  (upstream `min-≤`, `max-distribˡ-min`, `max-distribʳ-min`).
+* Separation S-4 `bottleneckIsNotSum`. New reject `MinMaxIsLoss`. The
+  transcription table gains the MinMax sequence: 197 rows, 269 equalities,
+  and a fourth wrong row.
+* resource-algebra pin `cf9235c` → `0b338c9`. Core, Loss, MaxPlus and HWM are
+  unchanged between the two; the kernel headers cite the new pin.
+  occupancy-types is checked against this pin and needs
+  hyperpolymath/occupancy-types#11 (its order lemmas now clash with the new
+  Prelude's); the occupancy-types pin moves when that merges.
+
 ==== Fixed (2026-10-14)
 
 * `Occupancy.WithinMaximum`: `UnderMaximum` now bounds a private memory's

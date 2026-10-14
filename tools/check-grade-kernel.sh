@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
-# check-grade-kernel.sh — one definition of min-plus and one of max-plus.
+# check-grade-kernel.sh — one definition of min-plus, one of max-plus, one of min-max.
 #
 # The grade kernel (src/abi/TypedWasm/ABI/ResourceAlgebra.idr and
 # src/abi/TypedWasm/ABI/ResourceAlgebra/*.idr) is the only place in the tree
@@ -140,6 +140,8 @@ kernel_ok=1
 for kf in $(git ls-files 'src/abi/TypedWasm/ABI/ResourceAlgebra.idr' 'src/abi/TypedWasm/ABI/ResourceAlgebra/*.idr'); do
   case "$kf" in
     */ResourceAlgebra/Loss.idr|*/ResourceAlgebra/MaxPlus.idr) want=2 ;;
+    # MinMax's alternatives are Loss's own lossAlt; it defines only its sequence.
+    */ResourceAlgebra/MinMax.idr) want=1 ;;
     *) want=0 ;;
   esac
   got="$(kernel_count "$kf")"
@@ -148,15 +150,16 @@ for kf in $(git ls-files 'src/abi/TypedWasm/ABI/ResourceAlgebra.idr' 'src/abi/Ty
     kernel_ok=0
   fi
 done
-for need in src/abi/TypedWasm/ABI/ResourceAlgebra/Loss.idr src/abi/TypedWasm/ABI/ResourceAlgebra/MaxPlus.idr; do
+for need in src/abi/TypedWasm/ABI/ResourceAlgebra/Loss.idr src/abi/TypedWasm/ABI/ResourceAlgebra/MaxPlus.idr \
+            src/abi/TypedWasm/ABI/ResourceAlgebra/MinMax.idr; do
   git ls-files --error-unmatch "$need" >/dev/null 2>&1 || { echo "ERROR   kernel file missing: ${need}"; kernel_ok=0; }
 done
-[ "$kernel_ok" -eq 1 ] || { echo "GRADE-KERNEL GATE FAILED: the kernel does not hold exactly one min-plus and one max-plus."; exit 1; }
+[ "$kernel_ok" -eq 1 ] || { echo "GRADE-KERNEL GATE FAILED: the kernel does not hold exactly one min-plus, one max-plus and one min-max."; exit 1; }
 
 mapfile -t files < <(git ls-files '*.idr')
 echo "grade-kernel gate: ${#files[@]} tracked .idr file(s); kernel = ${KERNEL_RE}"
 if scan "${files[@]}" | judge; then
-  echo "OK: one definition of min-plus (ResourceAlgebra/Loss.idr) and one of max-plus (ResourceAlgebra/MaxPlus.idr); no Nat min/max outside base"
+  echo "OK: one definition of min-plus (ResourceAlgebra/Loss.idr), one of max-plus (ResourceAlgebra/MaxPlus.idr) and one of min-max (ResourceAlgebra/MinMax.idr); no grade operation outside the kernel, no Nat min/max outside base"
 else
   echo "GRADE-KERNEL GATE FAILED: a grade operation is defined outside the kernel (see CONTRACT.adoc / LEVEL-STATUS.adoc)."
   exit 1

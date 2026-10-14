@@ -94,8 +94,8 @@ and runnable locally / as a pre-commit step):
 - *I2 for grades (blocking):* `tools/check-grade-kernel.sh` — the grade kernel
   (`src/abi/TypedWasm/ABI/ResourceAlgebra*`, transcribed from
   hyperpolymath/resource-algebra at the pin in `scripts/fetch-siblings.sh`)
-  holds the one definition of min-plus and of max-plus; no other `.idr` file
-  may define a grade operation or a Nat min/max. `tools/check-kernel-proofs.sh`
+  holds the one definition of min-plus, of max-plus and of min-max; no other
+  `.idr` file may define a grade operation or a Nat min/max. `tools/check-kernel-proofs.sh`
   holds the mechanical falsifiers behind it (Idris2 build, `tests/reject`,
   the Agda/Idris2 transcription table). Both run in `contract-gate.yml`.
 

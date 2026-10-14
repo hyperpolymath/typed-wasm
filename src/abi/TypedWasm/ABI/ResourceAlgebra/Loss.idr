@@ -8,7 +8,8 @@
 -- loss grade are this carrier, not copies of it.
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Instances/Loss.agda @ cf9235c532712a783a404c359a1055f40134794a
+--   src/ResourceAlgebra/Instances/Loss.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
+-- (unchanged since cf9235c, the pin it was first transcribed at)
 -- which is itself the echo-types loss grade
 --   (echo-types experimental/echo-additive/Grade.agda).
 -- Correspondence status: ASSUMED (transcription); operation table TESTED on

@@ -5,7 +5,8 @@
 # gen.sh TABLE OUTDIR MODULE — render a transcription table into two checkers.
 #
 #   OUTDIR/MODULE.agda  every row as `refl` against the PINNED resource-algebra
-#                       Agda instances (Loss / MaxPlus / HWM @ cf9235c)
+#                       Agda instances (Loss / MaxPlus / HWM / MinMax at the
+#                       pin in scripts/fetch-siblings.sh)
 #   OUTDIR/MODULE.idr   every row as `Refl` against the Idris2 port
 #                       (src/abi/TypedWasm/ABI/ResourceAlgebra/*)
 #
@@ -16,6 +17,8 @@
 #                                       ops alt (_⊕h_ / hwmAlt), seq (_⊗h_ / hwmSeq);
 #                                       a result is compared by peak and drift
 #                                       (the bound proof is irrelevant).
+#   MinMax  values  "fin N" | "inf"     op  seq (_⊔g_ / minMaxSeq); its alternatives
+#                                       are Loss's own (_⊓g_ / lossAlt).
 # The rendering is purely syntactic; neither prover's answer is computed here.
 set -euo pipefail
 [ $# -eq 3 ] || { echo "usage: $0 TABLE OUTDIR MODULE" >&2; exit 2; }
@@ -27,13 +30,13 @@ function lte_agda(n,   s, i) { s = "z≤n"; for (i = 0; i < n; i++) s = "(s≤s 
 function lte_idr(n,    s, i) { s = "LTEZero"; for (i = 0; i < n; i++) s = "(LTESucc " s ")"; return s }
 function va(inst, v,   f) {
   split(v, f, " ")
-  if (inst == "Loss")    return (f[1] == "inf") ? "inf" : "(fin " f[2] ")"
+  if (inst == "Loss" || inst == "MinMax") return (f[1] == "inf") ? "inf" : "(fin " f[2] ")"
   if (inst == "MaxPlus") return (f[1] == "bot") ? "bot" : "(val " f[2] ")"
   if (inst == "HWM")     return "(hwm " f[2] " " f[3] " " lte_agda(f[3]) ")"
 }
 function vi(inst, v,   f) {
   split(v, f, " ")
-  if (inst == "Loss")    return (f[1] == "inf") ? "Infinity" : "(Finite " f[2] ")"
+  if (inst == "Loss" || inst == "MinMax") return (f[1] == "inf") ? "Infinity" : "(Finite " f[2] ")"
   if (inst == "MaxPlus") return (f[1] == "bot") ? "Bot" : "(Val " f[2] ")"
   if (inst == "HWM")     return "(MkHWM " f[2] " " f[3] " " lte_idr(f[3]) ")"
 }
@@ -41,11 +44,13 @@ function opa(inst, op) {
   if (inst == "Loss")    return (op == "alt") ? "L._⊓g_" : "L._+g_"
   if (inst == "MaxPlus") return (op == "alt") ? "M.tAdd" : "M.tMul"
   if (inst == "HWM")     return (op == "alt") ? "H._⊕h_" : "H._⊗h_"
+  if (inst == "MinMax")  return (op == "alt") ? "L._⊓g_" : "MM._⊔g_"
 }
 function opi(inst, op) {
   if (inst == "Loss")    return (op == "alt") ? "lossAlt" : "lossSeq"
   if (inst == "MaxPlus") return (op == "alt") ? "maxPlusAlt" : "maxPlusSeq"
   if (inst == "HWM")     return (op == "alt") ? "hwmAlt" : "hwmSeq"
+  if (inst == "MinMax")  return (op == "alt") ? "lossAlt" : "minMaxSeq"
 }
 BEGIN {
   print "{-# OPTIONS --safe --without-K #-}"                                  > agda
@@ -55,6 +60,7 @@ BEGIN {
   print "import ResourceAlgebra.Instances.Loss    as L"                       > agda
   print "import ResourceAlgebra.Instances.MaxPlus as M"                       > agda
   print "import ResourceAlgebra.Instances.HWM     as H"                       > agda
+  print "import ResourceAlgebra.Instances.MinMax  as MM"                      > agda
   print "open L using (fin; inf)"                                             > agda
   print "open M using (val; bot)"                                             > agda
   print "open H using (hwm)"                                                  > agda
@@ -65,6 +71,7 @@ BEGIN {
   print "import TypedWasm.ABI.ResourceAlgebra.Loss"                           > idr
   print "import TypedWasm.ABI.ResourceAlgebra.MaxPlus"                        > idr
   print "import TypedWasm.ABI.ResourceAlgebra.HWM"                            > idr
+  print "import TypedWasm.ABI.ResourceAlgebra.MinMax"                         > idr
   print ""                                                                    > idr
   print "%default total"                                                      > idr
   print ""                                                                    > idr

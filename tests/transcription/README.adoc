@@ -10,7 +10,8 @@ the checker-matches-explorer pattern:
 . *Explorer.* `Explore.idr` evaluates the Idris2 port on a fixed finite domain
   and prints `ops.tsv`: one row per (instance, operation, left, right,
   result). The domain is Loss and MaxPlus on 0..3 plus the infinite point, so
-  every clause is reached, and HWM on peak ≤ 2.
+  every clause is reached, and HWM on peak ≤ 2. MinMax shares Loss's carrier
+  and alternatives, so only its sequence is tabled, on the Loss domain.
 . *Checkers.* `gen.sh` renders the table into an Agda module and an Idris2
   module. Agda must accept every row by `refl` against the *pinned* Agda
   instances. Idris2 must accept it by `Refl` against the port.

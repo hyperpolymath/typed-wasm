@@ -5,6 +5,8 @@
 #   Loss    alt read as worst case (max), the S-2 confusion: min 2 3 is 2
 #   MaxPlus seq off by one: 2 + 3 is 5
 #   HWM     seq read as cost, the S-1 confusion: occupancy peak is 3, not 5
+#   MinMax  seq read as a sum, the S-4 confusion: the worst hop of 2, 3 is 3
 Loss	alt	fin 2	fin 3	fin 3
 MaxPlus	seq	val 2	val 3	val 6
 HWM	seq	hwm 2 0	hwm 3 0	hwm 5 0
+MinMax	seq	fin 2	fin 3	fin 5

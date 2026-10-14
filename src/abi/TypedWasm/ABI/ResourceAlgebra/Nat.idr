@@ -4,7 +4,9 @@
 -- ResourceAlgebra/Nat.idr — the ℕ lemmas the grade kernel's instances need.
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Prelude.agda @ cf9235c532712a783a404c359a1055f40134794a
+--   src/ResourceAlgebra/Prelude.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
+-- (the max-over-min lemmas at the end came upstream with Instances/MinMax;
+-- everything else is unchanged since cf9235c)
 -- Correspondence status: ASSUMED (transcription).
 --
 -- The Agda development is builtins-only, so it defines its own `max`, `min`
@@ -197,3 +199,31 @@ maxLub : {a, b, c : Nat} -> LTE a c -> LTE b c -> LTE (maximum a b) c
 maxLub LTEZero     q           = q
 maxLub (LTESucc p) LTEZero     = LTESucc p
 maxLub (LTESucc p) (LTESucc q) = LTESucc (maxLub p q)
+
+-- ============================================================================
+-- max over min — Prelude.agda (added upstream with Instances/MinMax)
+-- ============================================================================
+
+||| Agda `min-≤`: min m n is m once m ≤ n.
+public export
+minOfLTE : {m, n : Nat} -> LTE m n -> minimum m n = m
+minOfLTE {m} {n} le = trans (minimumCommutative m n) (minimumOfLTE le)
+
+||| Agda `max-distribˡ-min`: max distributes over min, so the min-max
+||| instance is a dioid.
+public export
+maxDistribLMin : (a, b, c : Nat) ->
+                 maximum a (minimum b c) = minimum (maximum a b) (maximum a c)
+maxDistribLMin Z     b     c     = Refl
+maxDistribLMin (S a) Z     c     = sym (minOfLTE (maximumLeftUpperBound (S a) c))
+maxDistribLMin (S a) (S b) Z     = cong S (sym (minimumOfLTE (maximumLeftUpperBound a b)))
+maxDistribLMin (S a) (S b) (S c) = cong S (maxDistribLMin a b c)
+
+||| Agda `max-distribʳ-min`.
+public export
+maxDistribRMin : (a, b, c : Nat) ->
+                 maximum (minimum a b) c = minimum (maximum a c) (maximum b c)
+maxDistribRMin a b c =
+  trans (maximumCommutative (minimum a b) c)
+  (trans (maxDistribLMin c a b)
+         (cong2 minimum (maximumCommutative c a) (maximumCommutative c b)))

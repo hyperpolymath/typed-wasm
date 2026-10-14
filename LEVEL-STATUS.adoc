@@ -374,9 +374,10 @@ predicate.
 
 |Tropical.idr |0 |0 |0 |In package (A1, 2026-04-18). PWL-01 (2026-10-14):
 min-plus drawn from the grade kernel (`+TropCost = LossGrade+`); laws
-re-derived from `+ResourceAlgebra/Loss.idr+`; `+tropMax+` (MinMax
-bottleneck) is the one grade operation outside the kernel, allowlisted
-with its reason in `+tools/grade-kernel.allow+`.
+re-derived from `+ResourceAlgebra/Loss.idr+`. 2026-10-14: `+tropMax+`
+(the bottleneck) is the kernel's MinMax sequence (`+tropMax = minMaxSeq+`,
+`+ResourceAlgebra/MinMax.idr+`), so no grade operation is defined outside
+the kernel and `+tools/grade-kernel.allow+` is empty.
 
 |Epistemic.idr |0 |0 |0 |In package (A1, 2026-04-18). A10 (2026-05-26):
 propagation theorems added — `+freshImpliesEqual+`, `+staleImpliesLT+`,
@@ -404,20 +405,21 @@ RETRACTION R-2026-05-18 + experimental R0–R4). Added `+EchoR+` +
 attestation = a retained residue). Categorical base remains the settled
 fiber/slice structure.
 
-|ResourceAlgebra.idr + ResourceAlgebra/{Nat,Loss,MaxPlus,HWM,Separation}.idr |0 |0 |0 |In package (PWL-01, 2026-10-14). The *grade
+|ResourceAlgebra.idr + ResourceAlgebra/{Nat,Loss,MaxPlus,HWM,MinMax,Separation}.idr |0 |0 |0 |In package (PWL-01, 2026-10-14). The *grade
 kernel*: `+ResourceAlgebra+` / `+IsOrdered+` / `+IsDioid+` /
 `+IsAnnihilating+` interfaces and the Loss (min-plus), MaxPlus
-(max-plus) and HWM (high-water-mark) instances, transcribed from
-`+hyperpolymath/resource-algebra+` @ `+cf9235c+` (Agda `+--safe
---without-K+`). Laws re-proved in Idris2 (PROVEN, `+idris2 --build+`);
+(max-plus), HWM (high-water-mark) and MinMax (min-max, bottleneck; named
+implementations on Loss's carrier) instances, transcribed from
+`+hyperpolymath/resource-algebra+` @ `+0b338c9+` (Agda `+--safe
+--without-K+`; MinMax added 2026-10-14, the rest unchanged since `+cf9235c+`). Laws re-proved in Idris2 (PROVEN, `+idris2 --build+`);
 correspondence to the Agda source ASSUMED (transcription) and TESTED
-on a 172-row operation table, accepted by Agda `+refl+` against the
+on a 197-row operation table, accepted by Agda `+refl+` against the
 pinned sources and by Idris2 `+Refl+` against the port, with a
-3-row negative control refused by both
-(`+tools/check-kernel-proofs.sh+`). Separation S-1..S-3 TESTED
+4-row negative control refused by both
+(`+tools/check-kernel-proofs.sh+`). Separation S-1..S-4 TESTED
 (computed). Negative controls `+tests/reject/{HWMAnnihilates,
-LossWorstCase, DriftExceedsPeak, TropicalIsNotMaxPlus}.idr+` refused
-for the intended reason.
+LossWorstCase, DriftExceedsPeak, TropicalIsNotMaxPlus, MinMaxIsLoss}.idr+`
+refused for the intended reason.
 
 |Occupancy.idr |0 |0 |0 |In package (PWL-01 step 3, 2026-10-14). L13
 occupancy over the kernel's HWM grade: occupancy-types
@@ -641,36 +643,43 @@ rule.
 
 The "same object" above is now one definition. The grade kernel
 (`+src/abi/TypedWasm/ABI/ResourceAlgebra*+`) is the Idris2 transcription of
-`+hyperpolymath/resource-algebra+` @ `+cf9235c+`, the estate's Agda
+`+hyperpolymath/resource-algebra+` @ `+0b338c9+`, the estate's Agda
 (`+--safe --without-K+`) proof kernel for grades, fetched by
-`+scripts/fetch-siblings.sh+`. It holds the only min-plus (Loss) and the only
-max-plus (MaxPlus) in the tree, plus the high-water-mark occupancy grade
-(HWM). `+tools/check-grade-kernel.sh+` fails the build if anything else defines
+`+scripts/fetch-siblings.sh+`. It holds the only min-plus (Loss), the only
+max-plus (MaxPlus) and the only min-max (MinMax, the bottleneck) in the tree,
+plus the high-water-mark occupancy grade (HWM). `+tools/check-grade-kernel.sh+` fails the build if anything else defines
 one. `+Tropical.TropCost+`, `+Echo.EchoGrade+` and (through `+TropCost+`)
 `+Epistemic.syncGrade+` all draw their grade from Loss.
 
 What is proved, and how:
 
-* The interface laws and the three instances are re-proved in Idris2
+* The interface laws and the four instances are re-proved in Idris2
   (`+idris2 --build+`, zero dangerous patterns). PROVEN against the Idris2
   definitions.
 * That those definitions are the Agda ones is a transcription: ASSUMED. On a
-  172-row operation table (every clause of every operation), it is TESTED.
+  197-row operation table (every clause of every operation), it is TESTED.
   Agda accepts each row by `+refl+` against the pinned sources and Idris2
-  accepts it by `+Refl+` against the port. Three wrong rows are refused by
+  accepts it by `+Refl+` against the port. Four wrong rows are refused by
   both (`+tools/check-kernel-proofs.sh+`, in CI as `+contract-gate.yml+` /
   `+kernel-proofs+`).
-* The three grades are not one: S-1 occupancy is not cost, S-2 echo
+* The grades are not one: S-1 occupancy is not cost, S-2 echo
   alternatives are min while tropical alternatives are max, S-3 the order runs
-  opposite ways (`+ResourceAlgebra/Separation.idr+`, computed). So L11's
-  latency cost (Loss carrier), a worst-case cost (MaxPlus) and L13's occupancy
-  (HWM) are kept apart.
+  opposite ways, S-4 a bottleneck is not a sum (`+ResourceAlgebra/Separation.idr+`,
+  computed). So L11's latency cost (Loss carrier), its bottleneck (MinMax), a
+  worst-case cost (MaxPlus) and L13's occupancy (HWM) are kept apart.
 
 One correction to earlier prose. `+Tropical.idr+` was never max-plus: its
 `+TropCost+` is min-plus (the Loss algebra), and its bottleneck layer
 (`+tropMax+`) is min-max, which is neither min-plus nor max-plus.
-`+tests/reject/TropicalIsNotMaxPlus.idr+` is the checked statement. The
-kernel has no MinMax instance, so `+tropMax+` stays local, allowlisted with
-that reason. Whether to add MinMax upstream is an owner decision.
+`+tests/reject/TropicalIsNotMaxPlus.idr+` is the checked statement.
+
+*Resolved 2026-10-14.* The owner ruled to add MinMax upstream
+(hyperpolymath/resource-algebra#4, at the pin `+0b338c9+`).
+`+ResourceAlgebra/MinMax.idr+` transcribes it, `+tropMax+` is its sequence,
+`+tests/reject/MinMaxIsLoss.idr+` refuses reading it as a sum, and
+`+tools/grade-kernel.allow+` is empty. Upstream's strict and lax morphisms
+(`+Morphism.agda+`) are not ported. Level11BottleneckProof's status does not
+move: the bottleneck's laws were already proved; what changed is where its
+sequence is defined.
 
 No level changes status here: L11 and L12 stay draft.

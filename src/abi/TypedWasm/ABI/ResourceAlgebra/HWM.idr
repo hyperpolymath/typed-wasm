@@ -7,7 +7,8 @@
 -- (resource-algebra H-2); PROVEN against the definition below.
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Instances/HWM.agda @ cf9235c532712a783a404c359a1055f40134794a
+--   src/ResourceAlgebra/Instances/HWM.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
+-- (unchanged since cf9235c, the pin it was first transcribed at)
 -- Correspondence status: ASSUMED (transcription); operation table TESTED on
 -- both sides by tests/transcription.  occupancy-types @ af95728 builds its
 -- reclamation law (OccupancyTypes/Reclaim.agda) on that same Agda module.

@@ -32,11 +32,11 @@
 -- provenance, not parallel definitions.
 --
 -- Still NOT mirrored (debt, owner decision):
---   * parametric_resource_transport — needs resource-algebra homomorphisms,
---     which are OPEN upstream;
---   * a MinMax kernel instance for the bottleneck layer (tropMax below is the
---     one grade operation defined outside the kernel; it is listed, with this
---     reason, in tools/grade-kernel.allow).
+--   * parametric_resource_transport — needs resource-algebra homomorphisms.
+--     Upstream has them since 0b338c9 (Morphism.agda: strict and lax); they
+--     are not ported here.
+-- The bottleneck layer (tropMax below) is the kernel's MinMax sequence
+-- (ResourceAlgebra/MinMax.idr), so no grade operation is defined here.
 -- typed-wasm holds one thing the kernel lacks: the Kleene-closure matrix
 -- layer below (extend-upstream candidate; owner sign-off required).
 -- ----------------------------------------------------------------------------
@@ -48,6 +48,7 @@ import TypedWasm.ABI.Levels
 import public TypedWasm.ABI.ResourceAlgebra
 import public TypedWasm.ABI.ResourceAlgebra.Loss
 import public TypedWasm.ABI.ResourceAlgebra.MaxPlus
+import public TypedWasm.ABI.ResourceAlgebra.MinMax
 import Data.Nat
 import Data.Fin
 import Data.List
@@ -421,10 +422,10 @@ tropMulMonoL c ab = otimesMonoR c ab
 --
 -- This is NOT max-plus: max-plus takes max over ALTERNATIVES and sums along
 -- a path, with −∞ as its zero (ResourceAlgebra/MaxPlus.idr); here max is
--- the SEQUENCE operation, +∞ absorbs, and alternatives stay min.  The kernel
--- has no MinMax instance, so `tropMax` is the one grade operation defined
--- outside it (tools/grade-kernel.allow records why).  Nat's max is base's
--- `Data.Nat.maximum`, not a local copy.
+-- the SEQUENCE operation, +∞ absorbs, and alternatives stay min.  It is the
+-- kernel's MinMax instance (ResourceAlgebra/MinMax.idr, transcribed from
+-- resource-algebra Instances/MinMax.agda); `tropMax` is its sequence, not a
+-- copy of it.
 
 ||| min (max m n) m = m : a lower bottleneck absorbs against the route max.
 private
@@ -434,12 +435,10 @@ tropMinMaxAbsorbL (S m) Z     = cong S (minimumIdempotent m)
 tropMinMaxAbsorbL (S m) (S n) = cong S (tropMinMaxAbsorbL m n)
 
 ||| Bottleneck sequential composition: the worse (bottleneck) step.  Infinity
-||| absorbs.  Mirrors canonical MinMax.mul (= max).
+||| absorbs.  The kernel's MinMax sequence (`minMaxSeq`, Agda `_⊔g_`).
 public export
 tropMax : TropCost -> TropCost -> TropCost
-tropMax Infinity _ = Infinity
-tropMax _ Infinity = Infinity
-tropMax (Finite a) (Finite b) = Finite (maximum a b)
+tropMax = minMaxSeq
 
 ||| Bottleneck composition is commutative.
 public export
@@ -595,9 +594,10 @@ bottleneckCeilsEdges p e el = rewrite p.isBottleneck in hubCeiling e el
 --       sequence; the bound is `worstCase plan ≼ Val bound`, which is ℕ's ≤.
 --       DESIGNED as an obligation: no surface syntax, checker or attestation
 --       uses it yet.
---   Level11BottleneckProof              MinMax.  Not a kernel instance and
---       NOT MaxPlus (tests/reject/TropicalIsNotMaxPlus.idr; see the header).
---       Left as it is.
+--   Level11BottleneckProof              MinMax (min-max), the kernel instance
+--       ResourceAlgebra/MinMax.idr: `tropMax` is its sequence.  NOT MaxPlus
+--       (tests/reject/TropicalIsNotMaxPlus.idr) and NOT Loss
+--       (tests/reject/MinMaxIsLoss.idr).
 
 ||| The L11 numeric bound is the kernel's Loss order: `c ≤ n` as a cost is
 ||| `Finite n ≼ c` as a grade.
