@@ -29,7 +29,7 @@ jobs:
       - name: Run contract gate
         run: bash tools/check-contract.sh
 
-  # Grade kernel (PWL-01): the one definition of min-plus and of max-plus.
+  # Grade kernel (PWL-01): the one definition of min-plus, max-plus and min-max.
   # Checkout-only and toolchain-free, so it runs on every PR in seconds.
   # It lives in this workflow because actions.lock is keyed by workflow path:
   # a new workflow file would be rejected at startup until the lock is
@@ -48,7 +48,7 @@ jobs:
 
   # The mechanical falsifiers behind the kernel: Idris2 0.8.0 builds the ABI,
   # refuses tests/reject/*.idr for the intended reasons, and agrees with the
-  # PINNED Agda kernel (resource-algebra @ cf9235c, Agda --safe --without-K)
+  # PINNED Agda kernel (resource-algebra at the fetch-siblings.sh pin, Agda --safe --without-K)
   # on tests/transcription/ops.tsv; both provers refuse the wrong rows.
   # Idris2 publishes no binaries and its release-tarball URL 404s (see
   # e2e.yml build-e2e), so 0.8.0 is built from source with Chez Scheme,

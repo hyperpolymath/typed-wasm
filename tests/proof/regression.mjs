@@ -206,8 +206,9 @@ const EXPECTED = [
   ["VerifierSpec.idr", /^fixtureCleanLinearConsumerSpecAccepts\s*:/m, "Spec accepts row 1 via VerifierSpecAgreement"],
 
   // ResourceAlgebra*.idr — the grade kernel (PWL-01), transcribed from
-  // hyperpolymath/resource-algebra @ cf9235c.  Pins the interface layers,
-  // the three instances' operations and laws, and the separation witnesses.
+  // hyperpolymath/resource-algebra (pin in scripts/fetch-siblings.sh).  Pins
+  // the interface layers, the four instances' operations and laws, and the
+  // separation witnesses.
   ["ResourceAlgebra.idr", /^interface ResourceAlgebra g where/m, "ResourceAlgebra interface (Agda record)"],
   ["ResourceAlgebra.idr", /^interface ResourceAlgebra g => IsOrdered g where/m, "IsOrdered layer"],
   ["ResourceAlgebra.idr", /^interface ResourceAlgebra g => IsDioid g where/m, "IsDioid layer"],
@@ -230,12 +231,18 @@ const EXPECTED = [
   ["ResourceAlgebra/HWM.idr", /^hwmSeq\s*:/m, "HWM sequence (suffix starts from drift)"],
   ["ResourceAlgebra/HWM.idr", /^hwmSeqAssoc\s*:/m, "HWM sequence associativity"],
   ["ResourceAlgebra/HWM.idr", /^hwmDistribL\s*:/m, "HWM left distributivity"],
+  ["ResourceAlgebra/MinMax.idr", /^minMaxSeq\s*:/m, "MinMax sequence (max) — the one min-max"],
+  ["ResourceAlgebra/MinMax.idr", /^\[minMax\] ResourceAlgebra LossGrade where/m, "MinMax instance, named (carrier shared with Loss)"],
+  ["ResourceAlgebra/MinMax.idr", /^minMaxDistribL\s*:/m, "MinMax left distributivity"],
+  ["ResourceAlgebra/MinMax.idr", /^\[minMaxAnnihilating\] IsAnnihilating LossGrade using minMax where/m, "MinMax annihilating layer"],
   ["ResourceAlgebra/Separation.idr", /^occupancyIsNotCost\s*:/m, "S-1 occupancy is not cost"],
   ["ResourceAlgebra/Separation.idr", /^alternativesDiffer\s*:/m, "S-2 echo min vs tropical max"],
   ["ResourceAlgebra/Separation.idr", /^lossOrderReversed\s*:/m, "S-3 induced order reversed in Loss"],
+  ["ResourceAlgebra/Separation.idr", /^bottleneckIsNotSum\s*:/m, "S-4 a bottleneck is not a sum"],
   ["Tropical.idr", /^TropCost\s*:/m, "TropCost = the kernel's Loss carrier"],
   ["Tropical.idr", /^tropMulDistribR\s*:/m, "L11 right distributivity (kernel lossDistribR)"],
   ["Tropical.idr", /^hubCeiling\s*:/m, "L11 hub_ceiling (bottleneck)"],
+  ["Tropical.idr", /^tropMax = minMaxSeq$/m, "L11 bottleneck = the kernel's MinMax sequence"],
   ["Echo.idr", /^EchoGrade\s*:/m, "Echo loss grade = the kernel's Loss carrier"],
   ["Echo.idr", /^echoCollapseAbsorbs\s*:/m, "Total collapse absorbs later loss (kernel annihilL)"],
 

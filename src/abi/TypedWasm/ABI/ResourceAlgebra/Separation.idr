@@ -9,9 +9,12 @@
 --   S-1  an occupancy bound is not a cost bound          (HWM vs MaxPlus)
 --   S-2  echo alternatives are MIN, tropical alternatives MAX (Loss vs MaxPlus)
 --   S-3  the ⊕-induced order runs opposite ways in Loss and MaxPlus
+--   S-4  a bottleneck is not a sum: MinMax and Loss share carrier and
+--        alternatives and differ only in sequence
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Separation.agda @ cf9235c532712a783a404c359a1055f40134794a
+--   src/ResourceAlgebra/Separation.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
+-- (S-1..S-3 unchanged since cf9235c; S-4 added with Instances/MinMax)
 -- Correspondence status: ASSUMED (transcription).
 --
 -- These are the reason typed-wasm does not fold its grades into one: L11's
@@ -27,6 +30,7 @@ import TypedWasm.ABI.ResourceAlgebra
 import TypedWasm.ABI.ResourceAlgebra.Loss
 import TypedWasm.ABI.ResourceAlgebra.MaxPlus
 import TypedWasm.ABI.ResourceAlgebra.HWM
+import TypedWasm.ABI.ResourceAlgebra.MinMax
 
 %default total
 
@@ -96,3 +100,26 @@ maxPlusOrder = Refl
 public export
 lossOrderReversed : LeG (Finite 2) (Finite 1)
 lossOrderReversed = Refl
+
+-- ============================================================================
+-- S-4  A bottleneck is not a sum.  MinMax and Loss share the carrier and the
+--      alternatives (both min); sequencing 2 and 3 gives the worst hop, 3,
+--      in MinMax and the total, 5, in Loss.  A bottleneck bound is not a
+--      loss bound, though it is below one (upstream Morphism.agda,
+--      `loss-bottleneck`).
+-- ============================================================================
+
+||| Agda `loss-seq`.
+public export
+lossSeqSums : lossSeq (Finite 2) (Finite 3) = Finite 5
+lossSeqSums = Refl
+
+||| Agda `minmax-seq`.
+public export
+minMaxSeqWorstHop : minMaxSeq (Finite 2) (Finite 3) = Finite 3
+minMaxSeqWorstHop = Refl
+
+||| Agda `bottleneck-is-not-sum`.
+public export
+bottleneckIsNotSum : Not (minMaxSeq (Finite 2) (Finite 3) = lossSeq (Finite 2) (Finite 3))
+bottleneckIsNotSum p = threeNotFive (finiteInjective p)

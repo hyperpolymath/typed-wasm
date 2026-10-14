@@ -12,13 +12,16 @@
 -- disagree on any tabled input, the Agda side refuses.
 --
 -- Domain: Loss {fin 0..3, inf}, MaxPlus {val 0..3, bot} (every clause of
--- every operation is reached), HWM {(p, n) | n <= p <= 2}.
+-- every operation is reached), HWM {(p, n) | n <= p <= 2}.  MinMax shares
+-- Loss's carrier and alternatives (`lossAlt`, already tabled), so only its
+-- sequence `minMaxSeq` is tabled, on the Loss domain.
 module Main
 
 import Data.List
 import TypedWasm.ABI.ResourceAlgebra.Loss
 import TypedWasm.ABI.ResourceAlgebra.MaxPlus
 import TypedWasm.ABI.ResourceAlgebra.HWM
+import TypedWasm.ABI.ResourceAlgebra.MinMax
 
 %default total
 
@@ -58,3 +61,4 @@ main = traverse_ putStrLn $
   ++ rows "MaxPlus" "seq" showM maxPlusSeq maxDom
   ++ rows "HWM"     "alt" showH hwmAlt     hwmDom
   ++ rows "HWM"     "seq" showH hwmSeq     hwmDom
+  ++ rows "MinMax"  "seq" showL minMaxSeq  lossDom

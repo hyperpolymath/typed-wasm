@@ -10,7 +10,8 @@
 -- (tools/check-grade-kernel.sh enforces that).
 --
 -- PROVENANCE.  Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Core.agda @ cf9235c532712a783a404c359a1055f40134794a
+--   src/ResourceAlgebra/Core.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
+-- (unchanged since cf9235c, the pin it was first transcribed at)
 -- (fetched by scripts/fetch-siblings.sh).  Agda --safe --without-K is the
 -- proof kernel; this Idris2 module is the ABI layer and re-proves the same
 -- laws.  Correspondence status: ASSUMED (transcription).  The instance

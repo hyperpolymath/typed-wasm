@@ -59,7 +59,8 @@ else
   cat "$OUT/upstream.log"; err "upstream resource-algebra check failed at the pin"
 fi
 # occupancy-types (L13's reclamation law), checked against OUR resource-algebra
-# pin: its own pin (b2c9f1f) differs from cf9235c only by a CI workflow file.
+# pin: its own pin (b2c9f1f) predates Instances/MinMax and Morphism; this pin only
+# adds modules and lemmas, so the check below is what shows nothing it uses moved.
 OCC="_build/dependencies/occupancy-types"
 [ -d "$OCC/src/OccupancyTypes" ] || die "occupancy-types not fetched — run scripts/fetch-siblings.sh"
 echo "occupancy-types at $(git -C "$OCC" rev-parse HEAD)"
