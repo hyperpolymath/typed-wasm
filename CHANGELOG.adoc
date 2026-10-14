@@ -9,6 +9,23 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== L16 K-CUT-LOSS, parametric in the grade kernel (PWL-01 step 4, 2026-10-14)
+
+* New `KCut.idr` ports and re-proves choreographic-types `KCut.kcut-loss` @
+  `edb784a` over the kernel's `ResourceAlgebra` interface: graded global and
+  local types, cuts, projection with plain merge, consistency, and
+  `projCut` / `gradeProj` / `cutProjectable` / `kcutLoss` (K-1, K-2, K-3, K-5).
+  It is discharged at Loss, MaxPlus and HWM (K-6), and the upstream worked
+  broker protocol is evaluated in all three.
+* `Choreography.idr`: `GradedChoreography g` with `PartiesDeclared`, the
+  obligation `L16KCutLoss`, and its discharge `l16KCutLoss = kcutLoss`. Tying
+  the graded protocol to `messages` / `LegalTrace` is DESIGNED.
+* Rejects `UnprojectableChoice` and `InconsistentCut` (K-7), each refused on
+  the equality itself. `tools/check-kernel-proofs.sh` also checks upstream
+  `KCut.agda` and its two rejects at the pin.
+* `KCut` re-exports `Decidable.Equality` and the kernel interface, so
+  consumers can compute a concrete protocol's grades by evaluation.
+
 ==== L11 / L12 / L13 read through the grade kernel (PWL-01 steps 2–3, 2026-10-14)
 
 * *L11.* `CostBounded c n` is proved equal to the kernel's Loss order

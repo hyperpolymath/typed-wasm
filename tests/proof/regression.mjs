@@ -259,6 +259,20 @@ const EXPECTED = [
   ["Occupancy.idr", /^boundaryOccupancy\s*:/m, "L13 boundary frees peak − drift"],
   ["Occupancy.idr", /^fitsAcrossBoundary\s*:/m, "L13 budget rule across a boundary"],
 
+  // PWL-01 step 4: L16 K-CUT-LOSS, parametric in the grade kernel.
+  ["KCut.idr", /^data\s+Global/m, "Graded global protocol"],
+  ["KCut.idr", /^gradeAt\s*:/m, "Global grade restricted to a party (Agda grade↾)"],
+  ["KCut.idr", /^proj\s*:/m, "Endpoint projection"],
+  ["KCut.idr", /^data\s+Consistent/m, "Consistent cut"],
+  ["KCut.idr", /^projCut\s*:/m, "K-2 projection commutes with cutting"],
+  ["KCut.idr", /^gradeProj\s*:/m, "K-3 restricted grade = grade of projection"],
+  ["KCut.idr", /^cutProjectable\s*:/m, "K-5 consistent cut is projectable"],
+  ["KCut.idr", /^kcutLoss\s*:/m, "K-1 K-CUT-LOSS"],
+  ["KCut.idr", /^kcutLossHWM\s*:/m, "K-6 discharged at HWM"],
+  ["KCut.idr", /^lossBroker\s*:/m, "Worked broker protocol (computed)"],
+  ["Choreography.idr", /^record\s+GradedChoreography/m, "L16 graded choreography"],
+  ["Choreography.idr", /^l16KCutLoss\s*:/m, "L16 K-CUT-LOSS obligation discharged"],
+
   // Proofs.idr — LevelAttestationW (standards#130 long-tail closure):
   // witness-indexed attestation GADT with per-level smart ctors,
   // extractors ("entails-semantic-property" lemmas), legacy bridge,

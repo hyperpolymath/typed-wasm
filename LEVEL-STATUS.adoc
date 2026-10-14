@@ -206,11 +206,21 @@ parser/Checker tests |*v1.4 — Idris2 proof + surface checker (L15-A +
 L15-B) live; L15-C call-graph check deferred to v1.4.x; 007 lowering
 DONE (task #9)*
 
-|16 |Agent choreography |Choreography.idr |(future) |12 parser/Checker
+|16 |Agent choreography |Choreography.idr + KCut.idr |(future) |12 parser/Checker
 tests |*v1.5 — composition proof over L13+L14+L15 live; surface checker
 enforces L16-A (role targets exist), L16-B (message endpoints declared),
 L16-C (payload primitive/declared region ref), L16-D (exact
-`+L13 + L14 + L15+` composition spec).*
+`+L13 + L14 + L15+` composition spec). PWL-01 step 4: grades drawn from
+the kernel — `+GradedChoreography g+` for any `+ResourceAlgebra g+`, with
+the K-CUT-LOSS obligation `+L16KCutLoss+` discharged by `+l16KCutLoss+` =
+`+KCut.kcutLoss+`, a port and re-proof of choreographic-types
+`+KCut.kcut-loss+` @ `+edb784a+` (K-1/K-2/K-3/K-5, and K-6 at Loss,
+MaxPlus, HWM: PROVEN in Idris2; correspondence ASSUMED; K-7 TESTED by
+`+tests/reject/{UnprojectableChoice,InconsistentCut}.idr+`; K-4 not
+re-checked here). Fragment: finite, binary choice, plain merge,
+synchronous. That the graded protocol IS the choreography's
+`+messages+` / `+LegalTrace+` is DESIGNED (only `+PartiesDeclared+` is
+checked); asynchrony OPEN upstream.*
 |===
 
 *[sfap]* = "`so far as possible`" — proofs are machine-checked in Idris2
@@ -315,7 +325,16 @@ envelope (via `+subsumeCompose+`) AND the combined L15 module envelope
 (via `+containedConcat+` + `+l15bSoundness+`). Closes post-A10 audit
 item 3.
 
-|Choreography.idr |0 |0 |0 |In package (v1.5 / L16)
+|Choreography.idr |0 |0 |0 |In package (v1.5 / L16). PWL-01 step 4:
+`+GradedChoreography+`, `+PartiesDeclared+`, `+L16KCutLoss+` /
+`+l16KCutLoss+`.
+
+|KCut.idr |0 |0 |0 |In package (PWL-01 step 4, 2026-10-14). K-CUT-LOSS
+parametric in the grade kernel: graded `+Global+` / `+Local+` types,
+`+Cut+` / `+LCut+`, projection with plain merge, `+Consistent+`;
+`+projCut+`, `+gradeProj+`, `+cutProjectable+`, `+kcutLoss+`, the three
+instance discharges and the worked broker protocol (computed readings
+TESTED). Port of choreographic-types @ `+edb784a+`.
 
 |Proofs.idr |0 |0 |0 |In package. Attestation API hardened A7
 (2026-04-18): every L1-L10 attestation now requires a witness from its
