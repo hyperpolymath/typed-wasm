@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+# Grade operations allowed outside the kernel by tools/check-grade-kernel.sh.
+# One per line: <path>\t<name>\t<reason>.  The reason must name the algebra
+# the operation belongs to and why it is neither min-plus nor max-plus.
+src/abi/TypedWasm/ABI/Tropical.idr	tropMax	min-max (bottleneck) SEQUENCE on the Loss carrier: max along a path with +inf absorbing, alternatives stay min. Not min-plus (sequence is max, not +) and not max-plus (max is sequence, not alternatives; zero is +inf, not -inf). resource-algebra @ cf9235c has no MinMax instance; adding one is an upstream decision (LEVEL-STATUS L11).

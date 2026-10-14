@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= Transcription check: the Idris2 grade kernel against its Agda source
+
+The grade kernel (`src/abi/TypedWasm/ABI/ResourceAlgebra*`) is a
+transcription of hyperpolymath/resource-algebra (Agda), pinned in
+`scripts/fetch-siblings.sh`. Nothing proves the two equal, so the
+correspondence is ASSUMED. On the table below it is checked mechanically, in
+the checker-matches-explorer pattern:
+
+. *Explorer.* `Explore.idr` evaluates the Idris2 port on a fixed finite domain
+  and prints `ops.tsv`: one row per (instance, operation, left, right,
+  result). The domain is Loss and MaxPlus on 0..3 plus the infinite point, so
+  every clause is reached, and HWM on peak ≤ 2.
+. *Checkers.* `gen.sh` renders the table into an Agda module and an Idris2
+  module. Agda must accept every row by `refl` against the *pinned* Agda
+  instances. Idris2 must accept it by `Refl` against the port.
+. *Negative control.* Each row of `wrong-rows.tsv` is rendered on its own and
+  must be refused by both provers.
+
+`tools/check-kernel-proofs.sh` runs all three and also fails if the port no
+longer reproduces `ops.tsv`. After an intended change to the kernel, run
+`tools/check-kernel-proofs.sh --regen`, commit the new table and let Agda judge
+it.
+
+Scope: agreement on the tabled inputs is TESTED. Agreement everywhere else is
+not claimed.

@@ -4,6 +4,9 @@
 # direction + I3 shared-ABI drift) that keep this repo composable with the rest
 # of the stack. See CONTRACT.adoc. Self-contained (no reusable); runnable
 # locally as tools/check-contract.sh.
+# Also gates the grade kernel (I2, extend don't redefine, applied to grades):
+# tools/check-grade-kernel.sh and tools/check-kernel-proofs.sh, both runnable
+# locally.
 name: Contract Gate
 on:
   pull_request:
@@ -25,3 +28,51 @@ jobs:
         uses: actions/checkout@v7.0.1
       - name: Run contract gate
         run: bash tools/check-contract.sh
+
+  # Grade kernel (PWL-01): the one definition of min-plus and of max-plus.
+  # Checkout-only and toolchain-free, so it runs on every PR in seconds.
+  # It lives in this workflow because actions.lock is keyed by workflow path:
+  # a new workflow file would be rejected at startup until the lock is
+  # regenerated, and this one already holds the only action it needs.
+  grade-kernel:
+    name: Grade kernel (one min-plus, one max-plus)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Gate self-test (negative control — seeded duplicates must be caught)
+        run: bash tools/check-grade-kernel.sh --self-test
+      - name: Grep gate
+        run: bash tools/check-grade-kernel.sh
+
+  # The mechanical falsifiers behind the kernel: Idris2 0.8.0 builds the ABI,
+  # refuses tests/reject/*.idr for the intended reasons, and agrees with the
+  # PINNED Agda kernel (resource-algebra @ cf9235c, Agda --safe --without-K)
+  # on tests/transcription/ops.tsv; both provers refuse the wrong rows.
+  # Idris2 publishes no binaries and its release-tarball URL 404s (see
+  # e2e.yml build-e2e), so 0.8.0 is built from its tag with Chez Scheme.
+  kernel-proofs:
+    name: Grade kernel proofs (Idris2 0.8.0 + Agda)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Install Chez Scheme, GMP and Agda
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq chezscheme libgmp-dev agda-bin
+          agda --version
+      - name: Build Idris2 0.8.0 from source
+        run: |
+          git clone --quiet --depth 1 --branch v0.8.0 https://github.com/idris-lang/Idris2 "$RUNNER_TEMP/idris2-src"
+          make -C "$RUNNER_TEMP/idris2-src" bootstrap SCHEME=scheme -j"$(nproc)" > "$RUNNER_TEMP/idris2-build.log" 2>&1 \
+            || { tail -60 "$RUNNER_TEMP/idris2-build.log"; exit 1; }
+          make -C "$RUNNER_TEMP/idris2-src" install > "$RUNNER_TEMP/idris2-install.log" 2>&1 \
+            || { tail -60 "$RUNNER_TEMP/idris2-install.log"; exit 1; }
+          echo "$HOME/.idris2/bin" >> "$GITHUB_PATH"
+      - name: Fetch siblings at their pins
+        run: bash scripts/fetch-siblings.sh
+      - name: Kernel proofs
+        run: bash tools/check-kernel-proofs.sh
