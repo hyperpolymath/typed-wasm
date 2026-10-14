@@ -11,15 +11,19 @@
 #                       checks the operation tables against this tree in Agda.
 #   occupancy-types   — the reclamation law (R-1..R-6) that
 #                       src/abi/TypedWasm/ABI/Occupancy.idr ports for L13.
+#   choreographic-types — K-CUT-LOSS, which src/abi/TypedWasm/ABI/KCut.idr
+#                       ports for L16.
 #
 # Re-pin deliberately, one commit per pin, and update the module headers that
 # cite the pin in the same commit.  Override for a local experiment with
-#   RESOURCE_ALGEBRA_COMMIT=<sha> OCCUPANCY_TYPES_COMMIT=<sha> scripts/fetch-siblings.sh
+#   RESOURCE_ALGEBRA_COMMIT=<sha> OCCUPANCY_TYPES_COMMIT=<sha> \
+#   CHOREOGRAPHIC_TYPES_COMMIT=<sha> scripts/fetch-siblings.sh
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 RESOURCE_ALGEBRA_COMMIT="${RESOURCE_ALGEBRA_COMMIT:-cf9235c532712a783a404c359a1055f40134794a}"
 OCCUPANCY_TYPES_COMMIT="${OCCUPANCY_TYPES_COMMIT:-af957280075699c659de0abd9a3b0defade77309}"
+CHOREOGRAPHIC_TYPES_COMMIT="${CHOREOGRAPHIC_TYPES_COMMIT:-edb784a7d26c276c2abfa8399b773d346dbb101e}"
 
 fetch() { # fetch <name> <commit>
   local name="$1" commit="$2" dir="_build/dependencies/$1"
@@ -41,3 +45,4 @@ fetch() { # fetch <name> <commit>
 
 fetch resource-algebra "$RESOURCE_ALGEBRA_COMMIT"
 fetch occupancy-types "$OCCUPANCY_TYPES_COMMIT"
+fetch choreographic-types "$CHOREOGRAPHIC_TYPES_COMMIT"

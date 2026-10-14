@@ -19,6 +19,8 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.ModuleIsolation
         , TypedWasm.ABI.SessionProtocol
         , TypedWasm.ABI.ResourceCapabilities
+        -- K-CUT-LOSS (PWL-01 step 4): ported from choreographic-types @ edb784a
+        , TypedWasm.ABI.KCut
         , TypedWasm.ABI.Choreography
         -- Grade kernel (PWL-01): transcribed from hyperpolymath/resource-algebra
         -- @ cf9235c; the one definition of min-plus (Loss) and of max-plus
