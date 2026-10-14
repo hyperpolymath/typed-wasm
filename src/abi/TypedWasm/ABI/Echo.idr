@@ -37,9 +37,13 @@
 -- Estate cross-reference (audit 2026-06-16) — canonical axis: Agda
 -- hyperpolymath/echo-types @ 2bbdb49 (proofs/agda/{Echo,EchoResidue,EchoGraded,
 -- EchoGradedComonadInterface}.agda; experimental/ for the R0-R4 variance line).
--- The min-plus grade IS the sibling TypedWasm.ABI.Tropical.TropCost; the loss
--- of an echo residue is MEASURED into it via Tropical.ResidueMeasure
--- (accumulation mu = tropMul = +).
+-- The loss grade is the grade kernel's Loss instance (min-plus on ℕ ∪ {∞},
+-- TypedWasm.ABI.ResourceAlgebra.Loss, transcribed from resource-algebra
+-- Instances/Loss.agda @ cf9235c, which is itself echo-types'
+-- experimental/echo-additive/Grade.agda).  `EchoGrade` below names it;
+-- TypedWasm.ABI.Tropical.TropCost is the same carrier, so the loss of an echo
+-- residue is MEASURED into it via Tropical.ResidueMeasure (accumulation
+-- mu = lossSeq = +).  This module defines no grade operation of its own.
 --
 -- WHAT THIS FILE MIRRORS (the SETTLED, machine-checked core):
 --   * the exact-on-a-fiber recoverable subobject: Echo (= Sigma-fiber),
@@ -49,7 +53,9 @@
 --   * the irreversible-relegation step: EchoR + echoToResidue
 --     (~ EchoResidue.agda EchoR / echo-to-residue) — an attestation is exactly
 --     a retained residue of a forgotten witness.
--- WHAT IT DEFERS: the numeric min-plus graded CARRIER and the (co)monad /
+-- WHAT IT NAMES: the numeric min-plus graded CARRIER, as the kernel's Loss
+--   instance (`EchoGrade`, `echoKeep`, `echoCollapse` at the end of this file).
+-- WHAT IT DEFERS: the graded modality D_r itself and its (co)monad /
 --   adjunction laws are live research in echo-types/experimental and are NOT
 --   reproduced here (deferring per caveat 2; do not bake in a variance).
 --
@@ -68,6 +74,9 @@
 -- %default total.
 
 module TypedWasm.ABI.Echo
+
+import TypedWasm.ABI.ResourceAlgebra
+import public TypedWasm.ABI.ResourceAlgebra.Loss
 
 %default total
 
@@ -295,3 +304,38 @@ echoToResidue :
   -> Echo f y -> EchoR C Cert y
 echoToResidue f kappa sound (MkEcho x pf) =
   MkEchoR (kappa x) (replace {p = \v => Cert (kappa x) v} pf (sound x))
+
+-- ============================================================================
+-- The loss grade — the kernel's Loss instance
+-- ============================================================================
+--
+-- echo-types grades loss by ℕ ∪ {∞}: `Finite 0` is `keep` (nothing lost),
+-- `Infinity` is total collapse; sequence adds loss, alternatives keep the
+-- less lossy branch.  That algebra is TypedWasm.ABI.ResourceAlgebra.Loss; it
+-- is named here, not redefined.
+
+||| The echo loss grade.  The kernel's Loss carrier.
+public export
+EchoGrade : Type
+EchoGrade = LossGrade
+
+||| `keep`: no information lost.  The unit of sequence.
+public export
+echoKeep : EchoGrade
+echoKeep = oneG
+
+||| Total collapse: nothing recoverable.  The unit of alternatives.
+public export
+echoCollapse : EchoGrade
+echoCollapse = zeroG
+
+||| Losing nothing then losing `r` loses `r`.  Kernel `seqUnitL`.
+public export
+echoKeepThen : (r : EchoGrade) -> otimes Echo.echoKeep r = r
+echoKeepThen r = seqUnitL r
+
+||| Total collapse absorbs every later loss.  Kernel `annihilL`
+||| (IsAnnihilating LossGrade).
+public export
+echoCollapseAbsorbs : (r : EchoGrade) -> otimes Echo.echoCollapse r = Echo.echoCollapse
+echoCollapseAbsorbs r = annihilL r
