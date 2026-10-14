@@ -18,6 +18,7 @@ because then the control proves nothing.
 | `CostIsOccupancy` | an L13 run charged the sum of its peaks, as if the boundary reclaimed nothing (occupancy-types R-6)
 | `DriftIsPeak` | drift identified with peak: "a boundary never reclaims" (occupancy-types R-6)
 | `WorstCaseIsCheapest` | L11's MaxPlus worst case charging the cheaper branch
+| `InitialOverMaximum` | an L13 private memory certified by an empty run although its initial allocation is unbounded by its maximum
 | `UnprojectableChoice` | K-CUT-LOSS without the Projectable side-condition (choreographic-types K-7)
 | `InconsistentCut` | K-CUT-LOSS without the Consistent side-condition (choreographic-types K-7)
 |===

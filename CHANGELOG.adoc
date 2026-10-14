@@ -9,6 +9,14 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Fixed (2026-10-14)
+
+* `Occupancy.WithinMaximum`: `UnderMaximum` now bounds a private memory's
+  initial allocation as well as its run's peak. With only the peak bounded,
+  an empty run (peak 0) certified a memory declared with `initial` above
+  `maximum`. New reject `InitialOverMaximum`. Found by CodeRabbit on #273.
+* `tools/check-kernel-proofs.sh` exits if its `cd` fails (shellcheck SC2164).
+
 ==== L16 K-CUT-LOSS, parametric in the grade kernel (PWL-01 step 4, 2026-10-14)
 
 * New `KCut.idr` ports and re-proves choreographic-types `KCut.kcut-loss` @

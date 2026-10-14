@@ -25,7 +25,7 @@
 #        tools/check-kernel-proofs.sh --regen   # rewrite ops.tsv from the port,
 #                                               # then check (commit the diff)
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ROOT="$(pwd)"
 REGEN=0; [ "${1:-}" = "--regen" ] && REGEN=1
 

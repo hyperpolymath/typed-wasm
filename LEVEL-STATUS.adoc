@@ -190,8 +190,10 @@ Idris2 (`+cutFactor+`, `+reclaimLaw+`, `+occupancyAtCut+`,
 `+occupancyLeCost+`, `+noReclaim+`, `+reclaimed+`, `+witness*+`: PROVEN;
 statement correspondence ASSUMED, port-and-reprove), R-6 as
 `+tests/reject/{CostIsOccupancy,DriftIsPeak}.idr+` (TESTED). The L13
-binding — an HWM grade per `+private_memory+` within its declared
-maximum (`+OccupancyGradedMemory+`), a declared `+boundary+` as the cut
+binding — an HWM grade per `+private_memory+` whose initial allocation
+and peak both fit its declared maximum (`+OccupancyGradedMemory+`;
+`+tests/reject/InitialOverMaximum.idr+` refuses the peak-only bound), a
+declared `+boundary+` as the cut
 that frees peak − drift (`+BoundaryCut+`, `+boundaryOccupancy+`,
 `+fitsAcrossBoundary+`) — is DESIGNED: nothing links the grade to
 `+memory.grow+` and no checker emits it. `+striated+` occupancy OPEN
