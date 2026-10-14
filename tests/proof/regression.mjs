@@ -239,6 +239,26 @@ const EXPECTED = [
   ["Echo.idr", /^EchoGrade\s*:/m, "Echo loss grade = the kernel's Loss carrier"],
   ["Echo.idr", /^echoCollapseAbsorbs\s*:/m, "Total collapse absorbs later loss (kernel annihilL)"],
 
+  // PWL-01 step 2-3: L11 / L12 obligations read through the kernel, L13 occupancy.
+  ["Tropical.idr", /^costBoundedIsLossOrder\s*:/m, "L11 bound = kernel Loss order"],
+  ["Tropical.idr", /^lossOrderIsCostBounded\s*:/m, "L11 kernel Loss order = bound"],
+  ["Tropical.idr", /^costBoundedSeq\s*:/m, "L11 path bounds compose (kernel otimesMono)"],
+  ["Tropical.idr", /^record\s+Level11WorstCaseProof/m, "L11 MaxPlus worst-case obligation"],
+  ["Tropical.idr", /^worstCaseThen\s*:/m, "L11 worst case: sequence bounds add"],
+  ["Tropical.idr", /^worstCaseOneOf\s*:/m, "L11 worst case: choice takes the larger bound"],
+  ["Epistemic.idr", /^stalenessGrade\s*:/m, "L12 staleness as a Loss grade"],
+  ["Epistemic.idr", /^freshHasNoStaleness\s*:/m, "L12 fresh = kernel 𝟙"],
+  ["Epistemic.idr", /^staleHasStaleness\s*:/m, "L12 stale ≠ kernel 𝟙"],
+  ["Epistemic.idr", /^stalenessRelay\s*:/m, "L12 relayed lag = kernel ⊗"],
+  ["Occupancy.idr", /^cutFactor\s*:/m, "R-1 grade factors at every cut"],
+  ["Occupancy.idr", /^reclaimLaw\s*:/m, "R-2 reclamation law"],
+  ["Occupancy.idr", /^occupancyAtCut\s*:/m, "R-2 at the level of runs"],
+  ["Occupancy.idr", /^occupancyLeCost\s*:/m, "R-3 occupancy ≤ cost"],
+  ["Occupancy.idr", /^reclaimed\s*:/m, "R-4 strict reclamation"],
+  ["Occupancy.idr", /^witnessOccupancy\s*:/m, "R-5 occupancy 4 / cost 7"],
+  ["Occupancy.idr", /^boundaryOccupancy\s*:/m, "L13 boundary frees peak − drift"],
+  ["Occupancy.idr", /^fitsAcrossBoundary\s*:/m, "L13 budget rule across a boundary"],
+
   // Proofs.idr — LevelAttestationW (standards#130 long-tail closure):
   // witness-indexed attestation GADT with per-level smart ctors,
   // extractors ("entails-semantic-property" lemmas), legacy bridge,

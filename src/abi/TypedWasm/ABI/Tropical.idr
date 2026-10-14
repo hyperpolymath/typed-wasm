@@ -47,6 +47,7 @@ import TypedWasm.ABI.Region
 import TypedWasm.ABI.Levels
 import public TypedWasm.ABI.ResourceAlgebra
 import public TypedWasm.ABI.ResourceAlgebra.Loss
+import public TypedWasm.ABI.ResourceAlgebra.MaxPlus
 import Data.Nat
 import Data.Fin
 import Data.List
@@ -577,3 +578,117 @@ public export
 bottleneckCeilsEdges : (p : Level11BottleneckProof) -> (e : TropCost) ->
                        Elem e p.edges -> tropLe p.bottleneck e
 bottleneckCeilsEdges p e el = rewrite p.isBottleneck in hubCeiling e el
+
+-- ============================================================================
+-- Level 11 obligations as kernel instantiations (PWL-01 step 2)
+-- ============================================================================
+--
+-- Each L11 obligation below is read through the grade kernel, so promoting
+-- L11 is a matter of instantiating kernel lemmas, not of a new algebra:
+--
+--   Level11Proof / Level11KleeneProof   Loss (min-plus).  The numeric bound
+--       `CostBounded c n` IS the kernel order `Finite n ≼ c` (Loss's order is
+--       ℕ's reversed: the cost sits above its bound), and bounds compose
+--       along a path by the kernel's `otimesMono` (IsOrdered LossGrade).
+--   Level11WorstCaseProof               MaxPlus (max-plus).  A branching
+--       access plan's worst case: max over alternatives, sum along a
+--       sequence; the bound is `worstCase plan ≼ Val bound`, which is ℕ's ≤.
+--       DESIGNED as an obligation: no surface syntax, checker or attestation
+--       uses it yet.
+--   Level11BottleneckProof              MinMax.  Not a kernel instance and
+--       NOT MaxPlus (tests/reject/TropicalIsNotMaxPlus.idr; see the header).
+--       Left as it is.
+
+||| The L11 numeric bound is the kernel's Loss order: `c ≤ n` as a cost is
+||| `Finite n ≼ c` as a grade.
+public export
+costBoundedIsLossOrder : {c : TropCost} -> {n : Nat} -> CostBounded c n -> LeG (Finite n) c
+costBoundedIsLossOrder (BoundedFinite le) = lossLeOfLTE le
+
+||| ...and back: a grade above `Finite n` in the Loss order is a cost
+||| bounded by n (in particular it is finite).
+public export
+lossOrderIsCostBounded : {n : Nat} -> (c : TropCost) -> LeG (Finite n) c -> CostBounded c n
+lossOrderIsCostBounded (Finite k) prf = BoundedFinite (lteOfLossLe n k prf)
+lossOrderIsCostBounded Infinity   prf = absurd (finiteNotLeInfinity prf)
+
+||| Path bounds compose: bounded steps give a bounded path, with the bounds
+||| added.  Kernel `otimesMono` (IsOrdered LossGrade), not a new proof.
+public export
+costBoundedSeq : {c1, c2 : TropCost} -> {n1, n2 : Nat} ->
+                 CostBounded c1 n1 -> CostBounded c2 n2 ->
+                 CostBounded (tropMul c1 c2) (n1 + n2)
+costBoundedSeq b1 b2 =
+  lossOrderIsCostBounded (tropMul c1 c2)
+    (otimesMono (costBoundedIsLossOrder b1) (costBoundedIsLossOrder b2))
+
+-- ---- MaxPlus: the worst case over alternatives ----
+
+||| A branching access plan: a single access of known cost, one plan after
+||| another, or one of two plans (which one runs is not known statically).
+public export
+data AccessPlan : Type where
+  ||| One access of the given cost.
+  Step  : (cost : Nat) -> AccessPlan
+  ||| `p` then `q`.
+  Then  : AccessPlan -> AccessPlan -> AccessPlan
+  ||| Either `p` or `q`.
+  OneOf : AccessPlan -> AccessPlan -> AccessPlan
+
+||| The worst-case cost of a plan, graded in the kernel's MaxPlus instance:
+||| costs add along `Then`, the dearer branch counts at `OneOf`.
+public export
+worstCase : AccessPlan -> MaxPlusGrade
+worstCase (Step c)    = Val c
+worstCase (Then p q)  = maxPlusSeq (worstCase p) (worstCase q)
+worstCase (OneOf p q) = maxPlusAlt (worstCase p) (worstCase q)
+
+||| A plan's worst case is always finite (never −∞): every plan does at
+||| least its cheapest branch.
+public export
+worstCaseFinite : (p : AccessPlan) -> (w : Nat ** worstCase p = Val w)
+worstCaseFinite (Step c)    = (c ** Refl)
+worstCaseFinite (Then p q)  =
+  let (a ** pa) = worstCaseFinite p
+      (b ** qb) = worstCaseFinite q
+  in (a + b ** rewrite pa in rewrite qb in Refl)
+worstCaseFinite (OneOf p q) =
+  let (a ** pa) = worstCaseFinite p
+      (b ** qb) = worstCaseFinite q
+  in (maximum a b ** rewrite pa in rewrite qb in Refl)
+
+||| Level 11 worst-case obligation: the plan's worst case is within
+||| `planBound` in the MaxPlus order (ℕ's ≤ on finite grades).
+public export
+record Level11WorstCaseProof where
+  constructor MkLevel11WorstCase
+  ||| The branching access plan.
+  plan        : AccessPlan
+  ||| The declared worst-case bound.
+  planBound   : Nat
+  ||| The plan's worst case does not exceed the bound.
+  planBounded : LeG (worstCase plan) (Val planBound)
+
+||| The bound read as a number: the worst case is `Val w` with w ≤ bound.
+public export
+worstCaseWithin : (prf : Level11WorstCaseProof) ->
+                  (w : Nat ** (worstCase prf.plan = Val w, LTE w prf.planBound))
+worstCaseWithin prf =
+  let (w ** eq) = worstCaseFinite prf.plan
+  in (w ** (eq, lteOfMaxPlusLe w prf.planBound
+                  (replace {p = \g => LeG g (Val prf.planBound)} eq prf.planBounded)))
+
+||| Sequenced plans: the bounds add.  Kernel `otimesMono` (IsOrdered
+||| MaxPlusGrade).
+public export
+worstCaseThen : {p, q : AccessPlan} -> {a, b : Nat} ->
+                LeG (worstCase p) (Val a) -> LeG (worstCase q) (Val b) ->
+                LeG (worstCase (Then p q)) (Val (a + b))
+worstCaseThen pa qb = otimesMono pa qb
+
+||| Alternative plans: the larger bound covers both.  Kernel `oplusMono`.
+public export
+worstCaseOneOf : {p, q : AccessPlan} -> {a, b : Nat} ->
+                 LeG (worstCase p) (Val a) -> LeG (worstCase q) (Val b) ->
+                 LeG (worstCase (OneOf p q)) (Val (maximum a b))
+worstCaseOneOf pa qb = oplusMono pa qb

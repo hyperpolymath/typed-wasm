@@ -152,3 +152,48 @@ plusDistribRMin a b c =
 public export
 plusAssoc : (m, n, p : Nat) -> (m + n) + p = m + (n + p)
 plusAssoc m n p = sym (plusAssociative m n p)
+
+-- ============================================================================
+-- typed-wasm additions (NOT in the Agda source): min / max against ℕ's order
+-- ============================================================================
+--
+-- Used to read the instances' induced orders as ℕ's order (Loss.idr,
+-- MaxPlus.idr) and by the occupancy theorems (TypedWasm.ABI.Occupancy).
+
+||| `S` is injective.
+public export
+succInj : {m, n : Nat} -> S m = S n -> m = n
+succInj Refl = Refl
+
+||| A bounded argument is what min returns.
+public export
+minimumOfLTE : {k, n : Nat} -> LTE k n -> minimum n k = k
+minimumOfLTE {n} LTEZero     = minimumZeroZeroLeft n
+minimumOfLTE     (LTESucc q) = cong S (minimumOfLTE q)
+
+||| If min returns its right argument, that argument is the smaller.
+public export
+lteOfMinimum : (n, k : Nat) -> minimum n k = k -> LTE k n
+lteOfMinimum n     Z     _   = LTEZero
+lteOfMinimum Z     (S k) prf = absurd prf
+lteOfMinimum (S n) (S k) prf = LTESucc (lteOfMinimum n k (succInj prf))
+
+||| A smaller argument is absorbed by max.
+public export
+maximumOfLTE : {m, n : Nat} -> LTE m n -> maximum m n = n
+maximumOfLTE LTEZero     = Refl
+maximumOfLTE (LTESucc q) = cong S (maximumOfLTE q)
+
+||| If max returns its right argument, the left one is the smaller.
+public export
+lteOfMaximum : (m, n : Nat) -> maximum m n = n -> LTE m n
+lteOfMaximum Z     n     _   = LTEZero
+lteOfMaximum (S m) Z     prf = absurd prf
+lteOfMaximum (S m) (S n) prf = LTESucc (lteOfMaximum m n (succInj prf))
+
+||| max is the least upper bound.  occupancy-types `max-lub` (Order.agda).
+public export
+maxLub : {a, b, c : Nat} -> LTE a c -> LTE b c -> LTE (maximum a b) c
+maxLub LTEZero     q           = q
+maxLub (LTESucc p) LTEZero     = LTESucc p
+maxLub (LTESucc p) (LTESucc q) = LTESucc (maxLub p q)

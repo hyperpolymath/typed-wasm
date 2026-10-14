@@ -397,6 +397,10 @@ observedHasProvenance (Observed {oldVer} sync) = Just (oldVer ** sync)
 -- indexed modality.  Adopting the shared grade is vocabulary alignment, NOT a
 -- claim that this layer instantiates the canonical AccessibleModality.
 
+||| NOTE (PWL-01): the number in `syncGrade` is a VERSION, not a loss.  Under the
+||| kernel's Loss order (`LeG`, smaller is higher) comparing two syncGrades
+||| ranks the OLDER version higher, so do not order them with `LeG`.  The
+||| Loss reading of staleness is `stalenessGrade` below (the lag).
 ||| The tropical sync-grade of a knowledge state, read as irrecoverability:
 ||| never-observed (`Unknown`) relegates to `Infinity` (infeasible / unreachable
 ||| knowledge); knowledge observed at version `v` has finite grade `Finite v`.
@@ -422,3 +426,86 @@ public export
 observedNotInfeasible : (s : Sync mod field old ver) ->
                         Not (syncGrade (Observed {oldVer = old} s) = Infinity)
 observedNotInfeasible _ Refl impossible
+
+-- ============================================================================
+-- Staleness as a Loss grade (PWL-01 step 2, 2026-10-14 — ADDITIVE)
+-- ============================================================================
+--
+-- L12 staleness, graded in the kernel's Loss instance
+-- (TypedWasm.ABI.ResourceAlgebra.Loss): a reader's loss is its LAG, the
+-- number of versions it is behind.  Fresh knowledge loses nothing (𝟙 =
+-- Finite 0, the top of the Loss order); never-synced knowledge is total
+-- collapse (𝟘 = Infinity, the bottom).  Lag accumulates along a relay of
+-- readers by the kernel's sequence (⊗ = +), `stalenessRelay`.  Nothing
+-- above is re-indexed; the A10–A14 proofs are untouched.
+
+||| Staleness of knowing version `known` when the field is at `current`:
+||| the lag, as a Loss grade.
+public export
+stalenessGrade : (known, current : Nat) -> LossGrade
+stalenessGrade known current = Finite (minus current known)
+
+||| Staleness of a knowledge state against the field's current version.
+||| Never observed is total collapse.
+public export
+knowledgeStaleness : {0 m : ModuleId} -> {0 f : String} -> {ver : Nat} ->
+                     Knowledge m f ver -> (current : Nat) -> LossGrade
+knowledgeStaleness {ver} (Observed _) current = stalenessGrade ver current
+knowledgeStaleness Unknown            _       = Infinity
+
+||| Fresh knowledge loses nothing: its staleness is the kernel's 𝟙.
+public export
+freshHasNoStaleness : {0 m : ModuleId} -> {0 f : String} -> {known, current : Nat} ->
+                      Fresh m f known current ->
+                      stalenessGrade known current = oneG {g = LossGrade}
+freshHasNoStaleness (MkFresh _ _ _ eq) =
+  rewrite eq in cong Finite (sym (minusZeroN current))
+
+||| Stale knowledge loses something: its staleness is not 𝟙.
+public export
+staleHasStaleness : {0 m : ModuleId} -> {0 f : String} -> {known, current : Nat} ->
+                    Stale m f known current ->
+                    Not (stalenessGrade known current = oneG {g = LossGrade})
+staleHasStaleness (MkStale lt) prf =
+  succNotLTEzero (replace {p = \x => LT 0 x} (finiteInjective prf) (minusPos lt))
+
+||| Never-synced knowledge is the kernel's 𝟘 (total collapse).
+public export
+neverSyncedIsCollapse : {0 m : ModuleId} -> {0 f : String} -> (current : Nat) ->
+                        knowledgeStaleness {m} {f} Unknown current = zeroG {g = LossGrade}
+neverSyncedIsCollapse _ = Refl
+
+||| Every staleness is at or below fresh in the Loss order: 𝟙 is the top.
+public export
+freshIsTop : (known, current : Nat) -> LeG (stalenessGrade known current) (oneG {g = LossGrade})
+freshIsTop known current = lossLeOne (stalenessGrade known current)
+
+||| A Level-12 proof is a proof of zero staleness.
+public export
+level12NoStaleness : (p : Level12Proof) ->
+                     stalenessGrade p.knownVersion p.currentVersion = oneG {g = LossGrade}
+level12NoStaleness p = freshHasNoStaleness p.freshness
+
+private
+minusPlusCancel : (x, r : Nat) -> minus (x + r) r = x
+minusPlusCancel x r = rewrite plusCommutative x r in minusPlus r
+
+private
+lagSplits : {r, i, t : Nat} -> LTE r i -> LTE i t ->
+            minus t r = minus t i + minus i r
+lagSplits {r} {i} {t} ri it =
+  -- t = ((t − i) + (i − r)) + r, by (t − i) + i = t and (i − r) + r = i;
+  -- subtract r from both sides.
+  trans (cong (\z => minus z r)
+          (trans (sym (plusMinusLte i t it))
+          (trans (cong (\z => minus t i + z) (sym (plusMinusLte r i ri)))
+                 (plusAssociative (minus t i) (minus i r) r))))
+        (minusPlusCancel (minus t i + minus i r) r)
+
+||| Relayed knowledge: a reader at version r who learned from a reader at i,
+||| itself behind the truth t, lags t by the SEQUENCE of the two lags — the
+||| kernel's ⊗ in Loss.  (r ≤ i ≤ t: knowledge only flows forward.)
+public export
+stalenessRelay : {r, i, t : Nat} -> LTE r i -> LTE i t ->
+                 stalenessGrade r t = otimes (stalenessGrade i t) (stalenessGrade r i)
+stalenessRelay ri it = cong Finite (lagSplits ri it)

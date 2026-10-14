@@ -29,6 +29,8 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.ResourceAlgebra.MaxPlus
         , TypedWasm.ABI.ResourceAlgebra.HWM
         , TypedWasm.ABI.ResourceAlgebra.Separation
+        -- L13 occupancy (PWL-01 step 3): R-1..R-5 ported from occupancy-types @ af95728
+        , TypedWasm.ABI.Occupancy
         , TypedWasm.ABI.Echo
         , TypedWasm.ABI.Tropical
         , TypedWasm.ABI.Epistemic

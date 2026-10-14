@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
 == Changelog
 
 All notable changes to this project will be documented in this file.
@@ -7,6 +8,28 @@ Changelog], and this project adheres to
 https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
+
+==== L11 / L12 / L13 read through the grade kernel (PWL-01 steps 2–3, 2026-10-14)
+
+* *L11.* `CostBounded c n` is proved equal to the kernel's Loss order
+  `Finite n ≼ c`, and path bounds compose by the kernel's `otimesMono`
+  (`costBoundedSeq`). New `Level11WorstCaseProof` grades a branching access
+  plan in MaxPlus (`worstCaseThen`, `worstCaseOneOf`). It is DESIGNED: no
+  surface syntax or attestation uses it. The bottleneck stays MinMax.
+* *L12.* `stalenessGrade` is the reader's lag as a Loss grade: fresh = 𝟙,
+  stale ≠ 𝟙, never synced = 𝟘, and relayed lag = ⊗ (`stalenessRelay`).
+  `syncGrade` now carries a note that its number is a version, not a loss.
+* *L13.* New `Occupancy.idr` ports occupancy-types @ `af95728` R-1..R-5
+  (reclamation law, occupancy ≤ cost, strict reclamation, the 4-vs-7 witness)
+  over the kernel's HWM. It binds them to `private_memory` (an HWM grade within
+  the declared maximum) and to `boundary` (the cut that frees peak − drift).
+  The binding is DESIGNED.
+* Kernel additions: each instance's order read in ℕ (`lossLeOfLTE`,
+  `maxPlusLeOfLTE` and inverses); `ResourceAlgebra/Nat.idr` gains `maxLub`
+  and min/max-vs-`LTE` lemmas. These are typed-wasm's own, labelled as such.
+* New rejects: `CostIsOccupancy`, `DriftIsPeak` (occupancy-types R-6) and
+  `WorstCaseIsCheapest`. `tools/check-kernel-proofs.sh` also runs
+  occupancy-types' own Agda check at its pin.
 
 ==== Grade kernel: resource-algebra ported as the ABI's one source of grades (PWL-01, 2026-10-14)
 

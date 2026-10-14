@@ -154,7 +154,16 @@ monotonicity, mirrors `+tropical-resource-typing+`
 `+Bridge.hub_ceiling_le+`), `+ResidueMeasure+` (E→R, mirrors
 `+Resource.EchoBridge+`), and `+Level11BottleneckProof+` +
 `+bottleneckCeilsEdges+` wired into
-`+Proofs.attestL11_Bottleneck+`/`+_Sound+`.*
+`+Proofs.attestL11_Bottleneck+`/`+_Sound+`. PWL-01 step 2: the
+obligations read through the kernel — `+CostBounded c n+` IS the Loss
+order `+Finite n ≼ c+` (`+costBoundedIsLossOrder+` /
+`+lossOrderIsCostBounded+`, PROVEN) and path bounds compose by the
+kernel's `+otimesMono+` (`+costBoundedSeq+`, PROVEN);
+`+Level11WorstCaseProof+` grades a branching plan in MaxPlus with
+`+worstCaseThen+` / `+worstCaseOneOf+` from `+otimesMono+` /
+`+oplusMono+` (PROVEN; the obligation itself DESIGNED — no surface or
+attestation uses it). `+Level11BottleneckProof+` is MinMax, not MaxPlus,
+and stays as it is (`+tests/reject/TropicalIsNotMaxPlus.idr+`).*
 
 |12 |Epistemic safety |Epistemic.idr |Not yet |None |*In package (A1,
 2026-04-18); A10 (2026-05-26) closes the "`freshness propagation under
@@ -165,11 +174,28 @@ sibling `+Tropical.TropCost+` (∞ = never-synced) +
 `+neverSyncedInfeasible+`/`+observedFeasible+`/`+observedNotInfeasible+`
 — extant Nat-indexed proofs untouched. Header IS-NOT note: this
 read-consistency model is a DIFFERENT problem from canonical
-`+epistemic-types+`’ standpoint-indexed modality.*
+`+epistemic-types+`’ standpoint-indexed modality. PWL-01 step 2:
+staleness graded in the kernel's Loss — `+stalenessGrade+` is the lag;
+fresh is 𝟙 (`+freshHasNoStaleness+`), stale is not (`+staleHasStaleness+`),
+never-synced is 𝟘 (`+neverSyncedIsCollapse+`), and a relayed lag is the
+kernel's ⊗ (`+stalenessRelay+`), all PROVEN. `+syncGrade+` is kept but
+holds a version, not a loss: ordering it with the kernel order would rank
+older versions higher.*
 
-|13 |Module isolation |ModuleIsolation.idr |(per-module handles, future)
+|13 |Module isolation |ModuleIsolation.idr + Occupancy.idr |(per-module handles, future)
 |12 parser/Checker tests |*v1.2 — Idris2 proof + surface checker live;
-007 lowering DONE (task #5)*
+007 lowering DONE (task #5). PWL-01 step 3: occupancy graded in the
+kernel's HWM — R-1..R-5 of occupancy-types @ `+af95728+` re-proved in
+Idris2 (`+cutFactor+`, `+reclaimLaw+`, `+occupancyAtCut+`,
+`+occupancyLeCost+`, `+noReclaim+`, `+reclaimed+`, `+witness*+`: PROVEN;
+statement correspondence ASSUMED, port-and-reprove), R-6 as
+`+tests/reject/{CostIsOccupancy,DriftIsPeak}.idr+` (TESTED). The L13
+binding — an HWM grade per `+private_memory+` within its declared
+maximum (`+OccupancyGradedMemory+`), a declared `+boundary+` as the cut
+that frees peak − drift (`+BoundaryCut+`, `+boundaryOccupancy+`,
+`+fitsAcrossBoundary+`) — is DESIGNED: nothing links the grade to
+`+memory.grow+` and no checker emits it. `+striated+` occupancy OPEN
+(surface-only construct).*
 
 |14 |Session protocols |SessionProtocol.idr |(typed-state handles,
 future) |13 parser/Checker tests |*v1.3 — Idris2 proof + surface checker
@@ -371,6 +397,12 @@ pinned sources and by Idris2 `+Refl+` against the port, with a
 (computed). Negative controls `+tests/reject/{HWMAnnihilates,
 LossWorstCase, DriftExceedsPeak, TropicalIsNotMaxPlus}.idr+` refused
 for the intended reason.
+
+|Occupancy.idr |0 |0 |0 |In package (PWL-01 step 3, 2026-10-14). L13
+occupancy over the kernel's HWM grade: occupancy-types
+(`+Reclaim.agda+` / `+Timeline.agda+` / `+Witness.agda+` @ `+af95728+`)
+R-1..R-5 ported and re-proved; L13 binding (`+OccupancyGradedMemory+`,
+`+BoundaryCut+`, `+boundaryFrees+`, `+fitsAcrossBoundary+`) DESIGNED.
 
 |VerifierSpec.idr |0 |0 |0 |Introduced A13 (2026-05-26, PR #72) as
 statement-level spec-of-record for post-A10 items 7+8. *Promoted to

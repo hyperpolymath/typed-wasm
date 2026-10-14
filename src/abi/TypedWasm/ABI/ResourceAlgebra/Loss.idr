@@ -175,3 +175,39 @@ public export
 IsAnnihilating LossGrade where
   annihilL = \_ => Refl
   annihilR = lossAnnihilR
+
+-- ============================================================================
+-- typed-wasm additions (NOT in the Agda source): the order, read in ℕ
+-- ============================================================================
+--
+-- Separation S-3 says the Loss order runs opposite to ℕ's.  Precisely:
+--   Finite n ≼ Finite k   iff   k ≤ n,
+-- and Infinity (𝟘) is below everything, Finite 0 (𝟙) above everything.
+-- L11 uses this to read a numeric cost bound as the kernel order.
+
+||| `Finite` is never `Infinity`.
+public export
+finiteNotInfinity : {n : Nat} -> Not (Finite n = Infinity)
+finiteNotInfinity Refl impossible
+
+||| k ≤ n gives Finite n ≼ Finite k.
+public export
+lossLeOfLTE : {k, n : Nat} -> LTE k n -> LeG (Finite n) (Finite k)
+lossLeOfLTE le = cong Finite (minimumOfLTE le)
+
+||| Finite n ≼ Finite k gives k ≤ n.
+public export
+lteOfLossLe : (n, k : Nat) -> LeG (Finite n) (Finite k) -> LTE k n
+lteOfLossLe n k prf = lteOfMinimum n k (finiteInjective prf)
+
+||| Infinity is the least grade, so no finite grade sits below it:
+||| Finite n ≼ Infinity is false.
+public export
+finiteNotLeInfinity : {n : Nat} -> Not (LeG (Finite n) Infinity)
+finiteNotLeInfinity prf = finiteNotInfinity prf
+
+||| 𝟙 (= Finite 0, no loss) is the top of the Loss order.
+public export
+lossLeOne : (g : LossGrade) -> LeG g (Finite 0)
+lossLeOne (Finite n) = cong Finite (minimumZeroZeroLeft n)
+lossLeOne Infinity   = Refl
