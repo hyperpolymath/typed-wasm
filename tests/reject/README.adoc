@@ -15,7 +15,12 @@ because then the control proves nothing.
 | `LossWorstCase` | echo's alternatives read as max, i.e. loss treated as cost (S-2)
 | `DriftExceedsPeak` | a run ending with more live state than its peak
 | `TropicalIsNotMaxPlus` | L11's `TropCost` read as max-plus (it is min-plus)
+| `CostIsOccupancy` | an L13 run charged the sum of its peaks, as if the boundary reclaimed nothing (occupancy-types R-6)
+| `DriftIsPeak` | drift identified with peak: "a boundary never reclaims" (occupancy-types R-6)
+| `WorstCaseIsCheapest` | L11's MaxPlus worst case charging the cheaper branch
 |===
 
-The first three mirror resource-algebra `tests/reject/*.agda` at the pin in
+`HWMAnnihilates`, `LossWorstCase` and `DriftExceedsPeak` mirror resource-algebra
+`tests/reject/*.agda`; `CostIsOccupancy` and `DriftIsPeak` mirror occupancy-types
+`tests/reject/*.agda`, both at the pins in
 `scripts/fetch-siblings.sh`.
