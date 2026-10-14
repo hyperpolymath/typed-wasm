@@ -11,7 +11,7 @@
 #   4. Zig FFI implementation files are present
 #   5. ReScript parser source files are present
 #   6. JSON/TOML/IPKG configuration files are well-formed
-#   7. LEVEL-STATUS.md documents all 12 levels
+#   7. LEVEL-STATUS.adoc documents all 12 levels
 #   8. Grammar document is non-trivial
 #   9. SPDX licence headers are present on key files
 #
@@ -65,17 +65,17 @@ else
   fail "Missing: spec/type-safety-levels-for-wasm.adoc"
 fi
 
-# LEVEL-STATUS.md documents all 12 levels
-if [ -f "LEVEL-STATUS.md" ]; then
+# LEVEL-STATUS.adoc documents all 12 levels (AsciiDoc table rows read "|N |...")
+if [ -f "LEVEL-STATUS.adoc" ]; then
   for lvl in $(seq 1 12); do
-    if grep -q "| $lvl |" "LEVEL-STATUS.md" 2>/dev/null; then
-      pass "LEVEL-STATUS.md contains level $lvl"
+    if grep -qE "^\|${lvl} \|" "LEVEL-STATUS.adoc" 2>/dev/null; then
+      pass "LEVEL-STATUS.adoc contains level $lvl"
     else
-      fail "LEVEL-STATUS.md missing entry for level $lvl"
+      fail "LEVEL-STATUS.adoc missing entry for level $lvl"
     fi
   done
 else
-  fail "Missing: LEVEL-STATUS.md"
+  fail "Missing: LEVEL-STATUS.adoc"
 fi
 
 # Grammar document
