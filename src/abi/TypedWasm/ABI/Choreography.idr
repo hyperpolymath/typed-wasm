@@ -19,10 +19,13 @@ module TypedWasm.ABI.Choreography
 
 import Data.List
 import Data.List.Elem
+import Data.Nat
 
 import TypedWasm.ABI.ModuleIsolation
 import TypedWasm.ABI.SessionProtocol
 import TypedWasm.ABI.ResourceCapabilities
+import TypedWasm.ABI.ResourceAlgebra
+import public TypedWasm.ABI.KCut
 
 %default total
 
@@ -239,3 +242,58 @@ traceSoundness c tr legal =
     (collectIsolation c.realisations c.compositionWitness)
     (collectSessionLinearity c.realisations c.compositionWitness)
     (collectCapabilityContainment c.realisations c.compositionWitness)
+
+-- ============================================================================
+-- Graded choreographies and K-CUT-LOSS (PWL-01 step 4, 2026-10-14)
+-- ============================================================================
+--
+-- The composition theorem above says nothing about grades.  This section
+-- adds them: a choreography's protocol graded in ANY algebra of the grade
+-- kernel (TypedWasm.ABI.ResourceAlgebra), with the K-CUT-LOSS obligation
+-- stated for it and discharged by TypedWasm.ABI.KCut.kcutLoss — a port and
+-- re-proof of choreographic-types `KCut.kcut-loss` @ edb784a (correspondence
+-- ASSUMED; see KCut.idr).  Fragment: finite messages and binary choice,
+-- plain merge, synchronous.
+--
+-- DESIGNED, not proved: that the graded protocol is the choreography's own
+-- (its messages are the declared `messages`, its runs the `LegalTrace`s).
+-- `PartiesDeclared` only checks that every party index names a declared
+-- role.  Asynchrony (queues) is OPEN upstream.
+
+||| Every party index in a protocol is below `n` (here: names a declared role).
+public export
+data PartiesDeclared : (n : Nat) -> Global g -> Type where
+  DEnd    : PartiesDeclared n End
+  DMsg    : {s, r : Party} -> {x : g} -> {gl : Global g} ->
+            LT s n -> LT r n -> PartiesDeclared n gl ->
+            PartiesDeclared n (Msg s r x gl)
+  DChoice : {s, r : Party} -> {x : g} -> {l, k : Global g} ->
+            LT s n -> LT r n -> PartiesDeclared n l -> PartiesDeclared n k ->
+            PartiesDeclared n (Choice s r x l k)
+
+||| An L16 choreography with a graded protocol over its roles: party i is
+||| the i-th declared role.
+public export
+record GradedChoreography (g : Type) where
+  constructor MkGradedChoreography
+  ||| The L16 choreography (roles, messages, realisations, L13–L15 witness).
+  choreography : Choreography
+  ||| Its protocol, graded in the kernel algebra `g`.
+  protocol     : Global g
+  ||| Every party in the protocol is a declared role.
+  declared     : PartiesDeclared (length choreography.roles) protocol
+
+||| The L16 K-CUT-LOSS obligation: at every consistent cut, every party reads
+||| on its own timeline exactly its share of the global grade.
+public export
+L16KCutLoss : {g : Type} -> ResourceAlgebra g => GradedChoreography g -> Type
+L16KCutLoss gc =
+  (p : Party) -> (c : Cut gc.protocol) -> Consistent p c ->
+  gradeAt p (cutGlobal gc.protocol c) = lgrade (cutLocal (proj p gc.protocol) (cutproj p c))
+
+||| Discharged for every graded choreography, parametrically in the grade
+||| algebra: KCut.kcutLoss.  At Loss this is the echo-loss reading, at MaxPlus
+||| worst-case cost, at HWM occupancy (KCut.kcutLossLoss / MaxPlus / HWM).
+public export
+l16KCutLoss : {g : Type} -> ResourceAlgebra g => (gc : GradedChoreography g) -> L16KCutLoss gc
+l16KCutLoss gc p c k = kcutLoss p gc.protocol c k

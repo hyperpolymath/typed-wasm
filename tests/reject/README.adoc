@@ -18,9 +18,13 @@ because then the control proves nothing.
 | `CostIsOccupancy` | an L13 run charged the sum of its peaks, as if the boundary reclaimed nothing (occupancy-types R-6)
 | `DriftIsPeak` | drift identified with peak: "a boundary never reclaims" (occupancy-types R-6)
 | `WorstCaseIsCheapest` | L11's MaxPlus worst case charging the cheaper branch
+| `UnprojectableChoice` | K-CUT-LOSS without the Projectable side-condition (choreographic-types K-7)
+| `InconsistentCut` | K-CUT-LOSS without the Consistent side-condition (choreographic-types K-7)
 |===
 
 `HWMAnnihilates`, `LossWorstCase` and `DriftExceedsPeak` mirror resource-algebra
 `tests/reject/*.agda`; `CostIsOccupancy` and `DriftIsPeak` mirror occupancy-types
-`tests/reject/*.agda`, both at the pins in
+`tests/reject/*.agda`; `UnprojectableChoice` and `InconsistentCut` mirror
+choreographic-types
+`tests/reject/*.agda`, all at the pins in
 `scripts/fetch-siblings.sh`.

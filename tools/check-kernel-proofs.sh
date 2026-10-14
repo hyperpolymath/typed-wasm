@@ -4,7 +4,8 @@
 #
 # check-kernel-proofs.sh — the mechanical falsifiers behind the grade kernel.
 #
-#   1. upstream   resource-algebra's and occupancy-types' own checks at the pins (Agda --safe
+#   1. upstream   resource-algebra's and occupancy-types' own checks, and
+#                 choreographic-types' KCut slice, at the pins (Agda --safe
 #                 --without-K --no-libraries --double-check + their rejects)
 #   2. build      idris2 --build src/abi/typed-wasm.ipkg: exit 0 AND no
 #                 `Error:` line (idris2 can exit 0 while printing an error)
@@ -67,6 +68,29 @@ if (cd "$OCC" && AGDA=agda RESOURCE_ALGEBRA_SRC="$ROOT/$RA/src" bash scripts/che
 else
   cat "$OUT/upstream-occupancy.log"; err "upstream occupancy-types check failed at the pin"
 fi
+# choreographic-types: only the K-CUT-LOSS slice KCut.idr ports (KCut.agda and
+# its imports need resource-algebra alone; the rest of the repo also needs
+# epistemic-types), plus the two side-condition rejects (K-7), each of which
+# must be refused at its invalid declaration with upstream's "1 != 2".
+CT="_build/dependencies/choreographic-types"
+[ -d "$CT/src/Choreographic" ] || die "choreographic-types not fetched — run scripts/fetch-siblings.sh"
+echo "choreographic-types at $(git -C "$CT" rev-parse HEAD)"
+ct_flags=("${AGDA_FLAGS[@]}" -i "$RA/src" -i "$CT/src")
+if agda "${ct_flags[@]}" "$CT/src/Choreographic/KCut.agda" > "$OUT/upstream-kcut.log" 2>&1; then
+  pass "upstream choreographic-types: KCut.agda (K-1..K-5) checks against the resource-algebra pin"
+else
+  cat "$OUT/upstream-kcut.log"; err "upstream choreographic-types KCut.agda failed at the pin"
+fi
+for name in UnprojectableChoice InconsistentCut; do
+  log="$OUT/upstream-reject-$name.log"
+  if agda "${ct_flags[@]}" -i "$CT/tests/reject" "$CT/tests/reject/$name.agda" > "$log" 2>&1; then
+    err "upstream reject $name ACCEPTED"
+  elif grep -qE "$WRONG_REASON" "$log" || ! grep -q '1 != 2' "$log"; then
+    cat "$log"; err "upstream reject $name refused for the wrong reason"
+  else
+    pass "upstream choreographic-types: rejected $name (1 != 2)"
+  fi
+done
 
 # 2 — the ABI package ---------------------------------------------------------
 # From clean, so a stale TTC cannot mask an error.
