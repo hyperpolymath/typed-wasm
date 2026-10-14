@@ -448,28 +448,31 @@ stalenessGrade known current = Finite (minus current known)
 ||| Staleness of a knowledge state against the field's current version.
 ||| Never observed is total collapse.
 public export
-knowledgeStaleness : {ver : Nat} -> Knowledge mod field ver -> (current : Nat) -> LossGrade
+knowledgeStaleness : {0 m : ModuleId} -> {0 f : String} -> {ver : Nat} ->
+                     Knowledge m f ver -> (current : Nat) -> LossGrade
 knowledgeStaleness {ver} (Observed _) current = stalenessGrade ver current
 knowledgeStaleness Unknown            _       = Infinity
 
 ||| Fresh knowledge loses nothing: its staleness is the kernel's 𝟙.
 public export
-freshHasNoStaleness : Fresh mod field known current ->
+freshHasNoStaleness : {0 m : ModuleId} -> {0 f : String} -> {known, current : Nat} ->
+                      Fresh m f known current ->
                       stalenessGrade known current = oneG {g = LossGrade}
 freshHasNoStaleness (MkFresh _ _ _ eq) =
   rewrite eq in cong Finite (sym (minusZeroN current))
 
 ||| Stale knowledge loses something: its staleness is not 𝟙.
 public export
-staleHasStaleness : Stale mod field known current ->
+staleHasStaleness : {0 m : ModuleId} -> {0 f : String} -> {known, current : Nat} ->
+                    Stale m f known current ->
                     Not (stalenessGrade known current = oneG {g = LossGrade})
 staleHasStaleness (MkStale lt) prf =
   succNotLTEzero (replace {p = \x => LT 0 x} (finiteInjective prf) (minusPos lt))
 
 ||| Never-synced knowledge is the kernel's 𝟘 (total collapse).
 public export
-neverSyncedIsCollapse : (current : Nat) ->
-                        knowledgeStaleness {mod} {field} Unknown current = zeroG {g = LossGrade}
+neverSyncedIsCollapse : {0 m : ModuleId} -> {0 f : String} -> (current : Nat) ->
+                        knowledgeStaleness {m} {f} Unknown current = zeroG {g = LossGrade}
 neverSyncedIsCollapse _ = Refl
 
 ||| Every staleness is at or below fresh in the Loss order: 𝟙 is the top.
