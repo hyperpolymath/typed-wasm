@@ -20,6 +20,15 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.SessionProtocol
         , TypedWasm.ABI.ResourceCapabilities
         , TypedWasm.ABI.Choreography
+        -- Grade kernel (PWL-01): transcribed from hyperpolymath/resource-algebra
+        -- @ cf9235c; the one definition of min-plus (Loss) and of max-plus
+        -- (MaxPlus) in the tree — tools/check-grade-kernel.sh.
+        , TypedWasm.ABI.ResourceAlgebra
+        , TypedWasm.ABI.ResourceAlgebra.Nat
+        , TypedWasm.ABI.ResourceAlgebra.Loss
+        , TypedWasm.ABI.ResourceAlgebra.MaxPlus
+        , TypedWasm.ABI.ResourceAlgebra.HWM
+        , TypedWasm.ABI.ResourceAlgebra.Separation
         , TypedWasm.ABI.Echo
         , TypedWasm.ABI.Tropical
         , TypedWasm.ABI.Epistemic

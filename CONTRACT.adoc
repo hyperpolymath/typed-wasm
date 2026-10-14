@@ -91,6 +91,18 @@ and runnable locally / as a pre-commit step):
   `section.rs` against sealed digests in `contract.abi.sha256`; any change fails
   until you bump `abi_version`, cite an ADR, and `--reseal`.
 - *I4 (advisory):* role-purity greps (none for a target).
+- *I2 for grades (blocking):* `tools/check-grade-kernel.sh` — the grade kernel
+  (`src/abi/TypedWasm/ABI/ResourceAlgebra*`, transcribed from
+  hyperpolymath/resource-algebra at the pin in `scripts/fetch-siblings.sh`)
+  holds the one definition of min-plus and of max-plus; no other `.idr` file
+  may define a grade operation or a Nat min/max. `tools/check-kernel-proofs.sh`
+  holds the mechanical falsifiers behind it (Idris2 build, `tests/reject`,
+  the Agda/Idris2 transcription table). Both run in `contract-gate.yml`.
+
+The I3 digests cover only the anchored wire-format regions of `section.rs`.
+The Idris2 level proofs under `src/abi/` are not anchors: changing them never
+re-seals `contract.abi.sha256`, and re-sealing to "record" such a change would
+be wrong (`--reseal` is for an `abi_version` bump only).
 
 To change the ABI (the *only* correct way): open a coordinated ADR across
 typed-wasm + AffineScript + ephapax, bump `CONTRACT_ABI_VERSION`, edit the

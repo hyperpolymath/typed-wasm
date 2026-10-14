@@ -142,7 +142,10 @@ proof-term, behavioural lemmas `+loadSafeOffset+` and
 
 |11 |Tropical cost-tracking |Tropical.idr |Not yet |None |*In package
 (A1, 2026-04-18). Commutative-semiring closure PROVEN (A2, 2026-04-18):
-all 12 axioms. Uses structural `+tropMin+` (007-lang template). Zero
+all 12 axioms. PWL-01 (2026-10-14): the algebra is the grade kernel's
+Loss instance (`+TropCost = LossGrade+`, `+ResourceAlgebra/Loss.idr+`);
+the 12 axioms and the order layer are derived from it, and the local
+`+tropMin+` / `+natMax+` copies are deleted (`+tools/check-grade-kernel.sh+`). Zero
 dangerous patterns. A16 (2026-06-16) estate accommodation: added the
 canonical dioid ORDER layer (`+tropLe+` refl/trans + add/mul
 monotonicity, mirrors `+tropical-resource-typing+`
@@ -187,7 +190,7 @@ L16-C (payload primitive/declared region ref), L16-D (exact
 *[sfap]* = "`so far as possible`" — proofs are machine-checked in Idris2
 with zero dangerous patterns. They are as complete as the Idris2 type
 checker can verify. Full mechanical verification against a formal Wasm
-operational semantics (e.g. WasmCert-Isabelle) remains future work.
+operational semantics (e.g. WasmCert-Isabelle) remains future work.
 
 === What "`proven, erased`" means
 
@@ -322,7 +325,11 @@ witness-carrying levels, `+witnessToLegacy+` bridge, `+composeWitness+`
 mirror, `+composeWitnessLegacyAgree+` compat lemma, `+WitnessAchieved+`
 predicate.
 
-|Tropical.idr |0 |0 |0 |In package (A1, 2026-04-18)
+|Tropical.idr |0 |0 |0 |In package (A1, 2026-04-18). PWL-01 (2026-10-14):
+min-plus drawn from the grade kernel (`+TropCost = LossGrade+`); laws
+re-derived from `+ResourceAlgebra/Loss.idr+`; `+tropMax+` (MinMax
+bottleneck) is the one grade operation outside the kernel, allowlisted
+with its reason in `+tools/grade-kernel.allow+`.
 
 |Epistemic.idr |0 |0 |0 |In package (A1, 2026-04-18). A10 (2026-05-26):
 propagation theorems added — `+freshImpliesEqual+`, `+staleImpliesLT+`,
@@ -349,6 +356,21 @@ RETRACTION R-2026-05-18 + experimental R0–R4). Added `+EchoR+` +
 `+echoToResidue+` (mirrors `+echo-types+` `+EchoResidue.agda+`; an
 attestation = a retained residue). Categorical base remains the settled
 fiber/slice structure.
+
+|ResourceAlgebra.idr + ResourceAlgebra/{Nat,Loss,MaxPlus,HWM,Separation}.idr |0 |0 |0 |In package (PWL-01, 2026-10-14). The *grade
+kernel*: `+ResourceAlgebra+` / `+IsOrdered+` / `+IsDioid+` /
+`+IsAnnihilating+` interfaces and the Loss (min-plus), MaxPlus
+(max-plus) and HWM (high-water-mark) instances, transcribed from
+`+hyperpolymath/resource-algebra+` @ `+cf9235c+` (Agda `+--safe
+--without-K+`). Laws re-proved in Idris2 (PROVEN, `+idris2 --build+`);
+correspondence to the Agda source ASSUMED (transcription) and TESTED
+on a 172-row operation table, accepted by Agda `+refl+` against the
+pinned sources and by Idris2 `+Refl+` against the port, with a
+3-row negative control refused by both
+(`+tools/check-kernel-proofs.sh+`). Separation S-1..S-3 TESTED
+(computed). Negative controls `+tests/reject/{HWMAnnihilates,
+LossWorstCase, DriftExceedsPeak, TropicalIsNotMaxPlus}.idr+` refused
+for the intended reason.
 
 |VerifierSpec.idr |0 |0 |0 |Introduced A13 (2026-05-26, PR #72) as
 statement-level spec-of-record for post-A10 items 7+8. *Promoted to
@@ -561,3 +583,41 @@ comonad claims). `+--safe+`, closed.
 
 Nothing pushed or PR’d — drafts are for owner review per the stop-first
 rule.
+
+=== Grade kernel (PWL-01 — 2026-10-14)
+
+The "same object" above is now one definition. The grade kernel
+(`+src/abi/TypedWasm/ABI/ResourceAlgebra*+`) is the Idris2 transcription of
+`+hyperpolymath/resource-algebra+` @ `+cf9235c+`, the estate's Agda
+(`+--safe --without-K+`) proof kernel for grades, fetched by
+`+scripts/fetch-siblings.sh+`. It holds the only min-plus (Loss) and the only
+max-plus (MaxPlus) in the tree, plus the high-water-mark occupancy grade
+(HWM). `+tools/check-grade-kernel.sh+` fails the build if anything else defines
+one. `+Tropical.TropCost+`, `+Echo.EchoGrade+` and (through `+TropCost+`)
+`+Epistemic.syncGrade+` all draw their grade from Loss.
+
+What is proved, and how:
+
+* The interface laws and the three instances are re-proved in Idris2
+  (`+idris2 --build+`, zero dangerous patterns). PROVEN against the Idris2
+  definitions.
+* That those definitions are the Agda ones is a transcription: ASSUMED. On a
+  172-row operation table (every clause of every operation), it is TESTED.
+  Agda accepts each row by `+refl+` against the pinned sources and Idris2
+  accepts it by `+Refl+` against the port. Three wrong rows are refused by
+  both (`+tools/check-kernel-proofs.sh+`, in CI as `+contract-gate.yml+` /
+  `+kernel-proofs+`).
+* The three grades are not one: S-1 occupancy is not cost, S-2 echo
+  alternatives are min while tropical alternatives are max, S-3 the order runs
+  opposite ways (`+ResourceAlgebra/Separation.idr+`, computed). So L11's
+  latency cost (Loss carrier), a worst-case cost (MaxPlus) and L13's occupancy
+  (HWM) are kept apart.
+
+One correction to earlier prose. `+Tropical.idr+` was never max-plus: its
+`+TropCost+` is min-plus (the Loss algebra), and its bottleneck layer
+(`+tropMax+`) is min-max, which is neither min-plus nor max-plus.
+`+tests/reject/TropicalIsNotMaxPlus.idr+` is the checked statement. The
+kernel has no MinMax instance, so `+tropMax+` stays local, allowlisted with
+that reason. Whether to add MinMax upstream is an owner decision.
+
+No level changes status here: L11 and L12 stay draft.

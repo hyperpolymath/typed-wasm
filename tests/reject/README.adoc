@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= Expected rejections (Idris2)
+
+Every `*.idr` here is a negative control: it states something the grade kernel
+must refuse. `tools/check-kernel-proofs.sh` checks each one against the built
+`src/abi` package. It passes only if the file is refused, the error sits at
+its `invalid` declaration, and the message matches the file's `-- EXPECT:`
+line. A refusal for a scoping, parsing or path reason counts as a failure,
+because then the control proves nothing.
+
+[cols="1,3",options="header"]
+|===
+| Fixture | What it would smuggle in
+| `HWMAnnihilates` | an annihilating zero in the occupancy algebra (resource-algebra C-4 / H-3)
+| `LossWorstCase` | echo's alternatives read as max, i.e. loss treated as cost (S-2)
+| `DriftExceedsPeak` | a run ending with more live state than its peak
+| `TropicalIsNotMaxPlus` | L11's `TropCost` read as max-plus (it is min-plus)
+|===
+
+The first three mirror resource-algebra `tests/reject/*.agda` at the pin in
+`scripts/fetch-siblings.sh`.

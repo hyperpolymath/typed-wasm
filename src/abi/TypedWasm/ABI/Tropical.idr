@@ -3,45 +3,50 @@
 --
 -- Tropical.idr — Level 11: Tropical cost-tracking for memory access
 --
--- Every memory access operation carries a cost in a tropical semiring.
--- The min-plus semiring tracks latency (cheapest path), the max-plus
--- semiring tracks throughput (bottleneck path). The type checker proves
--- that any access path through shared memory has bounded total cost.
+-- Every memory access operation carries a cost.  Three cost models live
+-- here, and they are three different algebras (do not conflate them):
+--   * sequential path cost and all-pairs CHEAPEST path (Level11Proof,
+--     Level11KleeneProof): min-plus — the grade kernel's Loss carrier;
+--   * the BOTTLENECK (worst step) of a path (Level11BottleneckProof):
+--     min-max — choice by min, sequence by max, +inf absorbing.  It is not
+--     max-plus and has no kernel instance (resource-algebra has no MinMax);
+--   * worst-case cost over alternatives would be max-plus
+--     (ResourceAlgebra/MaxPlus.idr); no L11 obligation uses it yet.
+-- The type checker proves that an access path through shared memory has
+-- bounded cost.
 --
 -- This is the "how expensive is this access pattern?" question answered
 -- at compile time. It prevents pathological access patterns (e.g. a
 -- tight loop doing random access across cache lines) from compiling
 -- without an explicit cost annotation acknowledging the expense.
 --
--- The tropical semiring algebra is adapted from 007's TropicalSemiring.idr.
---
 -- ----------------------------------------------------------------------------
--- Estate cross-reference (audit 2026-06-16) — canonical axis: Lean4
--- hyperpolymath/tropical-resource-typing @ 2e35229.
+-- Grade kernel (PWL-01, 2026-10-14).  TropCost IS the kernel's Loss carrier
+-- (TypedWasm.ABI.ResourceAlgebra.Loss, transcribed from hyperpolymath/
+-- resource-algebra Instances/Loss.agda @ cf9235c): tropAdd = lossAlt (min),
+-- tropMul = lossSeq (+), Infinity = 𝟘, Finite 0 = 𝟙.  The twelve semiring
+-- axioms and the dioid-order layer below are DERIVED from the kernel's
+-- instance proofs; nothing here re-defines min-plus.  007-lang's
+-- TropicalSemiring.idr (the source of the A2 port, 2026-04-18) and
+-- tropical-resource-typing @ 2e35229 (Lean4, the earlier canonical axis) are
+-- provenance, not parallel definitions.
 --
--- This module's (TropCost, tropAdd = min, tropMul = +, Infinity, Finite 0) is
--- the Idris2 analogue of the canonical Resource.Instances.MinPlus instance,
--- and the twelve axioms below correspond to the canonical ResourceSemiring
--- fields.  It is a DELIBERATE Idris2 mirror, not a literal import: the
--- canonical repo is Lean4/Isabelle and there is no Lean->Idris proof-transport
--- path, so the algebra above is sourced from 007's TropicalSemiring.idr.
---
--- Mirrored:    min-plus semiring + Kleene/Floyd-Warshall all-pairs closure.
--- NOT yet mirrored (debt, tracked for owner decision):
---   * ResourceAlgebra/Ordered interface (the dioid order a |+| b = b),
---   * parametric_resource_transport (one-shot law transport to all instances),
---   * the MinMax / Bridge.hub_ceiling BOTTLENECK instance,
---   * the MaxPlus worst-case-budget instance,
---   * Resource.EchoBridge.ResidueMeasure (E -> R residue measure; would wire
---     the sibling TypedWasm.ABI.Echo into this grade).
--- typed-wasm holds one thing the canonical Lean axis lacks: the Kleene-closure
--- matrix layer below (extend-upstream candidate; owner sign-off required).
+-- Still NOT mirrored (debt, owner decision):
+--   * parametric_resource_transport — needs resource-algebra homomorphisms,
+--     which are OPEN upstream;
+--   * a MinMax kernel instance for the bottleneck layer (tropMax below is the
+--     one grade operation defined outside the kernel; it is listed, with this
+--     reason, in tools/grade-kernel.allow).
+-- typed-wasm holds one thing the kernel lacks: the Kleene-closure matrix
+-- layer below (extend-upstream candidate; owner sign-off required).
 -- ----------------------------------------------------------------------------
 
 module TypedWasm.ABI.Tropical
 
 import TypedWasm.ABI.Region
 import TypedWasm.ABI.Levels
+import public TypedWasm.ABI.ResourceAlgebra
+import public TypedWasm.ABI.ResourceAlgebra.Loss
 import Data.Nat
 import Data.Fin
 import Data.List
@@ -50,48 +55,26 @@ import Data.List.Elem
 %default total
 
 -- ============================================================================
--- Tropical Semiring
+-- Tropical Semiring — the kernel's Loss instance
 -- ============================================================================
 
-||| A tropical semiring value. In the min-plus semiring, addition is min
-||| and multiplication is plus. Infinity is the zero element.
+||| A min-plus cost: `Finite n` or `Infinity` (unreachable / unbounded).
+||| This is the kernel's Loss carrier; addition is min, multiplication is
+||| plus, Infinity is the zero element and `Finite 0` the unit.
 public export
-data TropCost : Type where
-  ||| Finite cost value (non-negative).
-  Finite : (cost : Nat) -> TropCost
-  ||| Infinite cost — unreachable or unbounded.
-  Infinity : TropCost
+TropCost : Type
+TropCost = LossGrade
 
-||| Structural minimum for Nat (proof-friendly).
-|||
-||| Idris2 0.8's Prelude.min is defined via comparison
-||| (`if x < y then x else y`) and does not reduce under pattern matching
-||| on variables in proofs.  This equivalent definition by structural
-||| recursion does, which is what makes the semiring proofs below go
-||| through without holes.
-|||
-||| Extensionally equal to Prelude.min on Nat (ported from
-||| 007-lang/proofs/idris2/TropicalSemiring.idr).
-private
-tropMin : Nat -> Nat -> Nat
-tropMin Z     _     = Z
-tropMin (S _) Z     = Z
-tropMin (S m) (S n) = S (tropMin m n)
-
-||| Tropical addition: min of two costs.  Uses structural `tropMin` so
-||| the semiring laws below reduce cleanly.
+||| Tropical addition: min of two costs.  The kernel's `lossAlt`.
 public export
 tropAdd : TropCost -> TropCost -> TropCost
-tropAdd Infinity b = b
-tropAdd a Infinity = a
-tropAdd (Finite a) (Finite b) = Finite (tropMin a b)
+tropAdd = lossAlt
 
-||| Tropical multiplication: sum of two costs (path composition).
+||| Tropical multiplication: sum of two costs (path composition).  The
+||| kernel's `lossSeq`.
 public export
 tropMul : TropCost -> TropCost -> TropCost
-tropMul Infinity _ = Infinity
-tropMul _ Infinity = Infinity
-tropMul (Finite a) (Finite b) = Finite (a + b)
+tropMul = lossSeq
 
 -- ============================================================================
 -- Cost-Annotated Access
@@ -148,179 +131,108 @@ record Level11Proof where
   bounded : CostBounded totalCost bound
 
 -- ============================================================================
--- Tropical semiring laws — all twelve axioms
+-- Tropical semiring laws — all twelve axioms, derived from the kernel
 -- ============================================================================
 --
--- Ported 2026-04-18 from 007-lang/proofs/idris2/TropicalSemiring.idr.
--- (TropCost, tropAdd, tropMul, Infinity, Finite 0) is a proven commutative
--- semiring.  Zero dangerous patterns, %default total, mechanically checked
--- by idris2 --check.
-
--- ---- Private Nat lemmas (structural, used to close the Finite cases) ----
-
-||| Right identity for Nat addition.
-private
-plusZeroRightNeutral' : (n : Nat) -> n + 0 = n
-plusZeroRightNeutral' Z = Refl
-plusZeroRightNeutral' (S k) = cong S (plusZeroRightNeutral' k)
-
-||| Nat addition: m + S n = S (m + n).
-private
-plusSuccRight' : (m, n : Nat) -> m + S n = S (m + n)
-plusSuccRight' Z n = Refl
-plusSuccRight' (S k) n = cong S (plusSuccRight' k n)
-
-||| Nat addition is commutative.
-private
-plusComm' : (m, n : Nat) -> m + n = n + m
-plusComm' Z Z = Refl
-plusComm' Z (S k) = cong S (plusComm' Z k)
-plusComm' (S k) Z = cong S (plusComm' k Z)
-plusComm' (S k) (S j) =
-  rewrite plusSuccRight' k j in
-  rewrite plusSuccRight' j k in
-  cong S (cong S (plusComm' k j))
-
-||| Nat addition is associative.
-private
-plusAssoc' : (m, n, p : Nat) -> m + (n + p) = (m + n) + p
-plusAssoc' Z n p = Refl
-plusAssoc' (S m) n p = cong S (plusAssoc' m n p)
-
-||| Structural minimum is commutative.
-private
-tropMinComm : (m, n : Nat) -> tropMin m n = tropMin n m
-tropMinComm Z Z = Refl
-tropMinComm Z (S _) = Refl
-tropMinComm (S _) Z = Refl
-tropMinComm (S m) (S n) = cong S (tropMinComm m n)
-
-||| Structural minimum is associative.
-private
-tropMinAssoc : (m, n, p : Nat) -> tropMin m (tropMin n p) = tropMin (tropMin m n) p
-tropMinAssoc Z _ _ = Refl
-tropMinAssoc (S _) Z _ = Refl
-tropMinAssoc (S _) (S _) Z = Refl
-tropMinAssoc (S m) (S n) (S p) = cong S (tropMinAssoc m n p)
-
-||| Addition distributes over structural minimum from the left:
-||| a + tropMin m n = tropMin (a + m) (a + n).
-private
-plusDistribOverTropMin : (a, m, n : Nat) -> a + tropMin m n = tropMin (a + m) (a + n)
-plusDistribOverTropMin Z m n = Refl
-plusDistribOverTropMin (S a) m n = cong S (plusDistribOverTropMin a m n)
+-- Each law below is the kernel's Loss-instance proof
+-- (TypedWasm.ABI.ResourceAlgebra.Loss), restated in this module's historic
+-- names and directions so existing consumers keep compiling.  The one law
+-- the kernel does not carry — commutativity of sequence — is a fact about
+-- this instance (ℕ addition commutes), proved here from base's
+-- plusCommutative; it is not a re-definition of the algebra.
 
 -- ---- Additive monoid: (TropCost, tropAdd, Infinity) ----
 
-||| Left identity: tropAdd Infinity a = a.
+||| Left identity: tropAdd Infinity a = a.  Kernel `altUnitL`.
 public export
 tropAddLeftId : (a : TropCost) -> tropAdd Infinity a = a
-tropAddLeftId Infinity = Refl
-tropAddLeftId (Finite _) = Refl
+tropAddLeftId a = altUnitL a
 
-||| Right identity: tropAdd a Infinity = a.
+||| Right identity: tropAdd a Infinity = a.  Kernel `altUnitR`.
 public export
 tropAddRightId : (a : TropCost) -> tropAdd a Infinity = a
-tropAddRightId Infinity = Refl
-tropAddRightId (Finite _) = Refl
+tropAddRightId a = altUnitR a
 
-||| Commutativity: tropAdd a b = tropAdd b a.
+||| Commutativity: tropAdd a b = tropAdd b a.  Kernel `lossAltComm`.
 |||
 ||| The order of two branch alternatives does not affect which one wins.
 public export
 tropAddComm : (a, b : TropCost) -> tropAdd a b = tropAdd b a
-tropAddComm Infinity Infinity = Refl
-tropAddComm Infinity (Finite _) = Refl
-tropAddComm (Finite _) Infinity = Refl
-tropAddComm (Finite m) (Finite n) = cong Finite (tropMinComm m n)
+tropAddComm = lossAltComm
 
 ||| Associativity: tropAdd a (tropAdd b c) = tropAdd (tropAdd a b) c.
+||| Kernel `lossAltAssoc`, read right to left.
 |||
 ||| Grouping three branch alternatives does not affect the minimum outcome.
 public export
 tropAddAssoc : (a, b, c : TropCost) ->
                tropAdd a (tropAdd b c) = tropAdd (tropAdd a b) c
-tropAddAssoc Infinity _ _ = Refl
-tropAddAssoc (Finite _) Infinity _ = Refl
-tropAddAssoc (Finite _) (Finite _) Infinity = Refl
-tropAddAssoc (Finite m) (Finite n) (Finite p) = cong Finite (tropMinAssoc m n p)
+tropAddAssoc a b c = sym (lossAltAssoc a b c)
 
 -- ---- Multiplicative monoid: (TropCost, tropMul, Finite 0) ----
 
-||| Left identity: tropMul (Finite 0) a = a.
+||| Left identity: tropMul (Finite 0) a = a.  Kernel `lossSeqUnitL`.
 public export
 tropMulLeftId : (a : TropCost) -> tropMul (Finite 0) a = a
-tropMulLeftId Infinity = Refl
-tropMulLeftId (Finite _) = Refl
+tropMulLeftId = lossSeqUnitL
 
-||| Right identity: tropMul a (Finite 0) = a.
+||| Right identity: tropMul a (Finite 0) = a.  Kernel `lossSeqUnitR`.
 public export
 tropMulRightId : (a : TropCost) -> tropMul a (Finite 0) = a
-tropMulRightId Infinity = Refl
-tropMulRightId (Finite n) = cong Finite (plusZeroRightNeutral' n)
+tropMulRightId = lossSeqUnitR
 
-||| Commutativity: tropMul a b = tropMul b a.
+||| Commutativity: tropMul a b = tropMul b a.  Instance fact (ℕ + commutes);
+||| the kernel's sequence is only a monoid.
 |||
 ||| Sequential costs compose the same in either order.
 public export
 tropMulComm : (a, b : TropCost) -> tropMul a b = tropMul b a
-tropMulComm Infinity Infinity = Refl
-tropMulComm Infinity (Finite _) = Refl
-tropMulComm (Finite _) Infinity = Refl
-tropMulComm (Finite m) (Finite n) = cong Finite (plusComm' m n)
+tropMulComm Infinity   Infinity   = Refl
+tropMulComm Infinity   (Finite _) = Refl
+tropMulComm (Finite _) Infinity   = Refl
+tropMulComm (Finite m) (Finite n) = cong Finite (plusCommutative m n)
 
 ||| Associativity: tropMul a (tropMul b c) = tropMul (tropMul a b) c.
+||| Kernel `lossSeqAssoc`, read right to left.
 |||
 ||| Parenthesisation does not affect the cost of a sequential chain.
 public export
 tropMulAssoc : (a, b, c : TropCost) ->
                tropMul a (tropMul b c) = tropMul (tropMul a b) c
-tropMulAssoc Infinity _ _ = Refl
-tropMulAssoc (Finite _) Infinity _ = Refl
-tropMulAssoc (Finite _) (Finite _) Infinity = Refl
-tropMulAssoc (Finite m) (Finite n) (Finite p) = cong Finite (plusAssoc' m n p)
+tropMulAssoc a b c = sym (lossSeqAssoc a b c)
 
 -- ---- Annihilation: Infinity annihilates tropMul ----
 
-||| Left annihilation: tropMul Infinity a = Infinity.
+||| Left annihilation: tropMul Infinity a = Infinity.  Kernel `annihilL`.
 public export
 tropMulLeftAnn : (a : TropCost) -> tropMul Infinity a = Infinity
-tropMulLeftAnn _ = Refl
+tropMulLeftAnn a = annihilL a
 
-||| Right annihilation: tropMul a Infinity = Infinity.
+||| Right annihilation: tropMul a Infinity = Infinity.  Kernel `lossAnnihilR`.
 public export
 tropMulRightAnn : (a : TropCost) -> tropMul a Infinity = Infinity
-tropMulRightAnn Infinity = Refl
-tropMulRightAnn (Finite _) = Refl
+tropMulRightAnn = lossAnnihilR
 
 -- ---- Distributivity ----
 
 ||| Left distributivity:
 ||| tropMul a (tropAdd b c) = tropAdd (tropMul a b) (tropMul a c).
+||| Kernel `lossDistribL`.
 |||
 ||| A constant sequential prefix does not change which branch is cheaper.
 public export
 tropMulDistrib : (a, b, c : TropCost) ->
                  tropMul a (tropAdd b c) = tropAdd (tropMul a b) (tropMul a c)
-tropMulDistrib Infinity _ _ = Refl
-tropMulDistrib (Finite _) Infinity _ = Refl
-tropMulDistrib (Finite _) (Finite _) Infinity = Refl
-tropMulDistrib (Finite m) (Finite n) (Finite p) =
-  cong Finite (plusDistribOverTropMin m n p)
+tropMulDistrib = lossDistribL
 
-||| Right distributivity (derived from left distributivity + tropMulComm):
+||| Right distributivity:
 ||| tropMul (tropAdd a b) c = tropAdd (tropMul a c) (tropMul b c).
+||| Kernel `lossDistribR` (formerly derived here from left distributivity +
+||| tropMulComm; the kernel proves it directly).
 public export
 tropMulDistribR : (a, b, c : TropCost) ->
                   tropMul (tropAdd a b) c = tropAdd (tropMul a c) (tropMul b c)
-tropMulDistribR a b c =
-  let step1 = tropMulComm (tropAdd a b) c
-      step2 = tropMulDistrib c a b
-      swapA = tropMulComm c a
-      swapB = tropMulComm c b
-      rwA   = cong (\x => tropAdd x (tropMul c b)) swapA
-      rwB   = cong (\x => tropAdd (tropMul a c) x) swapB
-  in trans step1 (trans step2 (trans rwA rwB))
+tropMulDistribR = lossDistribR
 
 -- ---- Legacy aliases (kept so earlier consumers keep compiling) ----
 
@@ -444,112 +356,80 @@ record Level11KleeneProof (n : Nat) where
   inBound    : EntryBounded pathCost (costs.pathBound)
 
 -- ============================================================================
--- Ordered layer — the canonical dioid order  (Resource.Algebra.Ordered)
+-- Ordered layer — the kernel's dioid order
 -- ============================================================================
 --
--- Mirrors hyperpolymath/tropical-resource-typing Resource/Algebra/Ordered.lean
--- @ 2e35229.  The canonical resource order is the dioid order
---   a |<=| b  :=  tropAdd a b = b      (canonical: a |+| b = b)
--- For this MinPlus instance |+| = min, so the order is the REVERSE of numeric
--- <=: Finite m |<=| Finite n  iff  n <= m, and Infinity (the additive zero /
--- +inf) is the LEAST element.  Smaller cost sits higher.
+-- The kernel order (TypedWasm.ABI.ResourceAlgebra.LeG, Agda `_≼_`) is
+--   a ≼ b  :=  oplus a b = b
+-- For this Loss instance oplus = min, so the order is the REVERSE of numeric
+-- <=: Finite m ≼ Finite n  iff  n <= m, and Infinity (the additive zero /
+-- +inf) is the LEAST element.  Smaller cost sits higher (resource-algebra
+-- Separation S-3; ResourceAlgebra/Separation.idr `lossOrderReversed`).
+-- Every lemma here is the kernel's generic one at TropCost.
 
-||| Structural minimum is idempotent.
-private
-tropMinIdem : (m : Nat) -> tropMin m m = m
-tropMinIdem Z = Refl
-tropMinIdem (S k) = cong S (tropMinIdem k)
-
-||| The canonical dioid order: a refines b iff combining them is b.
+||| The dioid order: a refines b iff combining them is b.  Kernel `LeG`.
 public export
 tropLe : TropCost -> TropCost -> Type
-tropLe a b = tropAdd a b = b
+tropLe a b = LeG a b
 
-||| TropCost addition is idempotent (the dioid property).
+||| TropCost addition is idempotent (the dioid property).  Kernel `lossAltIdem`.
 public export
 tropAddIdem : (a : TropCost) -> tropAdd a a = a
-tropAddIdem Infinity = Refl
-tropAddIdem (Finite n) = cong Finite (tropMinIdem n)
+tropAddIdem = lossAltIdem
 
-||| |<=| is reflexive (canonical ResourceAlgebra.le_refl).
+||| ≼ is reflexive.  Kernel `leRefl`.
 public export
 tropLeRefl : (a : TropCost) -> tropLe a a
-tropLeRefl = tropAddIdem
+tropLeRefl a = leRefl a
 
-||| |<=| is transitive (canonical ResourceAlgebra.le_trans):
-||| a|+|c = a|+|(b|+|c) = (a|+|b)|+|c = b|+|c = c.
+||| ≼ is transitive.  Kernel `leTrans`.
 public export
 tropLeTrans : {a, b, c : TropCost} -> tropLe a b -> tropLe b c -> tropLe a c
-tropLeTrans {a} {b} {c} ab bc =
-  rewrite sym bc in
-  rewrite tropAddAssoc a b c in
-  rewrite ab in Refl
+tropLeTrans ab bc = leTrans ab bc
 
-||| |+| is monotone in its right argument (canonical add_le_add_left):
-||| (c|+|a)|+|(c|+|b) = c|+|b  when  a|+|b = b.
+||| oplus is monotone in its right argument.  Kernel `oplusMono` with the
+||| left argument fixed.
 public export
 tropAddMonoR : {a, b : TropCost} -> (c : TropCost) ->
                tropLe a b -> tropLe (tropAdd c a) (tropAdd c b)
-tropAddMonoR {a} {b} c ab =
-  let eMid : (tropAdd (tropAdd c a) c = tropAdd c a)
-      eMid = trans (sym (tropAddAssoc c a c))
-             (trans (cong (tropAdd c) (tropAddComm a c))
-             (trans (tropAddAssoc c c a)
-                    (cong (\x => tropAdd x a) (tropAddIdem c))))
-  in trans (tropAddAssoc (tropAdd c a) c b)
-     (trans (cong (\x => tropAdd x b) eMid)
-     (trans (sym (tropAddAssoc c a b))
-            (cong (tropAdd c) ab)))
+tropAddMonoR c ab = oplusMono (leRefl c) ab
 
-||| |x| is monotone in its right argument (canonical mul_le_mul_left):
-||| (c|x|a)|+|(c|x|b) = c|x|(a|+|b) = c|x|b.
+||| otimes is monotone in its right argument.  Kernel `otimesMonoL`
+||| (IsOrdered LossGrade, obtained from IsDioid by `dioidMonoL`).
 public export
 tropMulMonoR : {a, b : TropCost} -> (c : TropCost) ->
                tropLe a b -> tropLe (tropMul c a) (tropMul c b)
-tropMulMonoR {a} {b} c ab =
-  rewrite sym (tropMulDistrib c a b) in cong (tropMul c) ab
+tropMulMonoR c ab = otimesMonoL c ab
 
-||| |x| is monotone in its left argument (canonical mul_le_mul_right).
+||| otimes is monotone in its left argument.  Kernel `otimesMonoR`.
 public export
 tropMulMonoL : {a, b : TropCost} -> (c : TropCost) ->
                tropLe a b -> tropLe (tropMul a c) (tropMul b c)
-tropMulMonoL {a} {b} c ab =
-  rewrite sym (tropMulDistribR a b c) in cong (\x => tropMul x c) ab
+tropMulMonoL c ab = otimesMonoR c ab
 
 -- ============================================================================
 -- Min-max / bottleneck layer  (Resource.Instances.MinMax + Bridge.hub_ceiling)
 -- ============================================================================
 --
--- Mirrors Resource/Instances/MinMax.lean + Resource/Bridge.lean @ 2e35229.
--- The min-max (bottleneck) semiring shares the choice operation |+| = min
--- (tropAdd) but composes sequentially by the WORST step (max) rather than by
--- sum.  Memory fact: MinMax / hub_ceiling = the bottleneck axis; one shared hub
--- caps fidelity.  Infinity (+inf) absorbs under max (an unreachable step makes
--- the whole route unreachable).
-
-private
-natMax : Nat -> Nat -> Nat
-natMax Z n = n
-natMax (S m) Z = S m
-natMax (S m) (S n) = S (natMax m n)
-
-private
-natMaxComm : (m, n : Nat) -> natMax m n = natMax n m
-natMaxComm Z Z = Refl
-natMaxComm Z (S n) = Refl
-natMaxComm (S m) Z = Refl
-natMaxComm (S m) (S n) = cong S (natMaxComm m n)
-
-private
-tropMinZeroRight : (k : Nat) -> tropMin k Z = Z
-tropMinZeroRight Z = Refl
-tropMinZeroRight (S k) = Refl
+-- Mirrors tropical-resource-typing Resource/Instances/MinMax.lean +
+-- Resource/Bridge.lean @ 2e35229.  The min-max (bottleneck) semiring shares
+-- the choice operation with Loss (oplus = min) but composes sequentially by
+-- the WORST step (max) rather than by sum.  One shared hub caps fidelity.
+-- Infinity (+inf) absorbs under max (an unreachable step makes the whole
+-- route unreachable).
+--
+-- This is NOT max-plus: max-plus takes max over ALTERNATIVES and sums along
+-- a path, with −∞ as its zero (ResourceAlgebra/MaxPlus.idr); here max is
+-- the SEQUENCE operation, +∞ absorbs, and alternatives stay min.  The kernel
+-- has no MinMax instance, so `tropMax` is the one grade operation defined
+-- outside it (tools/grade-kernel.allow records why).  Nat's max is base's
+-- `Data.Nat.maximum`, not a local copy.
 
 ||| min (max m n) m = m : a lower bottleneck absorbs against the route max.
 private
-tropMinMaxAbsorbL : (m, n : Nat) -> tropMin (natMax m n) m = m
-tropMinMaxAbsorbL Z n = tropMinZeroRight n
-tropMinMaxAbsorbL (S m) Z = cong S (tropMinIdem m)
+tropMinMaxAbsorbL : (m, n : Nat) -> minimum (maximum m n) m = m
+tropMinMaxAbsorbL Z     n     = minimumZeroZeroLeft n
+tropMinMaxAbsorbL (S m) Z     = cong S (minimumIdempotent m)
 tropMinMaxAbsorbL (S m) (S n) = cong S (tropMinMaxAbsorbL m n)
 
 ||| Bottleneck sequential composition: the worse (bottleneck) step.  Infinity
@@ -558,7 +438,7 @@ public export
 tropMax : TropCost -> TropCost -> TropCost
 tropMax Infinity _ = Infinity
 tropMax _ Infinity = Infinity
-tropMax (Finite a) (Finite b) = Finite (natMax a b)
+tropMax (Finite a) (Finite b) = Finite (maximum a b)
 
 ||| Bottleneck composition is commutative.
 public export
@@ -566,7 +446,7 @@ tropMaxComm : (a, b : TropCost) -> tropMax a b = tropMax b a
 tropMaxComm Infinity Infinity = Refl
 tropMaxComm Infinity (Finite n) = Refl
 tropMaxComm (Finite m) Infinity = Refl
-tropMaxComm (Finite m) (Finite n) = cong Finite (natMaxComm m n)
+tropMaxComm (Finite m) (Finite n) = cong Finite (maximumCommutative m n)
 
 ||| The bottleneck of two grades is no better (in |<=|) than the left one.
 public export

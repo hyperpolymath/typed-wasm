@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+# NEGATIVE CONTROL for the transcription check: every row below is WRONG,
+# and each must be refused by BOTH provers (tools/check-kernel-proofs.sh
+# renders each row into its own module).  One per instance:
+#   Loss    alt read as worst case (max), the S-2 confusion: min 2 3 is 2
+#   MaxPlus seq off by one: 2 + 3 is 5
+#   HWM     seq read as cost, the S-1 confusion: occupancy peak is 3, not 5
+Loss	alt	fin 2	fin 3	fin 3
+MaxPlus	seq	val 2	val 3	val 6
+HWM	seq	hwm 2 0	hwm 3 0	hwm 5 0
