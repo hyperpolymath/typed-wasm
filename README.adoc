@@ -223,7 +223,7 @@ PROOF-NEEDS.md                             # Outstanding proof obligations
 TEST-NEEDS.md                              # Outstanding test coverage
 docs/PRODUCTION-PATH.adoc                  # 6-phase plan to production-ready
 docs/onboarding/README.adoc                # New here? Start here.
-docs/WHITEPAPER.md                         # Full academic treatment
+docs/WHITEPAPER.adoc                         # Full academic treatment
 AUDIT.adoc                                 # Hard rules and audit posture
 ----
 
@@ -267,7 +267,7 @@ The post-codegen verifier's `verify_access_sites_from_module` pass shipped in PR
 GraalVM's Truffle framework has the same multi-language shared state problem.
 typed-wasm's approach could give GraalVM **compile-time guarantees** for
 cross-language interop, replacing runtime `InteropLibrary` dispatch with
-compile-time schema agreement. See `docs/WHITEPAPER.md` for details.
+compile-time schema agreement. See `docs/WHITEPAPER.adoc` for details.
 
 == License
 

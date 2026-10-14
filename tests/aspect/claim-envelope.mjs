@@ -5,7 +5,7 @@
 // Claim-envelope aspect test.
 //
 // Every claim this repo makes in human-readable docs (README.adoc,
-// ROADMAP.adoc, LEVEL-STATUS.md, EXPLAINME.adoc) is also a contract with
+// ROADMAP.adoc, LEVEL-STATUS.adoc, EXPLAINME.adoc) is also a contract with
 // the artefacts it ships (src/abi/typed-wasm.ipkg, src/parser/*, Rust
 // crate constants, CI toolchain pins). When docs and artefacts drift,
 // nobody notices until an audit week later.
@@ -106,7 +106,7 @@ function assertDocsAgreeOnL11L12(path, regex) {
 const stalePattern =
   /L11.{0,4}L12[^\n]{0,180}?(not part of|not in.*(?:package|ipkg)|standalone.*fail)/i;
 assertDocsAgreeOnL11L12("ROADMAP.adoc", stalePattern);
-assertDocsAgreeOnL11L12("LEVEL-STATUS.md", stalePattern);
+assertDocsAgreeOnL11L12("LEVEL-STATUS.adoc", stalePattern);
 assertDocsAgreeOnL11L12("README.adoc", stalePattern);
 
 // ----------------------------------------------------------------------
@@ -318,10 +318,10 @@ const rsrFiles = [
   "LICENSE",
   "Justfile",
   "0-AI-MANIFEST.a2ml",
-  "LEVEL-STATUS.md",
+  "LEVEL-STATUS.adoc",
   "ROADMAP.adoc",
-  "PROOF-NEEDS.md",
-  "TEST-NEEDS.md",
+  "PROOF-NEEDS.adoc",
+  "TEST-NEEDS.adoc",
   "docs/PRODUCTION-PATH.adoc",   // canonical strategic plan (added 2026-05-24)
   "docs/onboarding/README.adoc", // RSR taxonomy (added 2026-05-25)
   "docs/status/README.adoc",     // RSR taxonomy (added 2026-05-25)

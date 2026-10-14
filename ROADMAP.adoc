@@ -47,7 +47,7 @@ Key capabilities delivered:
 * `.twasm` grammar (spec/grammar.ebnf) -- EBNF surface syntax
 * 10-level spec (spec/type-safety-levels-for-wasm.adoc) -- checked DB-to-WASM core mapping
 * Example `.twasm` files for the checked core, plus draft higher-level examples
-* Whitepaper drafts (docs/WHITEPAPER.md + docs/arxiv/typed-wasm.tex) under audit
+* Whitepaper drafts (docs/WHITEPAPER.adoc + docs/arxiv/typed-wasm.tex) under audit
 * No unsound escape hatches in the checked Idris2 core (`believe_me`, `assert_total`)
 * Estate-axis accommodation (A15/A16, 2026-06-16): L11/L12/Echo now cross-document
   and mirror the canonical estate repos -- `tropical-resource-typing` (Lean4

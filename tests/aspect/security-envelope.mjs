@@ -8,7 +8,7 @@
 // checks that human-readable doc claims match shipped artefacts in
 // general, this file specifically checks SECURITY claims:
 //
-//   - SECURITY.md contact email matches .well-known/security.txt
+//   - SECURITY.md contact email matches www/.well-known/security.txt
 //   - SPDX-License-Identifier headers present on all source files
 //   - "believe_me: 0" README badge matches actual code (not comments)
 //   - No committed secrets / private keys
@@ -58,15 +58,15 @@ function maybeRead(rel) {
 }
 
 // ----------------------------------------------------------------------
-// 1. SECURITY.md ↔ .well-known/security.txt — contact alignment
+// 1. SECURITY.md ↔ www/.well-known/security.txt — contact alignment
 // ----------------------------------------------------------------------
-section("1. SECURITY.md and .well-known/security.txt agree on contact");
+section("1. SECURITY.md and www/.well-known/security.txt agree on contact");
 
 const securityMd = maybeRead("SECURITY.md");
-const securityTxt = maybeRead(".well-known/security.txt");
+const securityTxt = maybeRead("www/.well-known/security.txt");
 
 if (!securityMd) bad("SECURITY.md missing");
-if (!securityTxt) bad(".well-known/security.txt missing");
+if (!securityTxt) bad("www/.well-known/security.txt missing");
 
 if (securityMd && securityTxt) {
   const mdEmail = (securityMd.match(/[\w._%+-]+@[\w.-]+\.[A-Za-z]{2,}/) || [])[0];
@@ -74,7 +74,7 @@ if (securityMd && securityTxt) {
     || (securityTxt.match(/[\w._%+-]+@[\w.-]+\.[A-Za-z]{2,}/) || [])[0];
 
   if (!mdEmail) bad("SECURITY.md has no contact email");
-  else if (!txtEmail) bad(".well-known/security.txt has no Contact: line");
+  else if (!txtEmail) bad("www/.well-known/security.txt has no Contact: line");
   else if (mdEmail.toLowerCase() !== txtEmail.toLowerCase()) {
     bad(`Contact email mismatch: SECURITY.md=${mdEmail} vs security.txt=${txtEmail}`);
   } else {
