@@ -76,11 +76,14 @@ _reference_ level.
 **Levels 11-12** (Frontier) are unique to typed-wasm:
 
 * **Level 11 — Tropical Cost-Tracking**: Memory access operations carry
-  semiring costs (min-plus for latency, max-plus for throughput). The
-  type checker proves that any access path through shared memory has
-  bounded total cost. Uses the tropical semiring algebra formalised in
-  007's `TropicalSemiring.idr`. This is the "how expensive is this
-  access pattern?" question answered at compile time.
+  semiring costs (min-plus for latency and cheapest path, min-max for the
+  bottleneck step; a max-plus worst-case grade is available but not yet
+  used). The type checker proves that any access path through shared
+  memory has bounded total cost. The grades come from the ABI's grade
+  kernel (`ResourceAlgebra`, transcribed from hyperpolymath/resource-algebra;
+  007's `TropicalSemiring.idr` is the provenance of the first port). This
+  is the "how expensive is this access pattern?" question answered at
+  compile time.
 
 * **Level 12 — Epistemic Safety**: Tracks which module _knows_ what about
   shared memory state. Module A writes field X; Module B's knowledge of

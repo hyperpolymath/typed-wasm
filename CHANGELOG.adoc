@@ -8,6 +8,32 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Grade kernel: resource-algebra ported as the ABI's one source of grades (PWL-01, 2026-10-14)
+
+`src/abi/TypedWasm/ABI/ResourceAlgebra.idr` and `ResourceAlgebra/{Nat,Loss,
+MaxPlus,HWM,Separation}.idr` transcribe hyperpolymath/resource-algebra @
+`cf9235c` (Agda `--safe --without-K`): the `ResourceAlgebra` / `IsOrdered` /
+`IsDioid` / `IsAnnihilating` interfaces, the Loss (min-plus), MaxPlus
+(max-plus) and HWM (occupancy) instances, and the S-1..S-3 separation
+witnesses.
+
+* `Tropical.TropCost` is now the kernel's Loss carrier; the twelve semiring
+  axioms and the dioid-order layer are derived from the kernel, and the local
+  `tropMin` / `natMax` copies are deleted. Every public name is kept.
+* `Echo.EchoGrade` names the same Loss carrier.
+* `tools/check-grade-kernel.sh` (with `--self-test`) enforces one min-plus and
+  one max-plus in the tree. `tools/check-kernel-proofs.sh` runs the
+  falsifiers: the Idris2 0.8.0 build, `tests/reject/*.idr` refused for the
+  intended reason, and a 172-row operation table accepted by Agda `refl` against
+  the pinned sources and by Idris2 `Refl` against the port, with wrong rows
+  refused by both. Both run in `contract-gate.yml`.
+* Correction: `Tropical.idr` was never max-plus. Its cost is min-plus and its
+  bottleneck is min-max (`tests/reject/TropicalIsNotMaxPlus.idr`).
+
+No level changes status; L11 and L12 stay draft. `contract.abi.sha256` is
+unchanged: the I3 anchors cover the wire format in `section.rs`, not
+`src/abi/`.
+
 ==== Machine-readable substrate: retired `6a2` layout migrated to `descriptiles` (2026-10-10)
 
 `0-canon/CANONICAL-NAMES.adoc` (owner mandate of 2026-06-30) deprecates the
