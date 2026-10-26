@@ -35,6 +35,18 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
   so a legacy claim can be written without a witness. The chain does not
   model `NotApplicable`; a certificate that waives a level stays legacy.
 
+==== Kernel proofs pinned to Agda 2.6.3 (2026-10-26)
+
+* `ubuntu-latest` moved to Ubuntu 26.04 on 2026-10-19, so the Contract
+  Gate's kernel-proofs job, which installs Agda from apt, got Agda 2.8.0.
+  2.8.0 prints error locations as `file:11.38` where 2.6.3 printed
+  `file:11,38`, and occupancy-types' own reject check accepts only the old
+  form, so it reported `CostIsOccupancy` as an unexpected failure although
+  Agda refused it correctly.
+* The job now runs on `ubuntu-24.04`, whose `agda-bin` is 2.6.3, and
+  `tools/check-kernel-proofs.sh` refuses any other Agda (as it already
+  refuses any Idris2 but 0.8.0), unless `ALLOW_ANY_AGDA=1` is set.
+
 ==== occupancy-types pin `6013483` → `8f09c0b` (2026-10-14)
 
 * `scripts/fetch-siblings.sh` pins occupancy-types at `8f09c0b`, the merge of
