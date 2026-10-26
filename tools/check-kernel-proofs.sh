@@ -52,7 +52,7 @@ esac
 # between Agda releases: 2.8.0 prints `file:11.38` where 2.6.3 printed
 # `file:11,38`, which occupancy-types' own reject check does not accept.
 case "$av" in
-  *"version 2.6.3"*) ;;
+  "Agda version 2.6.3") ;;  # the whole line: 2.6.3.1 is another release
   *) [[ -n "${ALLOW_ANY_AGDA:-}" ]] || die "Agda 2.6.3 required (the pinned siblings' reject checks expect 2.6.3's messages). Set ALLOW_ANY_AGDA=1 to try another." ;;
 esac
 [ -d "$RA/src/ResourceAlgebra" ] || die "resource-algebra not fetched — run scripts/fetch-siblings.sh"
