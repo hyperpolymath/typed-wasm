@@ -477,9 +477,9 @@ fullCert15 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof isoMod wfProt
 -- concrete attestation list — and proves the monotonicity *under
 -- certificate composition*: composing two certificates preserves any
 -- level achieved in either component.  This is the structural
--- monotonicity relevant to the current design; the stronger
--- "progressive-order" claim requires redesigning `ProgressiveCheck`
--- with a typed `level = S prevLevel` index and is left as future work.
+-- monotonicity relevant to the legacy design.  The stronger
+-- "progressive-order" claim, over a chain indexed by `level = S
+-- prevLevel`, is `levelMonotoneW` on `ProgressiveW` (end of this module).
 
 ||| `LevelAchievedIn n atts` — level `n` appears in the attestation list
 ||| with status `Proven`.  This is the concrete propositional form of
@@ -737,8 +737,9 @@ dropCertErases = MkErases Proofs.dropCert
 -- bridge for all fifteen levels, witness-consuming at the type level.
 -- Like the A8 reframing, this is the honest incremental theorem; the
 -- stronger "attestation entails the level's semantic property" claim
--- needs `LevelAttestation` reindexed by the witness and is left as
--- tracked future work (standards#130 / epic standards#124).
+-- needs the attestation reindexed by the witness: `LevelAttestationW`
+-- below, with `witnessAchievedEntails` and the `ProgressiveW` chain at
+-- the end of this module (standards#130 / epic standards#124).
 --
 -- These declarations are purely additive: no existing definition is
 -- touched, so no prior proof can regress.  `%default total` (module
@@ -1561,3 +1562,340 @@ emptyWitnessToLegacy :
      witnessToLegacy (MkWitnessCert [] 0 [])
    = MkCertificate [] 0 []
 emptyWitnessToLegacy = Refl
+
+-- ============================================================================
+-- ProgressiveW — certificates whose level is their witnesses
+-- ============================================================================
+--
+-- `WitnessCertificate` carries one witness per attestation, but its
+-- `witnessHighestProven` is a free `Nat`, and nothing ties it to the
+-- witnesses it sits beside: `MkWitnessCert [] 15 []` reports 15 as its
+-- highest level while holding no attestation at all.  A8 recorded the matching gap for `ProgressiveCheck`:
+-- the "progressive-order" claim (you cannot reach level N without levels
+-- 1..N-1) needed a chain indexed by `level = S prevLevel` and was left
+-- as future work.
+--
+-- `ProgressiveW n` is that chain.  Its index is the highest level, and
+-- each step must supply the witness for exactly the next level, so the
+-- type cannot be inhabited without a witness for every level 1..n.
+-- Three theorems state what that buys:
+--
+--   levelMonotoneW         — every level m with 1 <= m <= n has a
+--                            witness in the chain (PROOF-NEEDS §P3.2's
+--                            original `levelMonotone`, over witnesses).
+--   chainAchievedIn        — the chain's certificate claims every such m.
+--   witnessAchievedEntails — any claim a WitnessCertificate makes
+--                            yields the witness for that level.
+--
+-- The chain does not model `NotApplicable`: a level without a witness
+-- cannot appear in it.  Certificates that waive a level stay on the
+-- legacy `ProofCertificate` path, where `MkAttestation` is still a public
+-- constructor and a claim therefore proves nothing about witnesses.
+--
+-- Purely additive: no existing definition changes.
+
+||| A witness for every level from 1 up to the index `n`, in order.
+||| `StartW` takes level 1; `AdvanceW` takes the next level's witness.
+public export
+data ProgressiveW : (n : Nat) -> Type where
+  StartW   : LevelAttestationW 1 -> ProgressiveW 1
+  AdvanceW : {n : Nat}
+          -> ProgressiveW n
+          -> LevelAttestationW (S n)
+          -> ProgressiveW (S n)
+
+||| The witness for the chain's top level.
+public export
+chainTop : ProgressiveW n -> LevelAttestationW n
+chainTop (StartW a)     = a
+chainTop (AdvanceW _ a) = a
+
+||| A chain always starts at level 1, so its index is at least 1.
+public export
+chainLevelPositive : ProgressiveW n -> LTE 1 n
+chainLevelPositive (StartW _)     = LTESucc LTEZero
+chainLevelPositive (AdvanceW _ _) = LTESucc LTEZero
+
+||| `m <= S n` splits into `m <= n` or `m = S n`.
+public export
+lteSuccSplit : {m, n : Nat} -> LTE m (S n) -> Either (LTE m n) (m = S n)
+lteSuccSplit {m = Z}             _                       = Left LTEZero
+lteSuccSplit {m = S _} {n = Z}   (LTESucc LTEZero)       = Right Refl
+lteSuccSplit {m = S _} {n = Z}   (LTESucc (LTESucc _)) impossible
+lteSuccSplit {m = S _} {n = S _} (LTESucc p)             =
+  case lteSuccSplit p of
+    Left q   => Left (LTESucc q)
+    Right eq => Right (cong S eq)
+
+||| Level monotonicity over witnesses: a chain that reaches level `n`
+||| holds the witness for every level `m` with `1 <= m <= n`.
+|||
+||| This is PROOF-NEEDS §P3.2's `levelMonotone`, stated over witnesses
+||| rather than over a bare "achieved" predicate: the result is the
+||| level-`m` attestation itself, so the matching `attestLmW_Entails*`
+||| extractor recovers the level's safety evidence.
+public export
+levelMonotoneW : ProgressiveW n
+              -> (m : Nat)
+              -> LTE 1 m
+              -> LTE m n
+              -> LevelAttestationW m
+levelMonotoneW (StartW _) Z         one _             = absurd one
+levelMonotoneW (StartW a) (S Z)     _   _             = a
+levelMonotoneW (StartW _) (S (S _)) _   (LTESucc le)  = absurd le
+levelMonotoneW (AdvanceW prev a) m  one le =
+  case lteSuccSplit le of
+    Left le' => levelMonotoneW prev m one le'
+    Right eq  => rewrite eq in a
+
+||| The chain's attestations, lowest level first.
+public export
+chainLevels : ProgressiveW n -> List SomeAttestationW
+chainLevels (StartW a)         = [MkSomeAttW a]
+chainLevels (AdvanceW {n} p a) = chainLevels p ++ [MkSomeAttW {n = S n} a]
+
+||| The witness certificate a chain denotes.  Its highest level is the
+||| chain's index, not a free `Nat`.
+public export
+chainCert : {n : Nat} -> ProgressiveW n -> WitnessCertificate
+chainCert {n} c = MkWitnessCert (chainLevels c) n []
+
+||| The certificate's highest level is the chain's index.
+public export
+chainCertHighest : {n : Nat}
+                -> (c : ProgressiveW n)
+                -> witnessHighestProven (chainCert c) = n
+chainCertHighest _ = Refl
+
+||| A chain's attestation list claims every level from 1 up to its index.
+public export
+chainAchievedIn : (c : ProgressiveW n)
+               -> (m : Nat)
+               -> LTE 1 m
+               -> LTE m n
+               -> LevelAchievedIn m (witnessLevelsToLegacy (chainLevels c))
+chainAchievedIn (StartW _) Z         one _            = absurd one
+chainAchievedIn (StartW _) (S Z)     _   _            = LAHere
+chainAchievedIn (StartW _) (S (S _)) _   (LTESucc le) = absurd le
+chainAchievedIn (AdvanceW {n} p a) m one le =
+  rewrite witnessLevelsToLegacyAppend (chainLevels p) [MkSomeAttW {n = S n} a] in
+  case lteSuccSplit le of
+    Left le'   => achievedAppendL (chainAchievedIn p m one le')
+    Right eq   => rewrite eq in achievedAppendR (witnessLevelsToLegacy (chainLevels p)) LAHere
+
+||| The chain's certificate claims every level from 1 up to its index.
+public export
+chainCertAchieves : {n : Nat}
+                 -> (c : ProgressiveW n)
+                 -> (m : Nat)
+                 -> LTE 1 m
+                 -> LTE m n
+                 -> WitnessAchieved m (chainCert c)
+chainCertAchieves c m one le = chainAchievedIn c m one le
+
+-- ----------------------------------------------------------------------------
+-- Achievement entails the witness
+-- ----------------------------------------------------------------------------
+--
+-- `LevelAchievedIn n` over a legacy list proves only that some entry
+-- reads `MkAttestation n Proven`, which anyone can write.  Over the
+-- projection of a `WitnessCertificate` it proves more: every entry came
+-- from a `LevelAttestationW`, so the entry the claim points at gives the
+-- level-`n` witness back.
+
+||| A claim of level `n` in a projected witness list yields the level-`n`
+||| witness attestation.
+public export
+witnessLevelsEntail : (ls : List SomeAttestationW)
+                   -> LevelAchievedIn n (witnessLevelsToLegacy ls)
+                   -> LevelAttestationW n
+witnessLevelsEntail []                    LAHere      impossible
+witnessLevelsEntail []                    (LAThere _) impossible
+witnessLevelsEntail (MkSomeAttW att :: _) LAHere      = att
+witnessLevelsEntail (_ :: xs)             (LAThere p) = witnessLevelsEntail xs p
+
+||| Any level a witness certificate claims comes with its witness:
+||| `WitnessAchieved n c` is evidence of level `n`'s safety property,
+||| recovered by the matching `attestLnW_Entails*` extractor.
+public export
+witnessAchievedEntails : (c : WitnessCertificate)
+                      -> WitnessAchieved n c
+                      -> LevelAttestationW n
+witnessAchievedEntails (MkWitnessCert ls _ _) p = witnessLevelsEntail ls p
+
+-- ----------------------------------------------------------------------------
+-- The existing certificates as witness chains
+-- ----------------------------------------------------------------------------
+--
+-- `simpleReadCert`, `fullCert12` and `fullCert15` take one witness per
+-- level and then discard them into a legacy `ProofCertificate`.  The
+-- chains below take the same witnesses and keep them; the `*Legacy`
+-- lemmas show that projecting each chain's certificate gives exactly the
+-- legacy certificate, so the chain is a strengthening, not a different
+-- object.
+
+||| `simpleReadCert` as a chain to level 6.
+public export
+simpleReadChain : {nameL2   : String} -> {schemaL2 : Schema}
+               -> {tyL3     : WasmType}
+               -> {kindL4   : PtrKind} -> {schemaL4 : Schema} -> {lifeL4 : Levels.Lifetime}
+               -> {idxL5    : Nat} -> {countL5 : Nat}
+               -> {tyL6     : WasmType}
+               -> (l1 : Schema)
+               -> (l2 : FieldIn nameL2 schemaL2)
+               -> (l3 : WasmTypeCompat tyL3 tyL3)
+               -> (l4 : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+               -> (l5 : InBounds idxL5 countL5)
+               -> (l6 : AccessResult tyL6)
+               -> ProgressiveW 6
+simpleReadChain l1 l2 l3 l4 l5 l6 =
+  AdvanceW (AdvanceW (AdvanceW (AdvanceW (AdvanceW
+    (StartW (AttestL1W l1))
+    (AttestL2W l2)) (AttestL3W l3)) (AttestL4W l4)) (AttestL5W l5)) (AttestL6W l6)
+
+||| Projecting `simpleReadChain`'s certificate gives `simpleReadCert`.
+public export
+simpleReadChainLegacy :
+     {nameL2   : String} -> {schemaL2 : Schema}
+  -> {tyL3     : WasmType}
+  -> {kindL4   : PtrKind} -> {schemaL4 : Schema} -> {lifeL4 : Levels.Lifetime}
+  -> {idxL5    : Nat} -> {countL5 : Nat}
+  -> {tyL6     : WasmType}
+  -> (l1 : Schema)
+  -> (l2 : FieldIn nameL2 schemaL2)
+  -> (l3 : WasmTypeCompat tyL3 tyL3)
+  -> (l4 : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+  -> (l5 : InBounds idxL5 countL5)
+  -> (l6 : AccessResult tyL6)
+  -> witnessToLegacy (chainCert (simpleReadChain l1 l2 l3 l4 l5 l6))
+   = simpleReadCert l1 l2 l3 l4 l5 l6
+simpleReadChainLegacy _ _ _ _ _ _ = Refl
+
+||| `fullCert12` as a chain to level 12.
+public export
+fullChain12 : {nameL2    : String} -> {schemaL2 : Schema}
+           -> {tyL3      : WasmType}
+           -> {kindL4    : PtrKind} -> {schemaL4 : Schema} -> {lifeL4 : Levels.Lifetime}
+           -> {idxL5     : Nat} -> {countL5 : Nat}
+           -> {tyL6      : WasmType}
+           -> {schemaL7  : Schema}
+           -> {declared, actual : EffectSet}
+           -> {rl, sl    : Lifetime.Lifetime}
+           -> {tokL10    : Nat}
+           -> {n         : Nat}
+           -> (l1        : Schema)
+           -> (l2        : FieldIn nameL2 schemaL2)
+           -> (l3        : WasmTypeCompat tyL3 tyL3)
+           -> (l4        : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+           -> (l5        : InBounds idxL5 countL5)
+           -> (l6        : AccessResult tyL6)
+           -> (l7        : ExclusiveWitness schemaL7)
+           -> (l8        : EffectSubsumes declared actual)
+           -> (l9        : Lifetime.Outlives rl sl)
+           -> (l10       : CompletedProtocol tokL10)
+           -> (costProof      : AllPairsCosts n)
+           -> (epistemicProof : Level12Proof)
+           -> ProgressiveW 12
+fullChain12 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof =
+  AdvanceW (AdvanceW (AdvanceW (AdvanceW (AdvanceW (AdvanceW
+    (simpleReadChain l1 l2 l3 l4 l5 l6)
+    (AttestL7W l7)) (AttestL8W l8)) (AttestL9W l9)) (AttestL10W l10))
+    (AttestL11W costProof)) (AttestL12W epistemicProof)
+
+||| Projecting `fullChain12`'s certificate gives `fullCert12`.
+public export
+fullChain12Legacy :
+     {nameL2    : String} -> {schemaL2 : Schema}
+  -> {tyL3      : WasmType}
+  -> {kindL4    : PtrKind} -> {schemaL4 : Schema} -> {lifeL4 : Levels.Lifetime}
+  -> {idxL5     : Nat} -> {countL5 : Nat}
+  -> {tyL6      : WasmType}
+  -> {schemaL7  : Schema}
+  -> {declared, actual : EffectSet}
+  -> {rl, sl    : Lifetime.Lifetime}
+  -> {tokL10    : Nat}
+  -> {n         : Nat}
+  -> (l1        : Schema)
+  -> (l2        : FieldIn nameL2 schemaL2)
+  -> (l3        : WasmTypeCompat tyL3 tyL3)
+  -> (l4        : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+  -> (l5        : InBounds idxL5 countL5)
+  -> (l6        : AccessResult tyL6)
+  -> (l7        : ExclusiveWitness schemaL7)
+  -> (l8        : EffectSubsumes declared actual)
+  -> (l9        : Lifetime.Outlives rl sl)
+  -> (l10       : CompletedProtocol tokL10)
+  -> (costProof      : AllPairsCosts n)
+  -> (epistemicProof : Level12Proof)
+  -> witnessToLegacy (chainCert (fullChain12 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof))
+   = fullCert12 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof
+fullChain12Legacy _ _ _ _ _ _ _ _ _ _ _ _ = Refl
+
+||| `fullCert15` as a chain to level 15.
+public export
+fullChain15 : {nameL2    : String} -> {schemaL2 : Schema}
+           -> {tyL3      : WasmType}
+           -> {kindL4    : PtrKind} -> {schemaL4 : Schema} -> {lifeL4 : Levels.Lifetime}
+           -> {idxL5     : Nat} -> {countL5 : Nat}
+           -> {tyL6      : WasmType}
+           -> {schemaL7  : Schema}
+           -> {declared, actual : EffectSet}
+           -> {rl, sl    : Lifetime.Lifetime}
+           -> {tokL10    : Nat}
+           -> {n         : Nat}
+           -> {p         : Protocol}
+           -> {owner     : ModuleCaps}
+           -> (l1        : Schema)
+           -> (l2        : FieldIn nameL2 schemaL2)
+           -> (l3        : WasmTypeCompat tyL3 tyL3)
+           -> (l4        : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+           -> (l5        : InBounds idxL5 countL5)
+           -> (l6        : AccessResult tyL6)
+           -> (l7        : ExclusiveWitness schemaL7)
+           -> (l8        : EffectSubsumes declared actual)
+           -> (l9        : Lifetime.Outlives rl sl)
+           -> (l10       : CompletedProtocol tokL10)
+           -> (costProof      : AllPairsCosts n)
+           -> (epistemicProof : Level12Proof)
+           -> (isoMod         : IsolatedModule)
+           -> (wfProto        : WellFormedProtocol p)
+           -> (fc             : FunctionCaps owner)
+           -> ProgressiveW 15
+fullChain15 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof isoMod wfProto fc =
+  AdvanceW (AdvanceW (AdvanceW
+    (fullChain12 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof)
+    (AttestL13W isoMod)) (AttestL14W wfProto)) (AttestL15W fc)
+
+||| Projecting `fullChain15`'s certificate gives `fullCert15`.
+public export
+fullChain15Legacy :
+     {nameL2    : String} -> {schemaL2 : Schema}
+  -> {tyL3      : WasmType}
+  -> {kindL4    : PtrKind} -> {schemaL4 : Schema} -> {lifeL4 : Levels.Lifetime}
+  -> {idxL5     : Nat} -> {countL5 : Nat}
+  -> {tyL6      : WasmType}
+  -> {schemaL7  : Schema}
+  -> {declared, actual : EffectSet}
+  -> {rl, sl    : Lifetime.Lifetime}
+  -> {tokL10    : Nat}
+  -> {n         : Nat}
+  -> {p         : Protocol}
+  -> {owner     : ModuleCaps}
+  -> (l1        : Schema)
+  -> (l2        : FieldIn nameL2 schemaL2)
+  -> (l3        : WasmTypeCompat tyL3 tyL3)
+  -> (l4        : Pointer.Ptr kindL4 schemaL4 lifeL4 NonNull)
+  -> (l5        : InBounds idxL5 countL5)
+  -> (l6        : AccessResult tyL6)
+  -> (l7        : ExclusiveWitness schemaL7)
+  -> (l8        : EffectSubsumes declared actual)
+  -> (l9        : Lifetime.Outlives rl sl)
+  -> (l10       : CompletedProtocol tokL10)
+  -> (costProof      : AllPairsCosts n)
+  -> (epistemicProof : Level12Proof)
+  -> (isoMod         : IsolatedModule)
+  -> (wfProto        : WellFormedProtocol p)
+  -> (fc             : FunctionCaps owner)
+  -> witnessToLegacy (chainCert (fullChain15 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof isoMod wfProto fc))
+   = fullCert15 l1 l2 l3 l4 l5 l6 l7 l8 l9 l10 costProof epistemicProof isoMod wfProto fc
+fullChain15Legacy _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ = Refl

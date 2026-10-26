@@ -340,6 +340,27 @@ const EXPECTED = [
   ["Proofs.idr", /^emptyWitnessCertificate\s*:/m, "Empty witness certificate (concrete inhabitant)"],
   ["Proofs.idr", /^singletonWitnessCertificate\s*:/m, "Singleton witness certificate smart ctor"],
   ["Proofs.idr", /^emptyWitnessToLegacy\s*:/m, "Empty round-trip Refl"],
+
+  // Proofs.idr — ProgressiveW: a certificate chain whose level is its
+  // witnesses (levels 1..n, in order), with the theorems that make a
+  // claimed level evidence.  Pins the names so a refactor cannot
+  // silently drop the chain or weaken a theorem to a label.
+  ["Proofs.idr", /^data\s+ProgressiveW/m, "Level-indexed witness chain"],
+  ["Proofs.idr", /^chainTop\s*:/m, "Top-level witness of a chain"],
+  ["Proofs.idr", /^lteSuccSplit\s*:/m, "m <= S n splits (helper)"],
+  ["Proofs.idr", /^levelMonotoneW\s*:/m, "Every level 1..n has a witness (PROOF-NEEDS P3.2)"],
+  ["Proofs.idr", /^chainCert\s*:/m, "Chain to witness certificate"],
+  ["Proofs.idr", /^chainCertHighest\s*:/m, "Certificate level is the chain index"],
+  ["Proofs.idr", /^chainAchievedIn\s*:/m, "Chain claims every level 1..n"],
+  ["Proofs.idr", /^chainCertAchieves\s*:/m, "Chain certificate claims every level 1..n"],
+  ["Proofs.idr", /^witnessLevelsEntail\s*:/m, "Claim in a witness list yields the witness"],
+  ["Proofs.idr", /^witnessAchievedEntails\s*:/m, "Claimed level entails its witness"],
+  ["Proofs.idr", /^simpleReadChain\s*:/m, "simpleReadCert as a chain"],
+  ["Proofs.idr", /^simpleReadChainLegacy\s*:/m, "simpleReadChain projects to simpleReadCert"],
+  ["Proofs.idr", /^fullChain12\s*:/m, "fullCert12 as a chain"],
+  ["Proofs.idr", /^fullChain12Legacy\s*:/m, "fullChain12 projects to fullCert12"],
+  ["Proofs.idr", /^fullChain15\s*:/m, "fullCert15 as a chain"],
+  ["Proofs.idr", /^fullChain15Legacy\s*:/m, "fullChain15 projects to fullCert15"],
 ];
 
 // ----------------------------------------------------------------------
