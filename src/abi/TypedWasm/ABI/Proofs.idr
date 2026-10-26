@@ -1656,6 +1656,8 @@ chainLevels (AdvanceW {n} p a) = chainLevels p ++ [MkSomeAttW {n = S n} a]
 
 ||| The witness certificate a chain denotes.  Its highest level is the
 ||| chain's index, not a free `Nat`.
+||| Retains the chain's attestations in ascending level order and has
+||| no multi-module compatibility entries.
 public export
 chainCert : {n : Nat} -> ProgressiveW n -> WitnessCertificate
 chainCert {n} c = MkWitnessCert (chainLevels c) n []
@@ -1717,6 +1719,8 @@ witnessLevelsEntail (_ :: xs)             (LAThere p) = witnessLevelsEntail xs p
 ||| Any level a witness certificate claims comes with its witness:
 ||| `WitnessAchieved n c` is evidence of level `n`'s safety property,
 ||| recovered by the matching `attestLnW_Entails*` extractor.
+||| The claim must identify an attestation in `c`'s projected level list;
+||| `witnessHighestProven` alone supplies no such evidence.
 public export
 witnessAchievedEntails : (c : WitnessCertificate)
                       -> WitnessAchieved n c
