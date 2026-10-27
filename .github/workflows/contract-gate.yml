@@ -56,7 +56,11 @@ jobs:
   # cannot).
   kernel-proofs:
     name: Grade kernel proofs (Idris2 0.8.0 + Agda)
-    runs-on: ubuntu-latest
+    # Pinned: the job installs Agda from apt, so the image decides the Agda
+    # version, and the reject checks need 2.6.3 (tools/check-kernel-proofs.sh
+    # refuses any other). ubuntu-latest moved to 26.04 (Agda 2.8.0) on
+    # 2026-10-19.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       IDRIS2_COMMIT: 15a3e4e70843f7a34100f6470c04b791330788df  # v0.8.0
