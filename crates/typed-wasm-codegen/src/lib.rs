@@ -56,6 +56,7 @@ use wasm_encoder::{
     NameMap, NameSection, TypeSection, ValType,
 };
 
+pub mod caps;
 pub mod parser;
 
 // ----------------------------------------------------------------------

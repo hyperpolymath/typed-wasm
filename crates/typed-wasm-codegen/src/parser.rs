@@ -9,7 +9,9 @@
 //! recording region schemas, ownership qualifiers (`own`/`&mut`/`&` →
 //! the `typedwasm.ownership` carrier) and cross-module region imports
 //! (`import region … from "…" { … }` → the `typedwasm.region-imports`
-//! carrier, ADR-0007).
+//! carrier, ADR-0007). It also records `capability NAME;` declarations,
+//! each function's `caps:` set and the calls in its body, and refuses a
+//! module that breaks L15-A, L15-B or L15-C ([`crate::caps`]).
 //!
 //! Known gaps against `spec/grammar.ebnf` are tracked debt (ADR-0006
 //! §Consequences): non-lowerable statement bodies fall back to
@@ -161,9 +163,14 @@ struct Parser<'a> {
     /// True when the source declared `memory { … }` — a synthesised
     /// memory must never override it.
     memory_declared: bool,
+    /// L15: `capability NAME;` declarations in source order, duplicates kept.
+    capabilities: Vec<String>,
+    /// L15: each function's `caps` set and the names its body calls.
+    fn_caps: Vec<crate::caps::FnCaps>,
 }
 
 impl<'a> Parser<'a> {
+    /// Create a parser at the start of `src` with no declarations recorded.
     fn new(src: &'a str) -> Self {
         Self {
             src,
@@ -177,6 +184,8 @@ impl<'a> Parser<'a> {
             region_imports: Vec::new(),
             region_instances: Vec::new(),
             memory_declared: false,
+            capabilities: Vec::new(),
+            fn_caps: Vec::new(),
         }
     }
 
@@ -188,6 +197,12 @@ impl<'a> Parser<'a> {
     /// declared instance counts (needed to seed importers in
     /// [`parse_modules`] so their scans iterate the producer's real
     /// instance array).
+    ///
+    /// # Errors
+    ///
+    /// Propagates declaration parsing errors. If parsing completes but
+    /// [`crate::caps::check`] finds L15 violations, returns all its diagnostics
+    /// joined by newlines.
     fn parse_with_instances(mut self) -> Result<(Module, Vec<u64>), String> {
         while self.pos < self.src.len() {
             self.skip_whitespace();
@@ -207,10 +222,17 @@ impl<'a> Parser<'a> {
                 self.parse_function()?;
             } else if self.peek_word("import") {
                 self.parse_import()?;
+            } else if self.peek_word("capability") {
+                self.parse_capability()?;
             } else {
                 // Skip comments and unknown declarations
                 self.skip_declaration();
             }
+        }
+
+        let cap_errors = crate::caps::check(&self.capabilities, &self.fn_caps);
+        if !cap_errors.is_empty() {
+            return Err(cap_errors.join("\n"));
         }
 
         Ok((
@@ -728,6 +750,13 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Parse and append an exported function, recording ownership and L15 facts.
+    /// Bodies that cannot be lowered become stubs that drop all parameters and
+    /// return a typed zero result, if any; their call candidates are still recorded.
+    ///
+    /// # Errors
+    ///
+    /// Propagates errors parsing parameter and return types or required syntax.
     fn parse_function(&mut self) -> Result<(), String> {
         self.expect("fn")?;
         let name = self.parse_ident();
@@ -807,7 +836,9 @@ impl<'a> Parser<'a> {
         
         // Skip any annotation clauses before the body: `effects { ... }`,
         // `cost_bound { ... }`, `requires { ... }`, etc. The body is the
-        // first `{` not preceded by an annotation keyword.
+        // first `{` not preceded by an annotation keyword. The `caps:`
+        // sub-clause of `effects` is kept for the L15 checks.
+        let mut caps = Vec::new();
         loop {
             self.skip_whitespace();
             if self.peek_char('{') {
@@ -815,11 +846,22 @@ impl<'a> Parser<'a> {
             }
             let at = self.pos;
             if at < self.src.len() && (self.src.as_bytes()[at] as char).is_ascii_alphabetic() {
-                let _annotation = self.parse_ident();
+                let annotation = self.parse_ident();
                 self.skip_whitespace();
                 if self.peek_char('{') {
                     self.expect("{")?;
+                    let clause_start = self.pos;
                     self.skip_to_brace_close();
+                    if annotation == "effects" {
+                        let clause_end = self.pos.saturating_sub(1).max(clause_start);
+                        if let Some(found) = self
+                            .src
+                            .get(clause_start..clause_end)
+                            .and_then(crate::caps::caps_clause)
+                        {
+                            caps = found;
+                        }
+                    }
                     continue;
                 }
             }
@@ -873,6 +915,20 @@ impl<'a> Parser<'a> {
                 (Vec::new(), body, Vec::new())
             }
         };
+
+        // L15: every path above has consumed the body through its closing
+        // `}`, so the body text is `body_start..pos`. Its calls are resolved
+        // against this module's functions once the whole module is parsed.
+        let calls = self
+            .src
+            .get(body_start..self.pos)
+            .map(crate::caps::called_names)
+            .unwrap_or_default();
+        self.fn_caps.push(crate::caps::FnCaps {
+            name: name.clone(),
+            caps,
+            calls,
+        });
 
         // Record the function's ownership signature when the source asked
         // for L7/L10 discipline anywhere in it. All-Unrestricted functions
@@ -1412,6 +1468,29 @@ impl<'a> Parser<'a> {
                 self.pos += 1;
             }
         }
+    }
+
+    /// Record a `capability NAME;` declaration for L15 checks, keeping duplicates.
+    /// Declarations whose first identifier is not exactly `capability` (such as
+    /// `capability_x`) are skipped without recording a capability.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the name is missing or the required `;` cannot be parsed.
+    fn parse_capability(&mut self) -> Result<(), String> {
+        let save = self.pos;
+        if self.parse_ident() != "capability" {
+            self.pos = save;
+            self.skip_declaration();
+            return Ok(());
+        }
+        let name = self.parse_ident();
+        if name.is_empty() {
+            return Err(format!("Expected a capability name at position {}", self.pos));
+        }
+        self.expect(";")?;
+        self.capabilities.push(name);
+        Ok(())
     }
 
     fn parse_import(&mut self) -> Result<(), String> {

@@ -219,10 +219,10 @@ and sessionTransitionDecl = {
 //
 // L15-C (call-graph monotonicity) is proven in the Idris2 core
 // (`ResourceCapabilities.idr`: `CallCompatible`, `callCompose`,
-// `callReachesModule`) but surface-level call-graph analysis is
-// deferred — v1.4 ships without it because the current checker doesn't
-// track inter-function calls. When the call-graph check lands, it will
-// piggy-back on this same capability-declaration set.
+// `callReachesModule`). This AffineScript checker does not track
+// inter-function calls; the canonical Rust front-end checks L15-C per call
+// site over the same capability-declaration set
+// (crates/typed-wasm-codegen/src/caps.rs).
 //
 // Reserved-keyword policy: `capability` is NOT globally lexed; the parser
 // recognises it contextually from `Ident("capability")`. The reserved

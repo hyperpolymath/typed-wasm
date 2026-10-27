@@ -26,8 +26,9 @@
  *     `capability` declaration in the enclosing module's scope.
  *   - Checker enforcements: L15-A distinct capability names per module
  *     (top-level or isolated-module body), L15-B function caps ⊆ enclosing
- *     module's declared capability set. Call-graph monotonicity (L15-C) is
- *     proven in the Idris2 core and deferred at the surface checker for v1.4.
+ *     module's declared capability set, L15-C a caller's caps contain the
+ *     caps of every function it calls (per call site; checked by the Rust
+ *     front-end, crates/typed-wasm-codegen/src/caps.rs).
  *   - Idris2 proof artefact: src/abi/TypedWasm/ABI/ResourceCapabilities.idr —
  *     DistinctCaps (L15-A), ContainedIn + containedRefl/containedTrans
  *     (L15-B subset), CallCompatible + callCompose (L15-C monotonicity),

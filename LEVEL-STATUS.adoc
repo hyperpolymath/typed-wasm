@@ -39,10 +39,11 @@ declarations; v1.1 `+caps: { ... }+` sub-clause becomes load-bearing.
 Idris2 proof: ResourceCapabilities.idr (DistinctCaps L15-A, ContainedIn
 + containedTrans L15-B, CallCompatible + callCompose L15-C,
 FullEffectBudget orthogonality with L8). Surface enforcement:
-Checker.checkCapabilities + scope-threaded checkDeclaration. L15-A
-(distinct) + L15-B (well-scoped) live at v1.4; L15-C (call-graph
-monotone) deferred to v1.4.x (proof already carries the theorem). 76/76
-parser tests pass.*
+the canonical Rust front-end (`+typed-wasm-codegen+` `+caps.rs+`,
+ADR-0006) checks L15-A, L15-B and L15-C (per call site, top-level
+module) and refuses violations; `+tests/capabilities.rs+` runs in CI.
+The AffineScript `+Checker.checkCapabilities+` (L15-A + L15-B) is not
+compiled or run in CI.*
 
 |*v1.5* |*L1-10, L13, L14, L15, L16* |*v0.6 sugar* |*+L16 Agent
 choreography:
@@ -203,10 +204,11 @@ that frees peak − drift (`+BoundaryCut+`, `+boundaryOccupancy+`,
 future) |13 parser/Checker tests |*v1.3 — Idris2 proof + surface checker
 live; 007 send/receive lowering DONE (task #7)*
 
-|15 |Resource capabilities |ResourceCapabilities.idr |(future) |13
-parser/Checker tests |*v1.4 — Idris2 proof + surface checker (L15-A +
-L15-B) live; L15-C call-graph check deferred to v1.4.x; 007 lowering
-DONE (task #9)*
+|15 |Resource capabilities |ResourceCapabilities.idr |(future) |10
+front-end tests (`+tests/capabilities.rs+`) |*v1.4 — Idris2 proof +
+front-end checks L15-A, L15-B and L15-C (per call site, top-level
+module); 007 lowering DONE (task #9). Isolated-module bodies and
+cross-module calls are not checked (proposal 0004).*
 
 |16 |Agent choreography |Choreography.idr + KCut.idr |(future) |12 parser/Checker
 tests |*v1.5 — composition proof over L13+L14+L15 live; surface checker

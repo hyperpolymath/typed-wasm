@@ -732,8 +732,10 @@ let checkSession = (s: sessionDecl, m: module_, loc: Lexer.loc): array<diagnosti
 //
 // The Idris2 proof `ResourceCapabilities.idr` carries the full soundness
 // story (call-graph monotonicity L15-C via `CallCompatible` + `callCompose`).
-// Surface call-graph analysis is deferred — v1.4 ships L15-A + L15-B only
-// because the current checker does not track inter-function calls.
+// This checker does not track inter-function calls, so it checks L15-A +
+// L15-B only. L15-C (per call site) is checked by the canonical Rust
+// front-end, crates/typed-wasm-codegen/src/caps.rs, which also checks
+// L15-A and L15-B and runs in CI; this file is not compiled in CI.
 //
 // "Enclosing module" follows the same scoping as L13: inside a
 // `ModuleIsolatedDecl` body, the enclosing module is that isolated module's
