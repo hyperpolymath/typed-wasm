@@ -9,6 +9,27 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== L15-C at the front-end: a caller's caps contain its callee's (2026-10-27)
+
+* The canonical Rust front-end (`typed-wasm-codegen`, ADR-0006) now parses
+  `capability NAME;`, the `caps: { … }` sub-clause of `effects` and the
+  calls in each function body, and refuses a module that breaks L15-A (a
+  capability declared twice), L15-B (a function requires an undeclared
+  capability) or L15-C (a function calls one in the same module whose caps
+  it does not hold). L15-C is checked per call site, as `WellFormedCall`
+  states it; `callCompose` covers chains of calls. A function with no
+  `caps` clause holds no capabilities. New module `src/caps.rs`.
+* Until now the front-end skipped capabilities, and its AffineScript
+  counterpart `Checker.checkCapabilities` (L15-A + L15-B) is not compiled
+  or run in CI. The emitted-wasm verifier checks L15-A and L15-B from the
+  `typedwasm.capabilities` carrier (behind `unstable-l15`); it has no
+  L15-C pass.
+* `tests/capabilities.rs`: one accepted program and a refused program for
+  each rule (10 tests). With the L15-C rule disabled, its four refusal
+  tests fail.
+* Not covered: `module isolated` bodies (the front-end skips them) and
+  calls to imported functions (proposal 0004).
+
 ==== Certificates whose level is their witnesses (2026-10-26)
 
 * `Proofs.idr`: `ProgressiveW n`, a chain holding a witness for every
