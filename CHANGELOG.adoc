@@ -9,6 +9,32 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Certificates whose level is their witnesses (2026-10-26)
+
+* `Proofs.idr`: `ProgressiveW n`, a chain holding a witness for every
+  level from 1 to `n` in order. `StartW` takes level 1 and `AdvanceW`
+  only the next level, so no chain reaches a level while skipping one.
+  `WitnessCertificate`'s highest level was a free `Nat`
+  (`MkWitnessCert [] 15 []` reported 15 while holding no attestation);
+  `chainCert` sets it to the chain's index (`chainCertHighest`).
+* `levelMonotoneW`: a chain at level `n` yields the witness for every
+  level `m` with `1 <= m <= n`. This is PROOF-NEEDS §P3.2's
+  `levelMonotone`, over witnesses, and the "progressive-order" claim A8
+  left as future work.
+* `chainAchievedIn` / `chainCertAchieves`: a chain's certificate claims
+  every such level. `witnessAchievedEntails`: any level a
+  `WitnessCertificate` claims gives that level's `LevelAttestationW`
+  back, so the claim is evidence, not a label.
+* `simpleReadChain`, `fullChain12`, `fullChain15` take the witnesses
+  `simpleReadCert`, `fullCert12` and `fullCert15` take, and keep them.
+  `*Legacy` lemmas (`Refl`) show each projects to the legacy certificate.
+* New rejects `SkippedLevel` (a chain from level 1 to level 3) and
+  `ClaimWithoutWitness` (a claim of level 7 in a certificate with no
+  attestations).
+* Not changed: legacy `ProofCertificate` still exposes `MkAttestation`,
+  so a legacy claim can be written without a witness. The chain does not
+  model `NotApplicable`; a certificate that waives a level stays legacy.
+
 ==== Kernel proofs pinned to Agda 2.6.3 (2026-10-26)
 
 * `ubuntu-latest` moved to Ubuntu 26.04 on 2026-10-19, so the Contract
