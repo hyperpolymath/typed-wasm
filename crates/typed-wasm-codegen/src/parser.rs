@@ -170,6 +170,7 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    /// Create a parser at the start of `src` with no declarations recorded.
     fn new(src: &'a str) -> Self {
         Self {
             src,
@@ -196,6 +197,12 @@ impl<'a> Parser<'a> {
     /// declared instance counts (needed to seed importers in
     /// [`parse_modules`] so their scans iterate the producer's real
     /// instance array).
+    ///
+    /// # Errors
+    ///
+    /// Propagates declaration parsing errors. If parsing completes but
+    /// [`crate::caps::check`] finds L15 violations, returns all its diagnostics
+    /// joined by newlines.
     fn parse_with_instances(mut self) -> Result<(Module, Vec<u64>), String> {
         while self.pos < self.src.len() {
             self.skip_whitespace();
@@ -743,6 +750,13 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Parse and append an exported function, recording ownership and L15 facts.
+    /// Bodies that cannot be lowered become stubs that drop all parameters and
+    /// return a typed zero result, if any; their call candidates are still recorded.
+    ///
+    /// # Errors
+    ///
+    /// Propagates errors parsing parameter and return types or required syntax.
     fn parse_function(&mut self) -> Result<(), String> {
         self.expect("fn")?;
         let name = self.parse_ident();
@@ -1456,9 +1470,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// `capability NAME ;` (L15). `peek_word` lets `capability_x` through
-    /// (it only rules out a following letter), so the whole identifier is
-    /// read before the declaration is taken for one.
+    /// Record a `capability NAME;` declaration for L15 checks, keeping duplicates.
+    /// Declarations whose first identifier is not exactly `capability` (such as
+    /// `capability_x`) are skipped without recording a capability.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the name is missing or the required `;` cannot be parsed.
     fn parse_capability(&mut self) -> Result<(), String> {
         let save = self.pos;
         if self.parse_ident() != "capability" {

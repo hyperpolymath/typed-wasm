@@ -86,9 +86,12 @@ fn tokens(src: &str) -> Vec<Tok> {
     out
 }
 
-/// The names called in a function body: an identifier followed by `(`,
+/// Collect call candidates in source order, retaining repeated names.
+/// A candidate is an identifier followed by `(`,
 /// unless it follows `.`, `$` or `@` (a field, region variable or region
-/// reference, never a function).
+/// reference). Comments and string contents are ignored. Keywords and
+/// unresolved names are included; [`check`] resolves candidates against
+/// the module's functions.
 pub fn called_names(body: &str) -> Vec<String> {
     let toks = tokens(body);
     let mut out = Vec::new();
@@ -110,6 +113,10 @@ pub fn called_names(body: &str) -> Vec<String> {
 /// The `caps: { a, b }` sub-clause inside the text of an `effects { … }`
 /// block (without its outer braces). `None` when the block has no `caps`
 /// sub-clause (the flat `effects { Read, Write }` form).
+/// Only the first `caps: {` is used; names are collected in source order,
+/// retaining duplicates, until a token other than an identifier or comma.
+/// An empty clause returns `Some` with an empty vector; closing braces and
+/// separators are not validated.
 pub fn caps_clause(effects_body: &str) -> Option<Vec<String>> {
     let toks = tokens(effects_body);
     let start = toks.windows(3).position(|w| {
@@ -128,7 +135,10 @@ pub fn caps_clause(effects_body: &str) -> Option<Vec<String>> {
 
 /// Run L15-A, L15-B and L15-C over one module. `declared` lists the
 /// `capability` declarations in source order (duplicates included, so L15-A
-/// can see them). Returns every violation, in source order.
+/// can see them). Returns diagnostic strings grouped by L15-A, L15-B,
+/// then L15-C, preserving input order within each rule; empty on success.
+/// Calls absent from `funcs` are ignored. Each offending call produces one
+/// L15-C diagnostic listing the callee's capabilities missing from the caller.
 pub fn check(declared: &[String], funcs: &[FnCaps]) -> Vec<String> {
     let mut errors = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
