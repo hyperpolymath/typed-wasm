@@ -9,8 +9,10 @@ on:
 
 permissions:
   contents: read
+  # The reusable declares actions: read at workflow level (metadatastician/standards @ e064539).
+  actions: read
 
 jobs:
   mirror:
-    uses: hyperpolymath/standards/.github/workflows/mirror-reusable.yml@da2c748aad55c1a1dcba00b60fe4a35017bc6540
+    uses: metadatastician/standards/.github/workflows/mirror-reusable.yml@e064539116c2dcfdf282a4749dbd58c69961c7e6
     secrets: inherit
