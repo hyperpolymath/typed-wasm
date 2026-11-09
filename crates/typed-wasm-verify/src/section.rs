@@ -95,24 +95,25 @@ const OWNERSHIP_ENTRY_MIN_BYTES: usize = 4 + 1 + 1;
 /// Parse the `typedwasm.ownership` custom-section payload into
 /// structured entries.
 ///
-/// Matches OCaml `Tw_verify.parse_ownership_section_payload` on every
-/// payload whose entry count the payload can actually hold, including
-/// the leniency: an entry cut short yields zeros for its missing bytes
-/// (interpreted as `Unrestricted` kinds and `func_idx = 0`). A properly
-/// emitted section will never be truncated; this leniency is a
+/// Matches OCaml `Tw_verify.parse_ownership_section_payload` for accepted
+/// payloads, including the leniency: trailing fields cut short after a
+/// complete `func_idx` yield zeros for missing bytes (interpreted as
+/// `Unrestricted` kinds). A properly emitted section will never be
+/// truncated; this leniency is a
 /// defence-in-depth choice that preserves cross-impl parity.
 ///
 /// # Errors
 ///
 /// [`CarrierError::CountExceedsPayload`] when the entry count claims more
 /// entries than the remaining bytes can encode (each entry needs at least
-/// 6 bytes), or when a counted entry's `func_idx` is wholly absent because
-/// earlier entries consumed the payload. This is where the Rust port
+/// 6 bytes), or when fewer than four bytes remain for a counted entry's
+/// `func_idx` because earlier entries consumed the payload. This is where
+/// the Rust port
 /// deliberately departs from the OCaml reader: an oversized count is
 /// rejected instead of zero-filling phantom entries, so a hostile module
 /// cannot force an unbounded allocation, and a phantom `func_idx = 0`
 /// entry cannot overwrite a decoded signature. An entry whose `func_idx`
-/// is present but whose later fields are cut short is still zero-filled.
+/// is complete but whose later fields are cut short is still zero-filled.
 pub fn parse_ownership_section_payload(
     payload: &[u8],
 ) -> Result<Vec<OwnershipEntry>, CarrierError> {
@@ -700,6 +701,9 @@ fn read_u16_le(r: &mut LenientReader<'_>) -> u16 {
     u16::from_le_bytes([lo, hi])
 }
 
+/// Read a u32le byte-length-prefixed name, replacing invalid UTF-8 with
+/// replacement characters. Returns [`CarrierError::CountExceedsPayload`]
+/// if the length exceeds the remaining bytes; `section` labels the error.
 #[cfg(any(feature = "unstable-l2", feature = "unstable-l15"))]
 fn read_utf8(r: &mut LenientReader<'_>, section: &'static str) -> Result<String, CarrierError> {
     let len = r.read_u32_le();
@@ -1660,8 +1664,11 @@ pub fn build_region_imports_section_payload(imports: &[RegionImportEntry]) -> Ve
     out
 }
 
-/// LEB128-length-prefixed UTF-8 (proposal 0003 wire format; the regions
-/// codec's `read_utf8`/`write_utf8` use u32le prefixes instead).
+/// Read a LEB128 byte-length-prefixed name (proposal 0003), replacing
+/// invalid UTF-8 with replacement characters. Returns
+/// [`CarrierError::CountExceedsPayload`] if the length exceeds the remaining
+/// bytes; `section` labels the error. The regions codec's
+/// `read_utf8`/`write_utf8` use u32le prefixes instead.
 #[cfg(feature = "unstable-l13-imports")]
 fn read_utf8_leb(r: &mut LenientReader<'_>, section: &'static str) -> Result<String, CarrierError> {
     let len = read_u32_leb128(r);

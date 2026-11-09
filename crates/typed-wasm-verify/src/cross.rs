@@ -37,6 +37,12 @@ use crate::{CrossError, FuncInterface, OwnershipKind, VerifyError, OWNERSHIP_SEC
 /// the ownership section are treated as fully `Unrestricted`.
 ///
 /// Rust port of OCaml `Tw_interface.extract_exports`.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// ownership counts or incomplete function indices as
+/// [`VerifyError::MalformedCarrier`].
 pub fn extract_exports(wasm_bytes: &[u8]) -> Result<Vec<FuncInterface>, VerifyError> {
     let mut ownership_payload: Option<Vec<u8>> = None;
     let mut func_exports: Vec<(String, u32)> = Vec::new();

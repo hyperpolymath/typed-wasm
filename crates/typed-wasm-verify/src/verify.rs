@@ -273,6 +273,13 @@ pub fn verify_function(
 /// section. Modules without the section verify trivially.
 ///
 /// Rust port of OCaml `Tw_verify.verify_from_module`.
+///
+/// # Errors
+///
+/// Returns [`VerifyError::Parse`] for module or inspected-body decoding
+/// errors, [`VerifyError::MalformedCarrier`] for rejected ownership counts
+/// or incomplete function indices, and [`VerifyError::Ownership`] for
+/// collected ownership and module-isolation violations.
 pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
     // First pass: locate the ownership section (if any) and collect
     // every function body alongside its global function index.
@@ -904,6 +911,15 @@ fn function_count(wasm_bytes: &[u8]) -> Result<u32, VerifyError> {
     Ok(import_count + local_count)
 }
 
+/// Check function and capability indices in `typedwasm.capabilities`.
+/// Returns all index violations; an absent section or unsupported version
+/// yields an empty list. Required capability lists are sorted and
+/// deduplicated by the codec before checking.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// carrier counts or name lengths as [`VerifyError::MalformedCarrier`].
 #[cfg(feature = "unstable-l15")]
 pub fn verify_capabilities_from_module(
     wasm_bytes: &[u8],
@@ -972,6 +988,18 @@ use crate::{
     REGIONS_SECTION_NAME,
 };
 
+/// Check the function, region and field indices in `typedwasm.access-sites`.
+/// Returns all index violations without checking instruction offsets.
+/// An absent access-sites section yields an empty list. Missing or
+/// unsupported regions yield [`AccessSiteError::MissingDependentRegions`];
+/// with supported regions, an unsupported access-sites version yields an
+/// empty list.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// counts or name lengths in decoded carriers as
+/// [`VerifyError::MalformedCarrier`].
 #[cfg(feature = "unstable-l2")]
 pub fn verify_access_sites_from_module(
     wasm_bytes: &[u8],
@@ -1208,8 +1236,10 @@ enum OpProbe {
 /// `FunctionBody::range` starts at that same byte, so the relative
 /// position of each operator is `absolute_offset - range.start`.
 ///
-/// Streams the whole body once without allocating the operator list. It
-/// records the operator at the offset but keeps decoding to the end and
+/// An offset at or past the body length returns `PastEnd` without decoding.
+/// For an in-range offset, streams the whole body once without allocating
+/// the operator list. It records the operator at the offset but keeps
+/// decoding to the end and
 /// then checks for trailing bytes, so a malformed instruction anywhere in
 /// the body is a decode error rather than being hidden behind a
 /// well-typed pinned site.
@@ -1239,6 +1269,22 @@ fn probe_op_at(body: FunctionBody<'_>, byte_offset: u32) -> Result<OpProbe, Bina
     Ok(found)
 }
 
+/// Check pinned access sites against scalar field types, widths and offsets.
+/// Pinned offsets count bytes from the start of the function's locals
+/// vector (ADR-0003) and must identify the start of a matching load/store
+/// whose static offset and extent agree with the region schema.
+/// Returns successful and declared-only counts plus site violations;
+/// declared-only sites are counted without validation. An absent companion
+/// section yields an empty report. With both sections present, an unsupported
+/// version yields an empty report unless either codec returns an error.
+/// Run [`verify_access_sites_from_module`] as well to check carrier
+/// dependencies and indices.
+///
+/// # Errors
+///
+/// Propagates module and inspected-body decoding errors as
+/// [`VerifyError::Parse`], and rejected carrier counts or name lengths as
+/// [`VerifyError::MalformedCarrier`]. Site violations stay in the report.
 #[cfg(feature = "unstable-l2")]
 pub fn verify_access_typing_from_module(
     wasm_bytes: &[u8],
@@ -2035,6 +2081,16 @@ pub const TARGET_REGION_IMPORT_BIT: u32 = 0x8000_0000;
 /// `typedwasm.region-imports`. Returns the parsed import table (empty
 /// when the section is absent) plus every violation found; cross-module
 /// agreement is `verify_link_graph`'s job.
+/// An unsupported imports version returns an empty table with
+/// [`RegionImportsError::UnparseableSection`]. Missing or unsupported
+/// regions are reported as [`RegionImportsError::MissingDependentRegions`].
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// counts or name lengths in decoded carriers as
+/// [`VerifyError::MalformedCarrier`]. Consistency violations stay in the
+/// returned list.
 #[cfg(feature = "unstable-l13-imports")]
 pub fn verify_region_imports_from_module(
     wasm_bytes: &[u8],
@@ -2127,6 +2183,16 @@ pub fn verify_region_imports_from_module(
 /// Whole-link-graph L13 pass: per-module internal consistency, then
 /// `SchemaSub expected actual` for every import against the named
 /// producer's `typedwasm.regions` export. Subset imports are agreement.
+/// Each input pairs a module name used for producer lookup with its bytes.
+/// Returns compatibility certificates and collected consistency or schema
+/// violations. An absent or unsupported producer regions section cannot
+/// resolve imports and produces `UnresolvedProducerModule` violations.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// carrier counts or name lengths as [`VerifyError::MalformedCarrier`],
+/// including errors from [`verify_region_imports_from_module`].
 #[cfg(feature = "unstable-l13-imports")]
 pub fn verify_link_graph(modules: &[(&str, &[u8])]) -> Result<LinkGraphReport, VerifyError> {
     let mut report = LinkGraphReport::default();
