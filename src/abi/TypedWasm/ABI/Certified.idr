@@ -27,8 +27,10 @@
 --     (`subjFieldTy`), and L3 relates that type to the access type
 --     (`subjAccessTy`).  Reading an I32 field at F64 has no L3 witness
 --     (tests/reject/AccessAtWrongType.idr).
---   * L4 and L7 are about the subject's schema: a pointer into another
---     region does not fit (tests/reject/ForeignPointer.idr).
+--   * L4 and L7 are indexed by the subject's schema: a pointer whose schema
+--     differs does not fit (tests/reject/ForeignPointer.idr). The index is
+--     the schema, not the region, so two regions with the same schema are
+--     not told apart.
 --   * L5 is about the subject's index and count (tests/reject/
 --     CertifiedOutOfBounds.idr), and L6 returns the subject's access type.
 --

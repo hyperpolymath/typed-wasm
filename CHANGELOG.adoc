@@ -31,7 +31,8 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
   simple-read certificate forgets to `simpleReadChain`. `exampleCertified`
   inhabits the type.
 * New expected rejections: `AccessAtWrongType` (an I32 field read at F64),
-  `ForeignPointer` (an L4 pointer into another region),
+  `ForeignPointer` (an L4 pointer into a region with a different schema;
+  regions that share a schema are not told apart),
   `CertifiedOutOfBounds` (instance 1 of a one-instance region).
 * Not changed: each level is as strong as its witness type. L7
   (`ExclusiveWitness`, a scope name) and L10 (`CompletedProtocol`, any

@@ -3,9 +3,9 @@
 --
 -- MUST FAIL (tools/check-kernel-proofs.sh).
 --
--- A non-null pointer into a different region (one F32 field "y") offered as
--- the L4 witness for an access to the region with the I32 field "x".  The
--- subject-free `AttestL4W` took a pointer into any schema.
+-- A non-null pointer into a region with a different schema (one F32 field
+-- "y") offered as the L4 witness for an access to the region with the I32
+-- field "x".  The subject-free `AttestL4W` took a pointer into any schema.
 -- EXPECT: Mismatch between: F32 and I32
 module ForeignPointer
 
@@ -28,7 +28,7 @@ subject = MkSubject [MkField "x" I32] "x" I32 I32 Owning Levels.Static 0 1
                     [] [] Lifetime.Static Lifetime.Static 0 0
                     (MkProtocol (MkSessionId "p") [] [] Nothing) emptyModuleCaps
 
-||| A pointer into another region.
+||| A pointer into a region with a different schema.
 other : Pointer.Ptr Owning [MkField "y" F32] Levels.Static NonNull
 other = MkPtr 64
 
