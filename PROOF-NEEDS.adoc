@@ -5,6 +5,37 @@ typed-wasm’s formal verification. Read this file in full before touching
 `+src/abi/TypedWasm/ABI/*.idr+`. Written 2026-04-13 by the dual-AST /
 parser-panic cleanup Claude after a targeted audit.
 
+=== CURRENT STATE 2026-11-09 (read this first; supersedes the 2026-04-13 summary below)
+
+____
+*The ledger is `LEVEL-STATUS.adoc`.* This file is a handoff log: the
+dated banners below record what each session found, and the oldest
+summary no longer describes the tree.
+
+* *Certificates.* The 2026-04-13 finding that `Proofs.idr` "rubber-stamps
+  attestations without using their witnesses" is closed in three steps:
+  witness-carrying `LevelAttestationW` (A7-A12, PR #80), the `ProgressiveW`
+  chain with a witness for every level 1..n (#279), and `Certified.idr`
+  (2026-11-09), where every witness is about one `Subject` (the access) so
+  a certificate says something about its access (`certFieldTyped`,
+  `certPointer`, `certInBounds`, `certResult`). The legacy and
+  `ProgressiveW` forms remain and keep the gap `Certified.idr` closes.
+* *Since the last banner (2026-06-16):* the PWL-01 grade kernel
+  (`ResourceAlgebra*.idr`, transcribed from resource-algebra), L13
+  occupancy (`Occupancy.idr`, from occupancy-types), L16 K-CUT-LOSS
+  (`KCut.idr`, from choreographic-types), and L15-A/B/C in the Rust
+  front-end (#281). The re-proofs are PROVEN in Idris2; their
+  correspondence to the Agda sources is ASSUMED (port-and-reprove), and the
+  kernel's operation tables are TESTED against Agda by `refl`.
+* *Gate:* `tools/check-kernel-proofs.sh` (build, every
+  `tests/reject/*.idr` refused at its `invalid` declaration with its
+  expected message, the transcription table, negative controls) and
+  `tests/proof/regression.mjs --strict`.
+* *Open, as recorded:* the L13 binding is not linked to `memory.grow`;
+  the T4 layout lemma and the T5a/T5b verifier tie-backs are as the
+  2026-06-16 banner left them (not rechecked in this pass).
+____
+
 === The one-line honest summary
 
 typed-wasm has *eleven Idris2 files encoding a safety protocol using QTT

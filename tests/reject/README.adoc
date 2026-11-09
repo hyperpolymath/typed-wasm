@@ -24,6 +24,9 @@ because then the control proves nothing.
 | `InconsistentCut` | K-CUT-LOSS without the Consistent side-condition (choreographic-types K-7)
 | `SkippedLevel` | a certificate chain that jumps from level 1 to level 3, skipping level 2
 | `ClaimWithoutWitness` | a witness certificate claiming level 7 with no attestations, on the strength of its highest-level field alone
+| `AccessAtWrongType` | a certificate about one access whose L3 lets it read the I32 field "x" at F64
+| `ForeignPointer` | a certificate about one access whose L4 pointer points into a different region
+| `CertifiedOutOfBounds` | a certificate about one access whose L5 calls instance 1 of a one-instance region in bounds
 |===
 
 `HWMAnnihilates`, `LossWorstCase`, `DriftExceedsPeak` and `MinMaxIsLoss` mirror resource-algebra

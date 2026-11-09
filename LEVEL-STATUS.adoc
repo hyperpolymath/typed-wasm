@@ -372,7 +372,31 @@ subsuming the A9 family. *`+WitnessCertificate+` lift 2026-05-27 (PR
 `+record WitnessCertificate+` mirror of `+ProofCertificate+` with
 witness-carrying levels, `+witnessToLegacy+` bridge, `+composeWitness+`
 mirror, `+composeWitnessLegacyAgree+` compat lemma, `+WitnessAchieved+`
-predicate.
+predicate. *`+ProgressiveW+` 2026-10-26 (#279)*: a chain holding a witness for
+every level 1..n in order (`+levelMonotoneW+`, `+witnessAchievedEntails+`).
+*Limit, found 2026-11-09:* every witness in these certificates hides what
+it is about, so one certificate can mix witnesses about unrelated things,
+and L1 (any `+Schema+`), L3 (`+TypeCompat+` at one type), L5
+(`+zeroInBounds+`) and L6 (any value) hold of any program. "Cannot be
+constructed without real proof artefacts" holds; the artefacts need not
+be about one access. `+Certified.idr+` is the form without that gap;
+the legacy and `+ProgressiveW+` forms keep it.
+
+|Certified.idr |0 |0 |0 |In package (2026-11-09). Certificates about one
+access: `+Attest s n+` is a level-n witness about the `+Subject+` s
+(schema, field, field type, access type, pointer, index and count, and
+the function- and program-level facts of L8-L15), and `+Certified s n+` a
+chain of them. PROVEN (`+idris2 --build+`): `+certMonotone+`,
+`+certMonotoneForget+`, `+certFieldTyped+` (a level-3 certificate says the
+access reads a field of its schema at that field's declared type),
+`+certPointer+`, `+certInBounds+`, `+certResult+`, and
+`+simpleReadCertifiedForget+` (forgetting the subject gives
+`+simpleReadChain+`). `+exampleCertified+` inhabits the type. TESTED:
+`+tests/reject/{AccessAtWrongType,ForeignPointer,CertifiedOutOfBounds}.idr+`.
+Unchanged: each level is as strong as its witness type (L7 a scope name,
+L10 any `+FreeResult+`; L12 and L13 are not indexed by the subject).
+Not proved: that a `+Subject+` describes the program (its schema is the
+region's, its count the instance count); that is the producer's claim.
 
 |Tropical.idr |0 |0 |0 |In package (A1, 2026-04-18). PWL-01 (2026-10-14):
 min-plus drawn from the grade kernel (`+TropCost = LossGrade+`); laws

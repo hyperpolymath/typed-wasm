@@ -9,6 +9,41 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Certificates about one access (2026-11-09)
+
+* New module `Certified.idr`. Every witness in a `ProgressiveW` chain hides
+  what it is about in an implicit argument, so one chain could hold
+  witnesses about unrelated things, and L1 (any `Schema`), L3 (`TypeCompat`
+  at one type), L5 (`zeroInBounds`) and L6 (any value) hold of any program.
+  `witnessAchievedEntails` therefore returned a witness for *some* object.
+* `Subject` names the access (schema, field, field type, access type,
+  pointer kind and lifetime, index and count) and the function- and
+  program-level facts of L8-L15. `Attest s n` is a level-n witness about
+  `s`; `Certified s n` is a chain of them, so every level of one certificate
+  speaks about the same access. L2 fixes the field's declared type and L3
+  relates it to the access type.
+* Theorems: `certMonotone`, `certMonotoneForget` (agrees with
+  `levelMonotoneW` after forgetting), and what a certificate says about its
+  access: `certFieldTyped` (from level 3: the access reads a field of its
+  schema at that field's declared type), `certPointer`, `certInBounds`,
+  `certResult`. `forget` / `forgetChain` give back the `LevelAttestationW` /
+  `ProgressiveW` forms, and `simpleReadCertifiedForget` shows the
+  simple-read certificate forgets to `simpleReadChain`. `exampleCertified`
+  inhabits the type.
+* New expected rejections: `AccessAtWrongType` (an I32 field read at F64),
+  `ForeignPointer` (an L4 pointer into another region),
+  `CertifiedOutOfBounds` (instance 1 of a one-instance region).
+* Not changed: each level is as strong as its witness type. L7
+  (`ExclusiveWitness`, a scope name) and L10 (`CompletedProtocol`, any
+  `FreeResult`) stay weak, and L12 and L13 are not indexed by the subject.
+  The legacy and `ProgressiveW` certificates are unchanged and keep the gap.
+* Not proved: that a `Subject` describes the program. That its schema is the
+  region's and its count the region's instance count is the claim of whoever
+  builds it (producer or verifier); `Certified.idr` checks the certificate
+  against the subject, not the subject against the program.
+* `PROOF-NEEDS.adoc`: a dated banner replaces the 2026-04-13 summary as the
+  current state.
+
 ==== L15-C at the front-end: a caller's caps contain its callee's (2026-10-27)
 
 * The canonical Rust front-end (`typed-wasm-codegen`, ADR-0006) now parses
