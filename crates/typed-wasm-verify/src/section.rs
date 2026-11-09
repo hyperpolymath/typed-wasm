@@ -33,32 +33,111 @@ pub struct OwnershipEntry {
     pub ret_kind: OwnershipKind,
 }
 
+/// A carrier payload that is structurally impossible: a wire count (or
+/// length prefix) claims more items than the bytes left in the payload
+/// could encode, even if every item took its minimum wire size.
+///
+/// Every `typedwasm.*` codec reads counts from untrusted input. Before
+/// this bound, a payload whose count was `0xFFFF_FFFF` made the lenient
+/// reader zero-fill four billion phantom entries (and, at the
+/// `with_capacity` sites, ask for the whole allocation up front — a
+/// ~137 GB request for the ownership carrier). The bound is necessary,
+/// not heuristic: an item cannot occupy fewer than `min_item_bytes`
+/// bytes, so `count > remaining / min_item_bytes` can only come from a
+/// truncated or hostile payload. Leniency *within* an item (a short read
+/// zero-fills the item's trailing fields) is unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CarrierError {
+    #[error("malformed {section} carrier: {field} = {count} exceeds what the remaining {remaining} payload byte(s) can encode (each item needs at least {min_item_bytes} byte(s))")]
+    CountExceedsPayload {
+        /// Custom-section name, e.g. `typedwasm.ownership`.
+        section: &'static str,
+        /// The wire field holding the count, e.g. `entry_count`.
+        field: &'static str,
+        /// The count read from the wire.
+        count: u32,
+        /// Payload bytes left after the count itself was read.
+        remaining: usize,
+        /// The smallest wire size one counted item can have.
+        min_item_bytes: usize,
+    },
+}
+
+/// Accept `count` only if `count * min_item_bytes <= r.remaining()`.
+/// Returns the count as a `usize` suitable for `with_capacity`; the
+/// resulting allocation is bounded by the payload length.
+fn bounded_count(
+    r: &LenientReader<'_>,
+    count: u32,
+    min_item_bytes: usize,
+    section: &'static str,
+    field: &'static str,
+) -> Result<usize, CarrierError> {
+    let count_usize = count as usize;
+    let remaining = r.remaining();
+    // `min_item_bytes` is a small positive constant at every call site.
+    if count_usize > remaining / min_item_bytes.max(1) {
+        return Err(CarrierError::CountExceedsPayload {
+            section,
+            field,
+            count,
+            remaining,
+            min_item_bytes,
+        });
+    }
+    Ok(count_usize)
+}
+
+/// Minimum wire size of one ownership entry: `u32le func_idx` +
+/// `u8 n_params` + `u8 ret_kind` (zero params).
+const OWNERSHIP_ENTRY_MIN_BYTES: usize = 4 + 1 + 1;
+
 /// Parse the `typedwasm.ownership` custom-section payload into
 /// structured entries.
 ///
-/// Matches OCaml `Tw_verify.parse_ownership_section_payload` exactly,
-/// including the leniency: a truncated payload yields zeros for the
-/// missing bytes (interpreted as `Unrestricted` kinds and `func_idx = 0`).
-/// A properly-emitted section will never be truncated; this leniency is
-/// a defence-in-depth choice that preserves cross-impl parity.
-pub fn parse_ownership_section_payload(payload: &[u8]) -> Vec<OwnershipEntry> {
+/// Matches OCaml `Tw_verify.parse_ownership_section_payload` on every
+/// payload whose entry count the payload can actually hold, including
+/// the leniency: an entry cut short yields zeros for its missing bytes
+/// (interpreted as `Unrestricted` kinds and `func_idx = 0`). A properly
+/// emitted section will never be truncated; this leniency is a
+/// defence-in-depth choice that preserves cross-impl parity.
+///
+/// # Errors
+///
+/// [`CarrierError::CountExceedsPayload`] when the entry count claims more
+/// entries than the remaining bytes can encode (each entry needs at least
+/// 6 bytes). This is where the Rust port deliberately departs from the
+/// OCaml reader: an oversized count is rejected instead of zero-filling
+/// phantom entries, so a hostile module cannot force an unbounded
+/// allocation.
+pub fn parse_ownership_section_payload(
+    payload: &[u8],
+) -> Result<Vec<OwnershipEntry>, CarrierError> {
     let mut r = LenientReader::new(payload);
     let count = r.read_u32_le();
-    (0..count)
-        .map(|_| {
-            let func_idx = r.read_u32_le();
-            let n_params = r.read_u8();
-            let param_kinds = (0..n_params)
-                .map(|_| OwnershipKind::from_byte(r.read_u8()))
-                .collect();
-            let ret_kind = OwnershipKind::from_byte(r.read_u8());
-            OwnershipEntry {
-                func_idx,
-                param_kinds,
-                ret_kind,
-            }
-        })
-        .collect()
+    let count = bounded_count(
+        &r,
+        count,
+        OWNERSHIP_ENTRY_MIN_BYTES,
+        "typedwasm.ownership",
+        "count",
+    )?;
+    let mut entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        let func_idx = r.read_u32_le();
+        // n_params is a u8, so this inner allocation is at most 255.
+        let n_params = r.read_u8();
+        let param_kinds = (0..n_params)
+            .map(|_| OwnershipKind::from_byte(r.read_u8()))
+            .collect();
+        let ret_kind = OwnershipKind::from_byte(r.read_u8());
+        entries.push(OwnershipEntry {
+            func_idx,
+            param_kinds,
+            ret_kind,
+        });
+    }
+    Ok(entries)
 }
 
 /// Encode entries to the `typedwasm.ownership` custom-section
@@ -110,6 +189,12 @@ impl<'a> LenientReader<'a> {
         Self { buf, pos: 0 }
     }
 
+    /// Bytes not yet consumed. Used to bound wire counts before any
+    /// allocation or loop is sized by them.
+    fn remaining(&self) -> usize {
+        self.buf.len().saturating_sub(self.pos)
+    }
+
     fn read_u32_le(&mut self) -> u32 {
         if self.pos + 4 > self.buf.len() {
             return 0;
@@ -144,19 +229,22 @@ mod tests {
 
     #[test]
     fn empty_payload_yields_no_entries() {
-        assert_eq!(parse_ownership_section_payload(&[]), vec![]);
+        assert_eq!(parse_ownership_section_payload(&[]).unwrap(), vec![]);
     }
 
     #[test]
     fn count_zero_yields_no_entries() {
-        assert_eq!(parse_ownership_section_payload(&[0, 0, 0, 0]), vec![]);
+        assert_eq!(
+            parse_ownership_section_payload(&[0, 0, 0, 0]).unwrap(),
+            vec![]
+        );
     }
 
     #[test]
     fn single_entry_no_params() {
         // count=1, func_idx=7, n_params=0, ret_kind=0
         let payload = [1, 0, 0, 0, 7, 0, 0, 0, 0, 0];
-        let parsed = parse_ownership_section_payload(&payload);
+        let parsed = parse_ownership_section_payload(&payload).unwrap();
         assert_eq!(parsed, vec![entry(7, vec![], Unrestricted)]);
     }
 
@@ -164,7 +252,7 @@ mod tests {
     fn single_entry_with_all_kinds() {
         // count=1, func_idx=42, n_params=4, params=[Linear, Unrestricted, ExclBorrow, SharedBorrow], ret=Linear
         let payload = [1, 0, 0, 0, 42, 0, 0, 0, 4, 1, 0, 3, 2, 1];
-        let parsed = parse_ownership_section_payload(&payload);
+        let parsed = parse_ownership_section_payload(&payload).unwrap();
         assert_eq!(
             parsed,
             vec![entry(
@@ -183,7 +271,7 @@ mod tests {
             entry(99, vec![], SharedBorrow),
         ];
         let bytes = build_ownership_section_payload(&entries);
-        assert_eq!(parse_ownership_section_payload(&bytes), entries);
+        assert_eq!(parse_ownership_section_payload(&bytes).unwrap(), entries);
     }
 
     #[test]
@@ -191,25 +279,58 @@ mod tests {
         // Matches OCaml `kind_of_byte` fallback for cross-impl parity.
         // count=1, func_idx=0, n_params=1, param=99, ret=200
         let payload = [1, 0, 0, 0, 0, 0, 0, 0, 1, 99, 200];
-        let parsed = parse_ownership_section_payload(&payload);
+        let parsed = parse_ownership_section_payload(&payload).unwrap();
         assert_eq!(parsed, vec![entry(0, vec![Unrestricted], Unrestricted)]);
     }
 
     #[test]
-    fn truncated_payload_reads_zeros_past_end() {
-        // count=2, but only one entry's worth of bytes follows.
-        // Matches OCaml leniency (returns 0 for short reads).
-        // count=2, then func_idx=5, n_params=1, param=1 (Linear), ret=2 (SharedBorrow)
-        // ... then nothing — second entry should read all zeros.
-        let payload = [2, 0, 0, 0, 5, 0, 0, 0, 1, 1, 2];
-        let parsed = parse_ownership_section_payload(&payload);
+    fn truncated_entry_reads_zeros_past_end() {
+        // Leniency WITHIN an entry is kept (OCaml parity): count=2 and
+        // 12 bytes follow (enough for two minimum-size entries), but the
+        // second entry is cut before its ret_kind, which reads as zero.
+        // entry 1: func_idx=5, n_params=1, param=1 (Linear), ret=2 (SharedBorrow)
+        // entry 2: func_idx=9, n_params=0, then nothing (ret_kind missing).
+        let payload = [2, 0, 0, 0, 5, 0, 0, 0, 1, 1, 2, 9, 0, 0, 0, 0];
+        let parsed = parse_ownership_section_payload(&payload).unwrap();
         assert_eq!(
             parsed,
             vec![
                 entry(5, vec![Linear], SharedBorrow),
-                entry(0, vec![], Unrestricted), // zero-filled
+                entry(9, vec![], Unrestricted), // trailing fields zero-filled
             ]
         );
+    }
+
+    #[test]
+    fn count_beyond_payload_capacity_is_rejected() {
+        // count=2, but only 7 bytes follow; two entries need at least
+        // 12. Rejected, not zero-filled.
+        let payload = [2, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0];
+        assert_eq!(
+            parse_ownership_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                section: "typedwasm.ownership",
+                field: "count",
+                count: 2,
+                remaining: 7,
+                min_item_bytes: 6,
+            })
+        );
+    }
+
+    #[test]
+    fn hostile_max_count_is_rejected_without_allocating() {
+        // count = 0xFFFF_FFFF with an empty body. Before the bound this
+        // asked for a ~137 GB Vec and aborted the process.
+        let payload = [0xFF, 0xFF, 0xFF, 0xFF];
+        assert!(matches!(
+            parse_ownership_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                count: u32::MAX,
+                remaining: 0,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -217,7 +338,7 @@ mod tests {
         let entries: Vec<OwnershipEntry> = vec![];
         let bytes = build_ownership_section_payload(&entries);
         assert_eq!(bytes, vec![0, 0, 0, 0]);
-        assert_eq!(parse_ownership_section_payload(&bytes), entries);
+        assert_eq!(parse_ownership_section_payload(&bytes).unwrap(), entries);
     }
 
     #[test]
@@ -230,7 +351,7 @@ mod tests {
             entry(3, vec![SharedBorrow], Unrestricted),
         ];
         let bytes = build_ownership_section_payload(&entries);
-        let parsed = parse_ownership_section_payload(&bytes);
+        let parsed = parse_ownership_section_payload(&bytes).unwrap();
         assert_eq!(parsed, entries);
     }
 
@@ -425,26 +546,48 @@ pub struct RegionEntry {
     pub region_byte_size: u32,
 }
 
-/// Parse the `typedwasm.regions` custom-section payload. Lenient on
-/// truncation (matches the ownership codec): a short read returns zero
-/// bytes, which round-trip to "no further regions/fields" rather than
-/// erroring. The reader stops if `version != REGIONS_SECTION_VERSION` —
-/// future major bumps belong in a new public API.
+/// Minimum wire size of one region: `u32le name_len` + `u32le
+/// field_count` + `u32le region_byte_size` (empty name, no fields).
 #[cfg(feature = "unstable-l2")]
-pub fn parse_regions_section_payload(payload: &[u8]) -> Option<Vec<RegionEntry>> {
+const REGION_MIN_BYTES: usize = 4 + 4 + 4;
+
+/// Minimum wire size of one field: `u32le name_len` + `u8 kind` +
+/// `u8 wasm_ty` + `u32le target_region` + `u8 nullability` + `u32le
+/// cardinality` (empty name).
+#[cfg(feature = "unstable-l2")]
+const FIELD_MIN_BYTES: usize = 4 + 1 + 1 + 4 + 1 + 4;
+
+/// Parse the `typedwasm.regions` custom-section payload, distinguishing
+/// an unsupported version (`Ok(None)`) from a structurally impossible
+/// payload (`Err`). Lenient on truncation *within* an item (matches the
+/// ownership codec): a short read returns zero bytes. Counts and name
+/// lengths are bounded by the bytes remaining (see [`CarrierError`]).
+///
+/// # Errors
+///
+/// [`CarrierError::CountExceedsPayload`] when `region_count`, a
+/// `field_count`, or a name length claims more than the remaining bytes
+/// can encode.
+#[cfg(feature = "unstable-l2")]
+pub fn try_parse_regions_section_payload(
+    payload: &[u8],
+) -> Result<Option<Vec<RegionEntry>>, CarrierError> {
+    const SECTION: &str = "typedwasm.regions";
     let mut r = LenientReader::new(payload);
     let version = read_u16_le(&mut r);
     if version != REGIONS_SECTION_VERSION {
-        return None;
+        return Ok(None);
     }
     let region_count = r.read_u32_le();
-    let mut regions = Vec::with_capacity(region_count as usize);
+    let region_count = bounded_count(&r, region_count, REGION_MIN_BYTES, SECTION, "region_count")?;
+    let mut regions = Vec::with_capacity(region_count);
     for _ in 0..region_count {
-        let name = read_utf8(&mut r);
+        let name = read_utf8(&mut r, SECTION)?;
         let field_count = r.read_u32_le();
-        let mut fields = Vec::with_capacity(field_count as usize);
+        let field_count = bounded_count(&r, field_count, FIELD_MIN_BYTES, SECTION, "field_count")?;
+        let mut fields = Vec::with_capacity(field_count);
         for _ in 0..field_count {
-            let field_name = read_utf8(&mut r);
+            let field_name = read_utf8(&mut r, SECTION)?;
             let kind = FieldKind::from_byte(r.read_u8());
             let wasm_ty = WasmTy::from_byte(r.read_u8());
             let target_region = r.read_u32_le();
@@ -466,7 +609,18 @@ pub fn parse_regions_section_payload(payload: &[u8]) -> Option<Vec<RegionEntry>>
             region_byte_size,
         });
     }
-    Some(regions)
+    Ok(Some(regions))
+}
+
+/// Parse the `typedwasm.regions` custom-section payload. `None` when
+/// `version != REGIONS_SECTION_VERSION` (future major bumps belong in a
+/// new public API) **or** when the payload is malformed (a count or name
+/// length exceeds the remaining bytes). Verifier passes call
+/// [`try_parse_regions_section_payload`] so the two cases stay distinct
+/// and a malformed payload is reported as an error, not skipped.
+#[cfg(feature = "unstable-l2")]
+pub fn parse_regions_section_payload(payload: &[u8]) -> Option<Vec<RegionEntry>> {
+    try_parse_regions_section_payload(payload).ok().flatten()
 }
 
 /// Encode regions to the `typedwasm.regions` payload format.
@@ -510,8 +664,9 @@ fn read_u16_le(r: &mut LenientReader<'_>) -> u16 {
 }
 
 #[cfg(any(feature = "unstable-l2", feature = "unstable-l15"))]
-fn read_utf8(r: &mut LenientReader<'_>) -> String {
-    let len = r.read_u32_le() as usize;
+fn read_utf8(r: &mut LenientReader<'_>, section: &'static str) -> Result<String, CarrierError> {
+    let len = r.read_u32_le();
+    let len = bounded_count(r, len, 1, section, "name_len")?;
     let mut bytes = Vec::with_capacity(len);
     for _ in 0..len {
         bytes.push(r.read_u8());
@@ -519,7 +674,7 @@ fn read_utf8(r: &mut LenientReader<'_>) -> String {
     // Producers MUST emit valid UTF-8; lenient policy here is to drop
     // bad bytes rather than fail the whole section parse (matches the
     // truncation-tolerant style of the ownership codec).
-    String::from_utf8_lossy(&bytes).into_owned()
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 #[cfg(any(feature = "unstable-l2", feature = "unstable-l15"))]
@@ -678,6 +833,56 @@ mod regions_tests {
     }
 
     #[test]
+    fn hostile_counts_are_rejected_without_allocating() {
+        // region_count = 0xFFFF_FFFF, nothing else.
+        let mut payload = REGIONS_SECTION_VERSION.to_le_bytes().to_vec();
+        payload.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(parse_regions_section_payload(&payload), None);
+        assert!(matches!(
+            try_parse_regions_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                section: "typedwasm.regions",
+                field: "region_count",
+                count: u32::MAX,
+                ..
+            })
+        ));
+
+        // A plausible region whose field_count is 0xFFFF_FFFF.
+        let mut payload = REGIONS_SECTION_VERSION.to_le_bytes().to_vec();
+        payload.extend_from_slice(&1u32.to_le_bytes()); // region_count
+        payload.extend_from_slice(&0u32.to_le_bytes()); // name_len
+        payload.extend_from_slice(&u32::MAX.to_le_bytes()); // field_count
+        payload.extend_from_slice(&0u32.to_le_bytes()); // region_byte_size
+        assert!(matches!(
+            try_parse_regions_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                field: "field_count",
+                ..
+            })
+        ));
+
+        // A name whose length prefix is 0xFFFF_FFFF.
+        let mut payload = REGIONS_SECTION_VERSION.to_le_bytes().to_vec();
+        payload.extend_from_slice(&1u32.to_le_bytes()); // region_count
+        payload.extend_from_slice(&u32::MAX.to_le_bytes()); // name_len
+        payload.extend_from_slice(&[0u8; 8]); // field_count + region_byte_size
+        assert!(matches!(
+            try_parse_regions_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                field: "name_len",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn unsupported_version_is_ok_none_not_an_error() {
+        let payload = [9u8, 0, 0, 0, 0, 0];
+        assert_eq!(try_parse_regions_section_payload(&payload), Ok(None));
+    }
+
+    #[test]
     fn enum_byte_roundtrip() {
         for (b, k) in [
             (0, FieldKind::Scalar),
@@ -746,30 +951,49 @@ pub struct FunctionCapabilities {
     pub required: Vec<u32>,
 }
 
-/// Parse the `typedwasm.capabilities` custom-section payload.
-/// `parse(build(x)) == Some(x_normalised)` where `x_normalised` has
-/// each function's `required` sorted and deduped.
+/// Parsed capabilities carrier: the capability table plus per-function
+/// requirements.
 #[cfg(feature = "unstable-l15")]
-pub fn parse_capabilities_section_payload(
+pub type CapabilitiesPayload = (Vec<CapabilityEntry>, Vec<FunctionCapabilities>);
+
+/// Parse the `typedwasm.capabilities` custom-section payload,
+/// distinguishing an unsupported version (`Ok(None)`) from a
+/// structurally impossible payload (`Err`). Counts and name lengths are
+/// bounded by the bytes remaining (see [`CarrierError`]).
+///
+/// # Errors
+///
+/// [`CarrierError::CountExceedsPayload`] when `capability_count`,
+/// `function_count`, a `required_count`, or a name length claims more
+/// than the remaining bytes can encode.
+#[cfg(feature = "unstable-l15")]
+pub fn try_parse_capabilities_section_payload(
     payload: &[u8],
-) -> Option<(Vec<CapabilityEntry>, Vec<FunctionCapabilities>)> {
+) -> Result<Option<CapabilitiesPayload>, CarrierError> {
+    const SECTION: &str = "typedwasm.capabilities";
     let mut r = LenientReader::new(payload);
     let version = read_u16_le(&mut r);
     if version != CAPABILITIES_SECTION_VERSION {
-        return None;
+        return Ok(None);
     }
     let capability_count = r.read_u32_le();
-    let mut capabilities = Vec::with_capacity(capability_count as usize);
+    // A capability is at least its `u32le name_len`.
+    let capability_count = bounded_count(&r, capability_count, 4, SECTION, "capability_count")?;
+    let mut capabilities = Vec::with_capacity(capability_count);
     for _ in 0..capability_count {
-        let name = read_utf8(&mut r);
+        let name = read_utf8(&mut r, SECTION)?;
         capabilities.push(CapabilityEntry { name });
     }
     let function_count = r.read_u32_le();
-    let mut functions = Vec::with_capacity(function_count as usize);
+    // A function entry is at least `u32le func_idx` + `u32le required_count`.
+    let function_count = bounded_count(&r, function_count, 8, SECTION, "function_count")?;
+    let mut functions = Vec::with_capacity(function_count);
     for _ in 0..function_count {
         let func_idx = r.read_u32_le();
         let required_count = r.read_u32_le();
-        let mut required = Vec::with_capacity(required_count as usize);
+        // Each required capability index is a `u32le`.
+        let required_count = bounded_count(&r, required_count, 4, SECTION, "required_count")?;
+        let mut required = Vec::with_capacity(required_count);
         for _ in 0..required_count {
             required.push(r.read_u32_le());
         }
@@ -780,7 +1004,19 @@ pub fn parse_capabilities_section_payload(
         required.dedup();
         functions.push(FunctionCapabilities { func_idx, required });
     }
-    Some((capabilities, functions))
+    Ok(Some((capabilities, functions)))
+}
+
+/// Parse the `typedwasm.capabilities` custom-section payload.
+/// `parse(build(x)) == Some(x_normalised)` where `x_normalised` has
+/// each function's `required` sorted and deduped. `None` on an
+/// unsupported version **or** a malformed payload; verifier passes call
+/// [`try_parse_capabilities_section_payload`] to tell them apart.
+#[cfg(feature = "unstable-l15")]
+pub fn parse_capabilities_section_payload(payload: &[u8]) -> Option<CapabilitiesPayload> {
+    try_parse_capabilities_section_payload(payload)
+        .ok()
+        .flatten()
 }
 
 /// Encode capabilities + per-function requirements. Producer must
@@ -911,7 +1147,7 @@ mod capabilities_tests {
     }
 
     #[test]
-    fn truncated_payload_zero_fills() {
+    fn truncated_required_list_is_rejected() {
         let caps = vec![CapabilityEntry {
             name: "io".to_string(),
         }];
@@ -920,14 +1156,48 @@ mod capabilities_tests {
             required: vec![0],
         }];
         let bytes = build_capabilities_section_payload(&caps, &funs);
-        // Chop the last required index byte
+        // Chop the last required index: required_count = 1 but no u32
+        // follows, so the count is impossible and the payload is
+        // rejected rather than zero-filled.
         let truncated = &bytes[..bytes.len() - 4];
-        let (pcaps, pfuns) =
-            parse_capabilities_section_payload(truncated).expect("parses leniently");
-        assert_eq!(pcaps, caps);
-        // required reads as [0] (zero-filled u32_le) instead of [0]
-        // — same value by coincidence; the real verification is no panic.
-        assert_eq!(pfuns[0].func_idx, 3);
+        assert_eq!(parse_capabilities_section_payload(truncated), None);
+        assert!(matches!(
+            try_parse_capabilities_section_payload(truncated),
+            Err(CarrierError::CountExceedsPayload {
+                field: "required_count",
+                count: 1,
+                remaining: 0,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn hostile_counts_are_rejected_without_allocating() {
+        // version=1, capability_count = 0xFFFF_FFFF, nothing else.
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&CAPABILITIES_SECTION_VERSION.to_le_bytes());
+        payload.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            try_parse_capabilities_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                field: "capability_count",
+                count: u32::MAX,
+                ..
+            })
+        ));
+        // version=1, capability_count=0, function_count = 0xFFFF_FFFF.
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&CAPABILITIES_SECTION_VERSION.to_le_bytes());
+        payload.extend_from_slice(&0u32.to_le_bytes());
+        payload.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            try_parse_capabilities_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                field: "function_count",
+                ..
+            })
+        ));
     }
 }
 
@@ -966,13 +1236,18 @@ pub const ACCESS_SITES_SECTION_VERSION: u16 = 1;
 /// declared-only" — the producer asserts the (region, field) is reached
 /// somewhere in the function but does NOT pin a concrete instruction for
 /// the access-typing pass to check. Representative / hand-written IR sites
-/// use this; real lowered reader/writer bodies pin a concrete index.
+/// use this; real lowered reader/writer bodies pin a concrete offset.
 ///
-/// Wire-format note: in v1 the `instruction_byte_offset` slot carries an
-/// *instruction index* (0-based position in the function's operator
-/// stream), not a byte offset — the index is what the producer can pin
-/// deterministically from its `Vec<Op>` body without re-simulating the
-/// encoder. The field name is retained for wire/back-compat stability.
+/// Wire-format note: the slot carries the ADR-0003 / proposal 0002 value,
+/// a *byte offset* within the function body, counted from the first byte
+/// after the body's size prefix (so the locals vector is included). An
+/// earlier revision of this crate and of `typed-wasm-codegen` carried an
+/// operator index in this slot instead, which contradicted ADR-0003 and
+/// rejected every module from a producer (Ephapax) that followed the ADR.
+/// Producers that track operator positions translate them while encoding
+/// (`typed-wasm-codegen` reads `Function::byte_len` before each
+/// instruction). No real body reaches `u32::MAX` bytes, so the sentinel
+/// cannot collide with a real offset.
 #[cfg(feature = "unstable-l2")]
 pub const ACCESS_SITE_UNPINNED: u32 = u32::MAX;
 
@@ -980,15 +1255,13 @@ pub const ACCESS_SITE_UNPINNED: u32 = u32::MAX;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AccessSiteEntry {
     pub func_idx: u32,
-    /// v1: the 0-based instruction index (operator position) of the typed
-    /// load/store this site pins, or [`ACCESS_SITE_UNPINNED`] for a
-    /// declared-only site. (Name retained from the pre-v1 byte-offset
-    /// interpretation for wire/source stability.)
+    /// Byte offset of the typed load/store's first opcode byte within the
+    /// function body (counted from the start of the locals vector, per
+    /// ADR-0003), or [`ACCESS_SITE_UNPINNED`] for a declared-only site.
     pub instruction_byte_offset: u32,
     pub region_id: u32,
     pub field_id: u32,
 }
-
 #[cfg(feature = "unstable-l2")]
 fn read_u32_leb128(r: &mut LenientReader<'_>) -> u32 {
     // Unsigned LEB128 over u32 value space. Producers MUST emit shortest
@@ -1025,17 +1298,37 @@ fn write_u32_leb128(out: &mut Vec<u8>, mut value: u32) {
     }
 }
 
-/// Parse the `typedwasm.access-sites` custom-section payload.
-/// `parse(build(x)) == Some(x)` for any valid input.
+/// Minimum wire size of one access-site entry: four LEB128 fields of at
+/// least one byte each.
 #[cfg(feature = "unstable-l2")]
-pub fn parse_access_sites_section_payload(payload: &[u8]) -> Option<Vec<AccessSiteEntry>> {
+const ACCESS_SITE_MIN_BYTES: usize = 4;
+
+/// Parse the `typedwasm.access-sites` custom-section payload,
+/// distinguishing an unsupported version (`Ok(None)`) from a
+/// structurally impossible payload (`Err`).
+///
+/// # Errors
+///
+/// [`CarrierError::CountExceedsPayload`] when `entry_count` claims more
+/// entries than the remaining bytes can encode (4 bytes minimum each).
+#[cfg(feature = "unstable-l2")]
+pub fn try_parse_access_sites_section_payload(
+    payload: &[u8],
+) -> Result<Option<Vec<AccessSiteEntry>>, CarrierError> {
     let mut r = LenientReader::new(payload);
     let version = read_u16_le(&mut r);
     if version != ACCESS_SITES_SECTION_VERSION {
-        return None;
+        return Ok(None);
     }
     let entry_count = read_u32_leb128(&mut r);
-    let mut entries = Vec::with_capacity(entry_count.min(1_048_576) as usize);
+    let entry_count = bounded_count(
+        &r,
+        entry_count,
+        ACCESS_SITE_MIN_BYTES,
+        "typedwasm.access-sites",
+        "entry_count",
+    )?;
+    let mut entries = Vec::with_capacity(entry_count);
     for _ in 0..entry_count {
         let func_idx = read_u32_leb128(&mut r);
         let instruction_byte_offset = read_u32_leb128(&mut r);
@@ -1048,7 +1341,18 @@ pub fn parse_access_sites_section_payload(payload: &[u8]) -> Option<Vec<AccessSi
             field_id,
         });
     }
-    Some(entries)
+    Ok(Some(entries))
+}
+
+/// Parse the `typedwasm.access-sites` custom-section payload.
+/// `parse(build(x)) == Some(x)` for any valid input. `None` on an
+/// unsupported version **or** a malformed payload; verifier passes call
+/// [`try_parse_access_sites_section_payload`] to tell them apart.
+#[cfg(feature = "unstable-l2")]
+pub fn parse_access_sites_section_payload(payload: &[u8]) -> Option<Vec<AccessSiteEntry>> {
+    try_parse_access_sites_section_payload(payload)
+        .ok()
+        .flatten()
 }
 
 /// Encode access-site entries.
@@ -1079,6 +1383,24 @@ mod access_sites_tests {
     #[test]
     fn empty_payload_returns_none() {
         assert_eq!(parse_access_sites_section_payload(&[]), None);
+    }
+
+    #[test]
+    fn hostile_entry_count_is_rejected_without_allocating() {
+        // entry_count = 0xFFFF_FFFF (LEB128), no entries follow.
+        let mut payload = ACCESS_SITES_SECTION_VERSION.to_le_bytes().to_vec();
+        write_u32_leb128(&mut payload, u32::MAX);
+        assert_eq!(parse_access_sites_section_payload(&payload), None);
+        assert_eq!(
+            try_parse_access_sites_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                section: "typedwasm.access-sites",
+                field: "entry_count",
+                count: u32::MAX,
+                remaining: 0,
+                min_item_bytes: 4,
+            })
+        );
     }
 
     #[test]
@@ -1200,25 +1522,42 @@ pub struct RegionImportEntry {
     pub expected_fields: Vec<FieldEntry>,
 }
 
-/// Parse the `typedwasm.region-imports` payload. Lenient on truncation
-/// (matches the sibling codecs); `None` when `version !=
-/// REGION_IMPORTS_SECTION_VERSION`.
+/// Parse the `typedwasm.region-imports` payload, distinguishing an
+/// unsupported version (`Ok(None)`) from a structurally impossible
+/// payload (`Err`). Lenient on truncation *within* an item (matches the
+/// sibling codecs); counts and name lengths are bounded by the bytes
+/// remaining (see [`CarrierError`]).
+///
+/// # Errors
+///
+/// [`CarrierError::CountExceedsPayload`] when `import_count`, a
+/// `field_count`, or a name length claims more than the remaining bytes
+/// can encode.
 #[cfg(feature = "unstable-l13-imports")]
-pub fn parse_region_imports_section_payload(payload: &[u8]) -> Option<Vec<RegionImportEntry>> {
+pub fn try_parse_region_imports_section_payload(
+    payload: &[u8],
+) -> Result<Option<Vec<RegionImportEntry>>, CarrierError> {
+    const SECTION: &str = "typedwasm.region-imports";
     let mut r = LenientReader::new(payload);
     let version = read_u16_le(&mut r);
     if version != REGION_IMPORTS_SECTION_VERSION {
-        return None;
+        return Ok(None);
     }
     let import_count = read_u32_leb128(&mut r);
-    let mut imports = Vec::with_capacity(import_count.min(1024) as usize);
+    // An import is at least three one-byte LEB128 fields
+    // (producer_module len, region_name len, field_count).
+    let import_count = bounded_count(&r, import_count, 3, SECTION, "import_count")?;
+    let mut imports = Vec::with_capacity(import_count);
     for _ in 0..import_count {
-        let producer_module = read_utf8_leb(&mut r);
-        let region_name = read_utf8_leb(&mut r);
+        let producer_module = read_utf8_leb(&mut r, SECTION)?;
+        let region_name = read_utf8_leb(&mut r, SECTION)?;
         let field_count = read_u32_leb128(&mut r);
-        let mut expected_fields = Vec::with_capacity(field_count.min(1024) as usize);
+        // A field is at least a one-byte name length, kind, wasm_ty,
+        // nullability and a one-byte LEB128 cardinality.
+        let field_count = bounded_count(&r, field_count, 5, SECTION, "field_count")?;
+        let mut expected_fields = Vec::with_capacity(field_count);
         for _ in 0..field_count {
-            let name = read_utf8_leb(&mut r);
+            let name = read_utf8_leb(&mut r, SECTION)?;
             let kind = FieldKind::from_byte(r.read_u8());
             let wasm_ty = WasmTy::from_byte(r.read_u8());
             let nullability = Nullability::from_byte(r.read_u8());
@@ -1238,7 +1577,18 @@ pub fn parse_region_imports_section_payload(payload: &[u8]) -> Option<Vec<Region
             expected_fields,
         });
     }
-    Some(imports)
+    Ok(Some(imports))
+}
+
+/// Parse the `typedwasm.region-imports` payload. `None` when `version
+/// != REGION_IMPORTS_SECTION_VERSION` **or** when the payload is
+/// malformed; verifier passes call
+/// [`try_parse_region_imports_section_payload`] to tell them apart.
+#[cfg(feature = "unstable-l13-imports")]
+pub fn parse_region_imports_section_payload(payload: &[u8]) -> Option<Vec<RegionImportEntry>> {
+    try_parse_region_imports_section_payload(payload)
+        .ok()
+        .flatten()
 }
 
 /// Encode imports to the `typedwasm.region-imports` payload format.
@@ -1276,13 +1626,14 @@ pub fn build_region_imports_section_payload(imports: &[RegionImportEntry]) -> Ve
 /// LEB128-length-prefixed UTF-8 (proposal 0003 wire format; the regions
 /// codec's `read_utf8`/`write_utf8` use u32le prefixes instead).
 #[cfg(feature = "unstable-l13-imports")]
-fn read_utf8_leb(r: &mut LenientReader<'_>) -> String {
-    let len = read_u32_leb128(r) as usize;
-    let mut bytes = Vec::with_capacity(len.min(4096));
+fn read_utf8_leb(r: &mut LenientReader<'_>, section: &'static str) -> Result<String, CarrierError> {
+    let len = read_u32_leb128(r);
+    let len = bounded_count(r, len, 1, section, "name_len")?;
+    let mut bytes = Vec::with_capacity(len);
     for _ in 0..len {
         bytes.push(r.read_u8());
     }
-    String::from_utf8_lossy(&bytes).into_owned()
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 #[cfg(feature = "unstable-l13-imports")]
@@ -1376,5 +1727,33 @@ mod region_imports_tests {
         for cut in 0..built.len() {
             let _ = parse_region_imports_section_payload(&built[..cut]);
         }
+    }
+
+    #[test]
+    fn hostile_counts_are_rejected_without_allocating() {
+        // import_count = 0xFFFF_FFFF (LEB128), nothing follows.
+        let mut payload = REGION_IMPORTS_SECTION_VERSION.to_le_bytes().to_vec();
+        write_u32_leb128(&mut payload, u32::MAX);
+        assert!(matches!(
+            try_parse_region_imports_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                section: "typedwasm.region-imports",
+                field: "import_count",
+                ..
+            })
+        ));
+
+        // One import whose producer-module name claims 0xFFFF_FFFF bytes.
+        let mut payload = REGION_IMPORTS_SECTION_VERSION.to_le_bytes().to_vec();
+        write_u32_leb128(&mut payload, 1);
+        write_u32_leb128(&mut payload, u32::MAX);
+        payload.extend_from_slice(&[0, 0, 0]);
+        assert!(matches!(
+            try_parse_region_imports_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                field: "name_len",
+                ..
+            })
+        ));
     }
 }

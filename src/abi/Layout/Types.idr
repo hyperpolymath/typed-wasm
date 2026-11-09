@@ -91,16 +91,22 @@ mutual
 -- Agreed layouts for standard source-language types
 -- ─────────────────────────────────────────────────────────────────────────────
 
-||| The agreed WasmGC layout for `String` in all consumer languages.
-||| Encoding: (ref (array i8)) — a UTF-8 byte array.
-||| Both AffineScript and Ephapax must use this layout.
+||| The WasmGC layout modelled for `String`.
+||| Modelled encoding: `(ref (array i32))` — one i32 element per byte.
+||| The intended wire layout is a packed UTF-8 byte array
+||| `(ref (array i8))`, but `WasmPrimitive` has no packed storage types
+||| (i8 / i16), so this model cannot express it: a producer that emits
+||| `(array i8)` does NOT match this term. No producer emits this layout
+||| yet (Ephapax targets linear memory, not WasmGC).
 |||
 ||| `public export` is required so that downstream `Refl`-based distinctness
 ||| proofs (e.g. stringOptionDistinct) reduce at unification time.
 public export
 stringLayout : WasmValType
 stringLayout = WVT_Ref (WHT_Array (WVT_Prim WasmI32))
--- Note: i8 is represented as i32 in WasmGC value positions.
+-- Note: WasmGC unpacks an i8 array element to i32 on `array.get_u`, but
+-- `(array i8)` and `(array i32)` are different heap types (1 vs 4 bytes per
+-- element). The model has no packed storage type, hence `(array i32)`.
 
 ||| The agreed layout for `Option T` (nullable reference).
 ||| Encoding: (ref null T) — WasmGC native nullable reference.

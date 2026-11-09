@@ -23,9 +23,9 @@ the same wire format and the same blocker, so the work parallelises.
   (`docs/decisions/0003-access-site-carrier.adoc`). Carrier:
   `typedwasm.access-sites`.
 * Verifier passes shipped in typed-wasm:
-  `verify_regions_from_module` (PR #107),
   `verify_capabilities_from_module` and
-  `verify_access_sites_from_module` (PR #109), all behind Cargo
+  `verify_access_sites_from_module` (PR #109), plus the decode-time
+  `verify_access_typing_from_module`, all behind Cargo
   feature gates `unstable-l2` / `unstable-l15` in
   `crates/typed-wasm-verify/`.
 * `typedwasm.ownership` carrier emission is already wired in BOTH

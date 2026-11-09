@@ -439,9 +439,12 @@ acceptance predicates `+TokenFresh+` / `+IntentsLinearAcceptable+` /
 `+TrustedFixture+` inline so the differential ctor still terminates in a
 structural witness), the two *agreement records
 `+VerifierSpecAgreement+` (item 7) and `+SourceVerifierAgreement+` (item
-8)* with totally-proven bodies, concrete inhabitants
-`+verifierSpecAgreement+` / `+sourceVerifierAgreement+` (the first total
-no-`+believe_me+` agreement values in the codebase), end-to-end
+8)* with total bodies, concrete inhabitants
+`+verifierSpecAgreement+` / `+sourceVerifierAgreement+` (total and
+`+believe_me+`-free, but true by construction: `+VerifierAccepts+` and
+`+SourceAccepts+` wrap the same `+FunctionsAccepted+` witness as
+`+SpecAccepts+`, so the agreement is tautological and says nothing about
+the Rust verifier's behaviour), end-to-end
 composition lemmas `+sourceImpliesSpec+` / `+specImpliesSource+` and
 `+*Concrete+` specialisations, demo modules (empty / `+allocFreeModule+`
 / `+allocFreeWithBorrowModule+` / `+fixtureCleanLinearConsumerModule+`
@@ -522,8 +525,9 @@ carrier-backed)* |`+typedwasm.region-imports+` carrier — proposal 0003
 |L3–L6 (type-compat, null, bounds, result-type) |*YES* (carrier-backed,
 schema half) |`+typedwasm.regions+` codec PR #107; cross-checks against
 `+Region.idr::WasmType+`, `+Pointer.idr::Nullability+`, cardinality.
-Per-access enforcement gated on producer codegen of access-sites
-(`+affinescript#462+`, `+ephapax#251+`).
+Per-access enforcement needs producer codegen of access-sites: Ephapax
+emits them for its string-runtime helpers (`+ephapax#251+`, closed
+2026-07-07); AffineScript is open (`+affinescript#462+`).
 
 |L15 (resource capabilities, L15-A/B) |*YES* (carrier-backed)
 |`+verify_capabilities_from_module+` PR #109; reads
@@ -543,7 +547,8 @@ lags. See proposal 0001 §"`Appendix B — Producer-readiness checklist`"
 for IR prerequisites of each carrier. Tracking: `+affinescript#444+`
 (Tw_section dedup, ✅ merged), `+affinescript#462+` (access-sites
 codegen, open), `+ephapax#221+` (Ty::Borrow surfacing, open),
-`+ephapax#251+` (access-sites codegen, filed 2026-05-30),
+`+ephapax#251+` (access-sites codegen, ✅ closed 2026-07-07; ephapax
+emits byte offsets per ADR-0003 for its string-runtime helpers),
 `+ephapax#250+` (Codegen dead-fields cleanup, ✅ merged 2026-05-30).
 . *L13 cross-module (positive form)* — DONE in-tree (2026-07-07):
 proposal 0003 `+[accepted]+` → ADR-0007; codec + `+verify_link_graph+`
@@ -559,9 +564,14 @@ and `+docs/decisions/0003-access-site-carrier.adoc+` (ADR-0003).
 Proposal files retained as canonical wire-format references.
 
 *Spec-of-record alignment (2026-05-27, PR #79).* The
-`+TypedWasm.ABI.VerifierSpec+` Idris2 module now states the *verifier ↔
-spec ↔ source* agreement as totally-proven inhabitants of two records
-(`+VerifierSpecAgreement+`, `+SourceVerifierAgreement+`). Closes the
+`+TypedWasm.ABI.VerifierSpec+` Idris2 module states the *verifier ↔
+spec ↔ source* agreement as total inhabitants of two records
+(`+VerifierSpecAgreement+`, `+SourceVerifierAgreement+`). The
+inhabitants are tautological (true by construction): the verifier and
+source predicates are defined as wrappers of the spec's own structural
+witness, so the records do not prove that the Rust verifier agrees with
+the spec. The Rust link is only the asserted `+TrustedFixture+`
+registrations (ADR-0005). Closes, at the record-inhabitation level only, the
 multi-week residual flagged by PR #74 ("`Items 7 + 8 stated as
 obligations`" from PR #72). The Rust verifier’s accept-verdicts on
 differential-harness fixtures are modelled via `+TrustedFixture m+`
@@ -574,7 +584,10 @@ absent `+TrustedFixture+` registration.
 *Consumers* (live as of 2026-05-15):
 
 * `+hyperpolymath/ephapax:src/ephapax-wasm/+` — emits the
-`+typedwasm.ownership+` section on every compile
+`+typedwasm.ownership+` section only when at least one user function has
+a non-`+Unrestricted+` parameter (it lists only those functions; a module
+with none carries no section, which the verifier treats as
+unconstrained)
 * `+hyperpolymath/ephapax:src/ephapax-cli/+` — exposes the verifier via
 `+ephapax compile --verify-ownership+`
 

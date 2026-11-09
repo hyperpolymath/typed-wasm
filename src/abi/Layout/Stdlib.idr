@@ -3,8 +3,9 @@
 --
 -- src/abi/layout/Stdlib.idr
 --
--- Agreed WasmGC layouts for standard library types shared between all
--- consumer languages (AffineScript, Ephapax, and any future WasmGC target).
+-- Agreed WasmGC layouts for standard library types, intended to be shared by
+-- WasmGC-targeting consumer languages. No producer emits them yet: Ephapax
+-- compiles to linear memory, not WasmGC, and these terms have no emitter.
 --
 -- Every agreed layout in this module comes with:
 --   1. The concrete WasmValType / WasmHeapType definition

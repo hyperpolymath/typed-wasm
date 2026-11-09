@@ -50,7 +50,7 @@ or vendored artefact.
 | `typed-wasm-verify` (Rust crate) v0.1.0
 | *D*
 | Pre-alpha (workspace-internal, unpublished)
-| `crates/typed-wasm-verify/Cargo.toml`. Post-codegen verifier covering L7 (aliasing), L10 (linearity), L2/L3-L6 (regions + access-sites), and L15-A/B (capabilities). Feature gate `unstable-l2` enables the regions + access-sites carriers and their verifier passes (`verify_regions_from_module` / `verify_access_sites_from_module`); `unstable-l15` enables the capabilities carrier + `verify_capabilities_from_module`. Both gates retained while Phase 3 stabilisation is open. Carrier ABIs accepted 2026-05-30 (proposals 0001 + 0002 → ADR-0002 + ADR-0003). Pinned to wasmparser =0.251.0 / wasm-encoder =0.251.0.
+| `crates/typed-wasm-verify/Cargo.toml`. Post-codegen verifier covering L7 (aliasing), L10 (linearity), L2/L3-L6 (regions + access-sites), and L15-A/B (capabilities). Feature gate `unstable-l2` enables the regions + access-sites carriers and their verifier passes (`verify_access_sites_from_module` / `verify_access_typing_from_module`, which decode and check the regions table as their dependency; there is no standalone `verify_regions_from_module`); `unstable-l15` enables the capabilities carrier + `verify_capabilities_from_module`. Both gates retained while Phase 3 stabilisation is open. Carrier ABIs accepted 2026-05-30 (proposals 0001 + 0002 → ADR-0002 + ADR-0003). Pinned to wasmparser =0.251.0 / wasm-encoder =0.251.0.
 
 | Idris2 ABI surface at `src/abi/`
 | *C*

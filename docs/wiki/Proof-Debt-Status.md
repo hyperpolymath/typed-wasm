@@ -83,6 +83,8 @@ record TrustedFixture (m : ModuleSummary) where
 
 The trust-injection moment moves to `MkTrustedFixture` construction (single grep point for audit). All four agreement lemmas become total by case analysis. `verifierSpecAgreement : VerifierSpecAgreement` and `sourceVerifierAgreement : SourceVerifierAgreement` are concrete inhabitants — the first total no-`believe_me` agreement values in the codebase.
 
+**Correction (2026-11):** these inhabitants are true by construction (tautological). `VerifierAccepts` and `SourceAccepts` are defined to wrap the same `FunctionsAccepted m.functions` witness that `SpecAccepts` wraps, so each lemma only re-wraps its input. They are not a proof that the Rust verifier agrees with the spec; the only link to the Rust code is the asserted `MkTrustedFixture` sites (ADR-0005).
+
 End-to-end demo on cross_compat row 1 (`fixtureCleanLinearConsumerModule`). Four discrimination proofs show L10 has teeth and the differential escape hatch cannot smuggle a bad module past the verifier.
 
 ### standards#130 — LevelAttestation reindexed-by-witness (PR #80)

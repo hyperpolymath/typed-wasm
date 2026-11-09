@@ -64,7 +64,7 @@ pub fn extract_exports(wasm_bytes: &[u8]) -> Result<Vec<FuncInterface>, VerifyEr
     // `Tw_interface.ownership_index_of_module`.
     let ownership_by_idx: HashMap<u32, (Vec<OwnershipKind>, OwnershipKind)> =
         match ownership_payload {
-            Some(payload) => parse_ownership_section_payload(&payload)
+            Some(payload) => parse_ownership_section_payload(&payload)?
                 .into_iter()
                 .map(|e| (e.func_idx, (e.param_kinds, e.ret_kind)))
                 .collect(),

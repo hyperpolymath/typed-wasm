@@ -113,6 +113,12 @@ root.  Every file is compiled with `%default total`; no `believe_me`,
         `verifierIsComplete` (spec accept ⇒ verifier accept), bundled
         in a `VerifierSpecAgreement` record.  Symmetric
         `SourceVerifierAgreement` for source-checker ↔ verifier.
+        *Correction (2026-11):* as stated in `VerifierSpec.idr` this
+        is true by construction, not a theorem about the Rust code.
+        `VerifierAccepts` / `SourceAccepts` wrap the same
+        `FunctionsAccepted` witness as `SpecAccepts`, so the four
+        lemmas only re-wrap their input. The Rust link is the
+        asserted `MkTrustedFixture` sites (ADR-0005).
 |File |`VerifierSpec.idr` (added in PR #79)
 |Type |`record VerifierSpecAgreement` + `record SourceVerifierAgreement`,
        each bundling soundness and completeness as named fields.

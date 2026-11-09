@@ -9,6 +9,38 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Access sites carry ADR-0003 byte offsets; wire counts are bounded (2026-11-09)
+
+* `verify_access_typing_from_module` now reads `instruction_byte_offset`
+  as ADR-0003 defines it: the byte offset of the access opcode within the
+  function body, counted from the start of the locals vector. Before, both
+  the verifier and `typed-wasm-codegen` used an operator index in that
+  slot, which contradicted the ADR and made the gate reject every Ephapax
+  module (Ephapax follows the ADR). `emit` now writes the byte offset of
+  each pinned instruction (read from `Function::byte_len` while encoding).
+  New `AccessTypingError` variants: `AccessSiteOffsetOutOfRange` (replaces
+  `AccessSiteIndexOutOfRange`) and `AccessSiteNotAnInstructionBoundary`;
+  `AccessSiteNotAMemoryOp` now reports `byte_offset`.
+* Every `typedwasm.*` codec bounds its wire counts and length prefixes by
+  the bytes remaining before allocating. A count the payload cannot hold
+  is `CarrierError::CountExceedsPayload`, surfaced by the verifier passes
+  as `VerifyError::MalformedCarrier`. Before, an ownership payload with
+  count `0xFFFF_FFFF` requested a ~137 GB allocation and aborted the
+  process. `parse_ownership_section_payload` now returns a `Result`; the
+  versioned codecs gain `try_parse_*` variants (the `parse_*` forms keep
+  returning `Option`, `None` also for a malformed payload). Departure from
+  OCaml parity: a count larger than the payload can encode is rejected,
+  not zero-filled; truncation *within* an entry stays lenient.
+* Docs: removed claims that a `verify_regions_from_module` pass exists,
+  that Ephapax compiles to WasmGC, that Ephapax emits the ownership section
+  on every compile, and that ephapax#251 is pending; documented that
+  `Layout.Types.stringLayout` models `(array i32)`, not `(array i8)`; marked
+  `generated/abi/` and `stdlib/` as not created; and stated that the
+  `VerifierSpecAgreement` / `SourceVerifierAgreement` inhabitants are true
+  by construction rather than a proof about the Rust verifier.
+* New proposal 0007 (PROPOSED, not adopted): an `Affine` usage grade, a
+  `typedwasm.mode` module mode record and a separate borrow axis.
+
 ==== L15-C at the front-end: a caller's caps contain its callee's (2026-10-27)
 
 * The canonical Rust front-end (`typed-wasm-codegen`, ADR-0006) now parses

@@ -715,8 +715,8 @@ can re-check.
 
 | `typedwasm.regions`
 | L2 region-binding, L3 type-compatible access, L4 null-safety, L5 bounds-proof, L6 result-type
-| Proposal 0001 `[accepted]` (ADR-0002); codec + verifier pass behind `unstable-l2`
-| `parse_regions_section_payload` / `build_regions_section_payload` / `verify_regions_from_module`
+| Proposal 0001 `[accepted]` (ADR-0002); codec behind `unstable-l2`. No standalone regions pass: the table is decoded and checked as the dependency of the access-site passes (and of `verify_region_imports_from_module` under `unstable-l13-imports`)
+| `parse_regions_section_payload` / `build_regions_section_payload`; consumed by `verify_access_sites_from_module` / `verify_access_typing_from_module`
 
 | `typedwasm.capabilities`
 | L15 resource capabilities (lattice + per-function requirements; excluding L15-C per-call-site grants)

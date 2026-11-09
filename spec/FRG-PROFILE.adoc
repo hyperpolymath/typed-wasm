@@ -31,7 +31,9 @@ linearity + dependent types, zero `believe_me`/`assert_total` in
 the ABI files (per `PROOF-NEEDS.md` 2026-04-13 audit), and the
 A10 closure (PR #79) which inhabited the previously-residual
 `VerifierSpecAgreement` and `SourceVerifierAgreement` records with
-totally-proven bodies.
+total bodies. Those bodies are true by construction (the verifier and
+source acceptance predicates wrap the spec's own witness), so they are
+not evidence about the Rust verifier.
 
 FRG = *C*. The grade is not yet B because — per the load-bearing
 honesty statement in `PROOF-NEEDS.md`:
@@ -137,7 +139,7 @@ Hygiene status (per `PROOF-NEEDS.md` audit 2026-04-13):
 
 | *B2 — Verifier ↔ spec refinement theorem*
 | PARTIAL
-| A10 closure inhabits the agreement records (`VerifierSpecAgreement`, `SourceVerifierAgreement`); the formal refinement claim is implicit in the inhabitation.
+| A10 closure inhabits the agreement records (`VerifierSpecAgreement`, `SourceVerifierAgreement`), but the inhabitation is tautological: `VerifierAccepts`/`SourceAccepts` are defined as wrappers of the same witness `SpecAccepts` wraps. No refinement claim about the Rust verifier follows from it; that theorem is still to be stated.
 
 | *B3 — External review of the formalisation*
 | NO

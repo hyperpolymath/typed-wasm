@@ -21,19 +21,20 @@ pub mod section;
 pub mod verify;
 pub use cross::{extract_exports, verify_cross_module};
 pub use section::{
-    build_ownership_section_payload, parse_ownership_section_payload, OwnershipEntry,
+    build_ownership_section_payload, parse_ownership_section_payload, CarrierError, OwnershipEntry,
 };
 pub use verify::{count_uses_range, verify_function};
 
 #[cfg(feature = "unstable-l2")]
 pub use section::{
-    build_regions_section_payload, parse_regions_section_payload, FieldEntry, FieldKind,
-    Nullability, RegionEntry, WasmTy, ACCESS_SITE_UNPINNED, REGIONS_SECTION_VERSION,
+    build_regions_section_payload, parse_regions_section_payload,
+    try_parse_access_sites_section_payload, try_parse_regions_section_payload, FieldEntry,
+    FieldKind, Nullability, RegionEntry, WasmTy, ACCESS_SITE_UNPINNED, REGIONS_SECTION_VERSION,
 };
 #[cfg(feature = "unstable-l13-imports")]
 pub use section::{
     build_region_imports_section_payload, parse_region_imports_section_payload,
-    RegionImportEntry, REGION_IMPORTS_SECTION_VERSION,
+    try_parse_region_imports_section_payload, RegionImportEntry, REGION_IMPORTS_SECTION_VERSION,
 };
 
 /// Ownership kinds matching the OCaml `Codegen.ownership_kind` enum.
@@ -130,6 +131,12 @@ pub enum VerifyError {
 
     #[error("cross-module boundary violations: {0:?}")]
     Cross(Vec<CrossError>),
+
+    /// A `typedwasm.*` carrier payload is structurally impossible (a wire
+    /// count exceeds what the payload bytes can encode). Rejected before
+    /// any allocation is sized by the count.
+    #[error("malformed carrier: {0}")]
+    MalformedCarrier(#[from] CarrierError),
 }
 
 /// Custom-section name carrying ownership annotations. Producer-neutral as
@@ -346,22 +353,36 @@ pub enum AccessTypingError {
     #[error("Level 2 access-typing: entry {entry_idx} is unresolvable for typing ({reason})")]
     UnresolvableEntry { entry_idx: u32, reason: String },
 
-    /// The pinned instruction index is past the end of the function's
-    /// operator stream.
-    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins instruction index {instruction_index}, but the body has only {op_count} operators")]
-    AccessSiteIndexOutOfRange {
+    /// The pinned byte offset is at or past the end of the function body.
+    /// Offsets are ADR-0003 `instruction_byte_offset` values: counted
+    /// from the first byte after the body's size prefix (the start of the
+    /// locals vector).
+    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins byte offset {byte_offset}, but the function body is only {body_len} bytes long")]
+    AccessSiteOffsetOutOfRange {
         entry_idx: u32,
         func_idx: u32,
-        instruction_index: u32,
-        op_count: u32,
+        byte_offset: u32,
+        body_len: u32,
+    },
+
+    /// The pinned byte offset is inside the function body but no
+    /// instruction starts there: it points into the locals vector or into
+    /// the middle of an instruction's immediates. Typical cause: the
+    /// producer recorded offsets before a rewrite pass, or recorded
+    /// operator indices instead of byte offsets.
+    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins byte offset {byte_offset}, which is not the start of an instruction")]
+    AccessSiteNotAnInstructionBoundary {
+        entry_idx: u32,
+        func_idx: u32,
+        byte_offset: u32,
     },
 
     /// The pinned instruction is not a memory load/store at all.
-    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins instruction index {instruction_index}, which is `{found}` — not a typed memory load/store")]
+    #[error("Level 2 access-typing: entry {entry_idx} (func {func_idx}) pins byte offset {byte_offset}, which is `{found}` — not a typed memory load/store")]
     AccessSiteNotAMemoryOp {
         entry_idx: u32,
         func_idx: u32,
-        instruction_index: u32,
+        byte_offset: u32,
         found: String,
     },
 
@@ -467,10 +488,9 @@ pub fn verify_capabilities_from_module(
 /// 4. Every entry's `field_id` is within the target region's field
 ///    table.
 ///
-/// Does NOT check `instruction_byte_offset` validity (would require
-/// parsing function bodies to verify the offset lands on a typed
-/// access opcode — proposal 0002 calls this `AccessSiteMisalignment`
-/// and defers it to a follow-up).
+/// Does NOT check `instruction_byte_offset` validity: that needs the
+/// function bodies decoded, which is [`verify_access_typing_from_module`]'s
+/// job (it resolves each ADR-0003 byte offset to the instruction there).
 #[cfg(feature = "unstable-l2")]
 pub fn verify_access_sites_from_module(
     wasm_bytes: &[u8],
@@ -479,7 +499,9 @@ pub fn verify_access_sites_from_module(
 }
 
 /// Verify the L2 access-*typing* constraints: for every pinned
-/// access-site, decode the function body, take the pinned instruction,
+/// access-site, decode the function body, take the instruction that
+/// starts at the pinned ADR-0003 byte offset (counted from the start of
+/// the locals vector),
 /// and confirm it is a memory load/store of the target field's exact
 /// type and width, whose static offset equals the field's byte offset,
 /// and whose extent stays within the region. Declared-only (unpinned)
