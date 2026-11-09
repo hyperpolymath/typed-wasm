@@ -4,9 +4,11 @@
 #
 # check-kernel-proofs.sh — the mechanical falsifiers behind the grade kernel.
 #
-#   1. upstream   resource-algebra's and occupancy-types' own checks, and
-#                 choreographic-types' KCut slice, at the pins (Agda --safe
-#                 --without-K --no-libraries --double-check + their rejects)
+#   1. upstream   resource-algebra's and occupancy-types' own checks at the
+#                 pins (each repository's own scripts and flags), and
+#                 choreographic-types' KCut slice and rejects under
+#                 AGDA_FLAGS (--safe --without-K --cubical-compatible
+#                 --no-libraries --double-check)
 #   2. build      idris2 --build src/abi/typed-wasm.ipkg: exit 0 AND no
 #                 `Error:` line (idris2 can exit 0 while printing an error)
 #   3. rejects    every tests/reject/*.idr must FAIL, at its `invalid`
@@ -32,7 +34,12 @@ REGEN=0; [ "${1:-}" = "--regen" ] && REGEN=1
 RA="_build/dependencies/resource-algebra"
 OUT="_build/kernel-proofs"
 TTC="$ROOT/src/abi/build/ttc"
-AGDA_FLAGS=(--safe --without-K --no-libraries --double-check --ignore-interfaces)
+# PROOF-POLICY §2.1: the canonical theory invocation is
+# --safe --without-K --cubical-compatible.
+AGDA_FLAGS=(--safe --without-K --cubical-compatible --no-libraries --double-check --ignore-interfaces)
+# Agda prints its (Unicode) warnings through the locale; without UTF-8 it
+# stops with exit 42 instead, as the sibling scripts also guard against.
+export LC_ALL="${LC_ALL:-C.UTF-8}"
 WRONG_REASON='Undefined name|Couldn.t parse|Parse error|not in the source directory|Can.t find import|Module .* not found|INTERNAL ERROR|Not in scope|Failed to find'
 
 fail=0
@@ -49,11 +56,12 @@ case "$iv" in
   *) [ -n "${ALLOW_ANY_IDRIS2:-}" ] || die "Idris2 0.8.0 required (src/abi targets 0.8.0; EXPECT messages are 0.8.0's). Set ALLOW_ANY_IDRIS2=1 to try another." ;;
 esac
 # The rejection checks match prover messages and locations, and both change
-# between Agda releases: 2.8.0 prints `file:11.38` where 2.6.3 printed
+# between Agda releases: 2.8.0 prints `file:11.38` where 2.6.x printed
 # `file:11,38`, which occupancy-types' own reject check does not accept.
+# 2.6.4.3 is the Debian agda-bin the siblings' own CI pins.
 case "$av" in
-  "Agda version 2.6.3") ;;  # the whole line: 2.6.3.1 is another release
-  *) [[ -n "${ALLOW_ANY_AGDA:-}" ]] || die "Agda 2.6.3 required (the pinned siblings' reject checks expect 2.6.3's messages). Set ALLOW_ANY_AGDA=1 to try another." ;;
+  "Agda version 2.6.4.3") ;;  # the whole line: another point release is another prover
+  *) [[ -n "${ALLOW_ANY_AGDA:-}" ]] || die "Agda 2.6.4.3 required (the siblings' CI and their reject checks use it). Set ALLOW_ANY_AGDA=1 to try another." ;;
 esac
 [ -d "$RA/src/ResourceAlgebra" ] || die "resource-algebra not fetched — run scripts/fetch-siblings.sh"
 echo "resource-algebra at $(git -C "$RA" rev-parse HEAD)"
