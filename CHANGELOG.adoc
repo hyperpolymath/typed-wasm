@@ -18,6 +18,9 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
   every push, so the required `scan / gitleaks` check never reported.
 * `governance.yml` and `mirror.yml` grant `actions: read`, which both
   reusables declare at workflow level at `e064539`.
+* `mirror.yml` passes the seven forge keys the reusable declares by name,
+  and `secret-scanner.yml` passes none (its reusable declares none), instead
+  of `secrets: inherit`, which handed every repository secret to the callee.
 
 ==== L15-C at the front-end: a caller's caps contain its callee's (2026-10-27)
 
