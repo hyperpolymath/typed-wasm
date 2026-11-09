@@ -226,6 +226,37 @@ fn teeth_index_past_end_is_out_of_range() {
     );
 }
 
+#[test]
+fn teeth_huge_index_never_collides_with_unpinned_sentinel() {
+    // body_len (7) + an overshoot near u32::MAX saturates. A saturated
+    // offset of u32::MAX would be the ACCESS_SITE_UNPINNED sentinel, so a
+    // producer bug would be counted as a declared-only site instead of
+    // being reported. The emitter must clamp below the sentinel.
+    let func = Func {
+        name: "bad".into(),
+        params: vec![Wty::I32],
+        results: vec![Wty::I32],
+        locals: vec![],
+        body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
+        accesses: vec![pinned(0, 0, (u32::MAX - 1) as usize)],
+        export: true,
+    };
+    let bytes = emit(&rig(region_ab(), func));
+    let report = verify_access_typing_from_module(&bytes).expect("typing pass runs");
+    assert_eq!(
+        report.declared_only, 0,
+        "an invalid pinned index must not be laundered into a declared-only site"
+    );
+    assert!(
+        matches!(
+            report.errors.as_slice(),
+            [AccessTypingError::AccessSiteOffsetOutOfRange { body_len: 7, .. }]
+        ),
+        "expected AccessSiteOffsetOutOfRange, got {:?}",
+        report.errors
+    );
+}
+
 // ---- ADR-0003: the wire carries BYTE OFFSETS, not operator indices -------
 
 /// Pull the decoded `typedwasm.access-sites` entries out of emitted bytes.

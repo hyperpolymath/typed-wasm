@@ -106,10 +106,13 @@ const OWNERSHIP_ENTRY_MIN_BYTES: usize = 4 + 1 + 1;
 ///
 /// [`CarrierError::CountExceedsPayload`] when the entry count claims more
 /// entries than the remaining bytes can encode (each entry needs at least
-/// 6 bytes). This is where the Rust port deliberately departs from the
-/// OCaml reader: an oversized count is rejected instead of zero-filling
-/// phantom entries, so a hostile module cannot force an unbounded
-/// allocation.
+/// 6 bytes), or when a counted entry's `func_idx` is wholly absent because
+/// earlier entries consumed the payload. This is where the Rust port
+/// deliberately departs from the OCaml reader: an oversized count is
+/// rejected instead of zero-filling phantom entries, so a hostile module
+/// cannot force an unbounded allocation, and a phantom `func_idx = 0`
+/// entry cannot overwrite a decoded signature. An entry whose `func_idx`
+/// is present but whose later fields are cut short is still zero-filled.
 pub fn parse_ownership_section_payload(
     payload: &[u8],
 ) -> Result<Vec<OwnershipEntry>, CarrierError> {
@@ -123,7 +126,23 @@ pub fn parse_ownership_section_payload(
         "count",
     )?;
     let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
+    for i in 0..count {
+        // The count bound above uses the 6-byte minimum, so an earlier
+        // entry with parameters can consume the bytes a later entry was
+        // counted against. An entry whose `func_idx` is not on the wire
+        // at all is absent, not truncated: zero-filling it would invent
+        // a `func_idx = 0`, no-parameter, `Unrestricted` entry that
+        // replaces function 0's decoded signature in any func_idx map
+        // (see `cross::extract_exports`). Reject the carrier instead.
+        if r.remaining() < 4 {
+            return Err(CarrierError::CountExceedsPayload {
+                section: "typedwasm.ownership",
+                field: "count",
+                count: u32::try_from(count - i).unwrap_or(u32::MAX),
+                remaining: r.remaining(),
+                min_item_bytes: OWNERSHIP_ENTRY_MIN_BYTES,
+            });
+        }
         let func_idx = r.read_u32_le();
         // n_params is a u8, so this inner allocation is at most 255.
         let n_params = r.read_u8();
@@ -299,6 +318,24 @@ mod tests {
                 entry(9, vec![], Unrestricted), // trailing fields zero-filled
             ]
         );
+    }
+
+    #[test]
+    fn wholly_absent_entry_is_rejected_not_synthesised() {
+        // count=2 and 13 bytes follow (>= 2 * 6), but entry 1 (func 0,
+        // seven Linear params) uses all 13. Entry 2 has no bytes at all;
+        // it must not be synthesised as (func 0, [], Unrestricted).
+        let mut payload = vec![2, 0, 0, 0, 0, 0, 0, 0, 7];
+        payload.extend([1u8; 7]);
+        payload.push(0);
+        assert!(matches!(
+            parse_ownership_section_payload(&payload),
+            Err(CarrierError::CountExceedsPayload {
+                count: 1,
+                remaining: 0,
+                ..
+            })
+        ));
     }
 
     #[test]

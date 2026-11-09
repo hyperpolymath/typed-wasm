@@ -1208,8 +1208,11 @@ enum OpProbe {
 /// `FunctionBody::range` starts at that same byte, so the relative
 /// position of each operator is `absolute_offset - range.start`.
 ///
-/// Streams the body once and stops at the first operator at or beyond
-/// the offset; it never allocates the operator list.
+/// Streams the whole body once without allocating the operator list. It
+/// records the operator at the offset but keeps decoding to the end and
+/// then checks for trailing bytes, so a malformed instruction anywhere in
+/// the body is a decode error rather than being hidden behind a
+/// well-typed pinned site.
 #[cfg(feature = "unstable-l2")]
 fn probe_op_at(body: FunctionBody<'_>, byte_offset: u32) -> Result<OpProbe, BinaryReaderError> {
     let range = body.range();
@@ -1218,22 +1221,22 @@ fn probe_op_at(body: FunctionBody<'_>, byte_offset: u32) -> Result<OpProbe, Bina
         return Ok(OpProbe::PastEnd { body_len });
     }
     let target = range.start + byte_offset as usize;
-    let reader = body.get_operators_reader()?;
-    for item in reader.into_iter_with_offsets() {
-        let (op, pos) = item?;
+    let mut reader = body.get_operators_reader()?;
+    // If no operator starts at the target, the offset falls before the
+    // first operator (inside the locals vector) or strictly inside an
+    // instruction.
+    let mut found = OpProbe::NotABoundary;
+    while !reader.eof() {
+        let (op, pos) = reader.read_with_offset()?;
         if pos == target {
-            return Ok(OpProbe::At {
+            found = OpProbe::At {
                 mem: classify_mem_op(&op),
                 token: operator_token(&op),
-            });
-        }
-        if pos > target {
-            break;
+            };
         }
     }
-    // Either the offset falls before the first operator (inside the
-    // locals vector) or strictly inside an instruction.
-    Ok(OpProbe::NotABoundary)
+    reader.finish()?;
+    Ok(found)
 }
 
 #[cfg(feature = "unstable-l2")]
@@ -1929,6 +1932,64 @@ mod access_sites_verifier_tests {
             ),
             "got {:?}",
             report.errors
+        );
+    }
+
+    #[test]
+    fn malformed_operator_after_the_pinned_load_is_a_decode_error() {
+        // A well-typed i32.load at the pinned offset, followed by an
+        // illegal opcode (0xFF). Stopping the decode at the pinned site
+        // would report the site as type-verified and let the gate admit
+        // an undecodable body; the rest of the body must be decoded.
+        let mut types = TypeSection::new();
+        types.ty().function([ValType::I32], [ValType::I32]);
+        let mut funcs = FunctionSection::new();
+        funcs.function(0);
+        let mut mems = wasm_encoder::MemorySection::new();
+        mems.memory(wasm_encoder::MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        let mut f = Function::new(Vec::<(u32, ValType)>::new());
+        f.instruction(&Instruction::LocalGet(0));
+        let load_at = f.byte_len() as u32;
+        f.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.raw([0xFF]);
+        f.instruction(&Instruction::End);
+        let mut code = CodeSection::new();
+        code.function(&f);
+        let mut module = Module::new();
+        module.section(&types);
+        module.section(&funcs);
+        module.section(&mems);
+        module.section(&code);
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let rb = build_regions_section_payload(&regions);
+        module.section(&CustomSection {
+            name: REGIONS_SECTION_NAME.into(),
+            data: (&rb[..]).into(),
+        });
+        let ab = build_access_sites_section_payload(&[site(load_at)]);
+        module.section(&CustomSection {
+            name: ACCESS_SITES_SECTION_NAME.into(),
+            data: (&ab[..]).into(),
+        });
+        let bytes = module.finish();
+        let result = verify_access_typing_from_module(&bytes);
+        assert!(
+            result.is_err(),
+            "a body that does not decode must not type-verify, got {result:?}"
         );
     }
 

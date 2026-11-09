@@ -537,12 +537,20 @@ fn byte_len_u32(f: &Function) -> u32 {
 /// maps to an offset past the end of the body (`body_len + overshoot`).
 /// The verifier then reports `AccessSiteOffsetOutOfRange` instead of the
 /// fault being silently re-pinned to some real instruction.
+///
+/// The sum is clamped to `ACCESS_SITE_UNPINNED - 1`: saturating to
+/// `u32::MAX` would emit the declared-only sentinel, and the verifier would
+/// then count the producer bug as an unpinned site instead of reporting
+/// it. `body_len` is a function body length, far below that clamp, so the
+/// clamped value is still past the end of the body.
 fn instr_index_to_byte_offset(op_offsets: &[u32], body_len: u32, k: usize) -> u32 {
     match op_offsets.get(k) {
         Some(&off) => off,
         None => {
             let overshoot = k - op_offsets.len();
-            body_len.saturating_add(u32::try_from(overshoot).unwrap_or(u32::MAX))
+            body_len
+                .saturating_add(u32::try_from(overshoot).unwrap_or(u32::MAX))
+                .min(ACCESS_SITE_UNPINNED - 1)
         }
     }
 }
