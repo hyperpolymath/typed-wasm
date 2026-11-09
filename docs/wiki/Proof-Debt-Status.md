@@ -174,9 +174,9 @@ The Rust verifier currently covers L7 (aliasing) + L10 (linearity) only. Extendi
 | **Idris2 proofs** | Type discipline is sound (spec-level): every well-typed program respects L1-L10 / L13-L16 | `src/abi/TypedWasm/ABI/*.idr` |
 | **Source checker** | Source programs respect the discipline | `hyperpolymath/affinescript:lib/codegen.ml` (QTT pass), upcoming `.twasm` parser/checker |
 | **Post-codegen verifier** | Emitted wasm bytes respect the discipline (covers L7 + L10 today) | `crates/typed-wasm-verify/` (Rust) + `hyperpolymath/affinescript:lib/{tw_verify,tw_interface}.ml` (OCaml, reference impl) |
-| **Spec-of-record (2026-05-27)** | Verifier and source-checker agree with the Idris2 spec — bundled as totally-proven records | `src/abi/TypedWasm/ABI/VerifierSpec.idr` (NEW) |
+| **Spec-of-record (2026-05-27)** | The Idris2 predicates `VerifierAccepts` and `SourceAccepts` agree with `SpecAccepts`. This is true by construction (each wraps the same witness) and is a statement about Idris2 predicates only, not about the Rust verifier or the source checker | `src/abi/TypedWasm/ABI/VerifierSpec.idr` |
 
-The agreement records introduced in PR #79 close the loop: a drift between the Rust verifier's accept-verdict on a fixture and the Idris2 spec's `SpecAccepts` predicate now shows up either as a failing differential-harness fixture or as an absent `TrustedFixture` registration. Trust is injected once per audited fixture, not at every consumer.
+The agreement records introduced in PR #79 do not close the loop to the Rust code. No theorem relates `verify.rs`'s verdicts to `SpecAccepts`; a `TrustedFixture` is an asserted link, registered by hand (ADR-0005). Drift between the Rust verifier and the spec is caught only by the Rust-side tests and differential fixtures (`crates/typed-wasm-verify/tests/`), not by the records.
 
 ## Build and test oracle
 

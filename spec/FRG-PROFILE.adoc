@@ -49,7 +49,7 @@ ____
 
 (Note: the file count is now 22, not 11, post-2026-04-13.) Grade
 C is reached because the structural guarantees + A10 agreement
-records + 88/88 parser tests + explicit Idris2 theorems for
+records (spec-internal only; see B2) + 88/88 parser tests + explicit Idris2 theorems for
 L13-L16 (per `LEVEL-STATUS.md`) clear the C-bar. Grade B requires
 per-level preservation lemmas, which is open work.
 
@@ -138,8 +138,8 @@ Hygiene status (per `PROOF-NEEDS.md` audit 2026-04-13):
 | L13-L16 have explicit Idris2 theorems (DistinctCaps, ContainedIn, CallCompatible, etc. per LEVEL-STATUS); L1-L10 carry structural guarantees but no separately-stated preservation lemmas.
 
 | *B2 — Verifier ↔ spec refinement theorem*
-| PARTIAL
-| A10 closure inhabits the agreement records (`VerifierSpecAgreement`, `SourceVerifierAgreement`), but the inhabitation is tautological: `VerifierAccepts`/`SourceAccepts` are defined as wrappers of the same witness `SpecAccepts` wraps. No refinement claim about the Rust verifier follows from it; that theorem is still to be stated.
+| NO
+| No refinement theorem connects the Rust verifier to the Idris2 spec. A10 closure inhabits the agreement records (`VerifierSpecAgreement`, `SourceVerifierAgreement`), but the inhabitation is tautological: `VerifierAccepts`/`SourceAccepts` are defined as wrappers of the same witness `SpecAccepts` wraps, so the records relate Idris2 predicates to each other and say nothing about `verify.rs`. The Rust side has differential and fixture tests (`crates/typed-wasm-verify/tests/`), which are test evidence, not a refinement result.
 
 | *B3 — External review of the formalisation*
 | NO
@@ -185,8 +185,11 @@ Gating gaps for grade *B*:
   at compile time" into "here is a lemma proving it is forbidden."
   (~weeks per level)
 * Promote L11 + L12 from draft to checked.
-* State the verifier-spec refinement theorem explicitly citing
-  A10's agreement records.
+* Connect the Rust verifier to the spec: state a refinement theorem
+  whose verifier side is a model of `verify.rs` (or code extracted from
+  or checked against it), not a predicate defined as a wrapper of
+  `SpecAccepts`. The A10 agreement records cannot serve as that
+  theorem, because they relate Idris2 predicates to each other only.
 
 *Realistic timeline estimate:* 3-6 months for the L1-L10
 preservation work; L11/L12 independent timeline.

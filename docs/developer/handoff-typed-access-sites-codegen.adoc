@@ -1,16 +1,25 @@
 // SPDX-License-Identifier: CC-BY-SA-4.0
 = Handoff: Typed Access-Sites Codegen for AffineScript + Ephapax
 
-:status: open
+:status: open (AffineScript only; Ephapax done)
 :filed: 2026-05-30
 :trackers: affinescript#462, ephapax#251
 :wire-spec: docs/proposals/0002-access-site-carrier.adoc
 :adr: docs/decisions/0003-access-site-carrier.adoc
 
 This is a self-contained brief for a new Claude session picking up
-producer-side typed `typedwasm.access-sites` emission. The task spans
-**two repositories** (AffineScript + Ephapax); both producers share
-the same wire format and the same blocker, so the work parallelises.
+producer-side typed `typedwasm.access-sites` emission. It was written
+for **two repositories** (AffineScript + Ephapax), which share the same
+wire format and the same blocker.
+
+*Status (2026-11-09).* The Ephapax half is done: ephapax#251 closed
+2026-07-07, and `src/ephapax-wasm/src/carriers.rs` emits
+`typedwasm.regions` (one `ephapax.string` region with `ptr` and `len`
+fields) plus `typedwasm.access-sites` entries carrying ADR-0003 byte
+offsets for the string-runtime helpers' header loads and stores. The
+remaining work is the AffineScript producer (affinescript#462). The
+Ephapax-specific sections below are kept as the record of what that
+half needed; use `carriers.rs` as a second worked precedent.
 
 == Context (what already shipped)
 
@@ -37,7 +46,8 @@ the same wire format and the same blocker, so the work parallelises.
 
 == What this handoff is about
 
-Both producers need to start emitting `typedwasm.access-sites`. The
+Both producers needed to emit `typedwasm.access-sites`; Ephapax now
+does, AffineScript does not yet. The
 verifier already consumes the carrier; without producer emission the
 L2-per-instruction enforcement cannot fire on emitted bytes (only the
 L2-spec / L3-L6 / L15-A/B halves are carrier-backed today).
@@ -77,17 +87,22 @@ Wire format per typed-wasm proposal 0002 §"Wire format":
 
 [source]
 ----
-u16le   version              (= ACCESS_SITES_VERSION = 1)
-u32le   entry_count
-for each entry (strictly ordered by (func_idx, byte_offset)):
-    u32le  func_idx
-    u32le  instruction_byte_offset
-    u32le  region_id
-    u32le  field_id
+u16le    version                  (= ACCESS_SITES_VERSION = 1)
+uleb128  entry_count              (unsigned LEB128 over u32)
+for each entry (in producer-emission order):
+    uleb128  func_idx
+    uleb128  instruction_byte_offset  (byte offset from the start of the
+                                       function body's locals vector;
+                                       u32::MAX = declared-only, unpinned)
+    uleb128  region_id
+    uleb128  field_id
 ----
 
-Encoding option B (LEB128 per field) per proposal 0002 §"Wire format"
-measurement (~5B/access, ~1.1% module overhead).
+Only `version` is fixed-width little-endian. `entry_count` and all four
+entry fields are unsigned LEB128 (shortest encoding), per proposal 0002
+§"Wire format" (encoding option B, ~5 B per access, ~1.1% module
+overhead). A producer that writes them as fixed-width `u32le` emits a
+carrier the verifier decodes as different values.
 
 The encoder is straightforward — pattern-match on the precedents:
 
@@ -129,6 +144,10 @@ producer-side emission first.
   above). Do not let one repo ship IR-annotation while the other
   ships side-table; the carrier wire format is shared so the
   producer-internal mechanism should be too where reasonable.
+  (Ephapax's v1 schema has one fixed region, so its codegen knows the
+  `(region_id, field_id)` of every string-header access without
+  threading anything. That does not settle the choice for AffineScript's
+  user-declared regions; propose one and confirm with the owner.)
 * **The encoder is the easy half.** Don't be tempted to land
   `Encode.access_sites` first as a "minimal slice" — without the
   threading, it has no feeder. The dead-code lint will catch it

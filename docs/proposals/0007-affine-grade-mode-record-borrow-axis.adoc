@@ -107,6 +107,23 @@ BorrowMode = Owned | Shared | Exclusive
 | `Exclusive` | no two simultaneously live references. Approximated today, as in v1, by max ≤ 1 loads.
 |===
 
+*Known gap: inter-argument aliasing.* The `Exclusive` check counts
+loads of one parameter inside the callee. It cannot see the arguments.
+A caller that passes the same address to two `Exclusive` parameters
+(or to one `Exclusive` and one `Shared` parameter) produces a callee in
+which each parameter is loaded at most once, so the check passes while
+the two references alias. The locals-taint analysis does not close
+this either: it tracks copies within one function body, not the values
+supplied at a call. Establishing "no two simultaneously live
+references" for `Exclusive` needs a call-boundary obligation: at every
+call site, the arguments bound to an `Exclusive` parameter are distinct
+from every other reference argument of that call. That obligation
+belongs to the caller-side analysis (the cross-module pass already
+inspects call sites for `Linear` parameters) and is not proposed here.
+Until it exists, `Exclusive` on the wire means "loaded at most once in
+the callee", and documentation must not describe it as a non-aliasing
+guarantee. v1 `ExclBorrow` has the same gap today.
+
 A parameter carries a `(Grade, BorrowMode)` pair. Every v1 kind is
 one pair, so v1 meaning is preserved exactly:
 
@@ -139,16 +156,45 @@ u32le  requires       (bitset of verifier features the module's claims
 Verifier rules:
 
 * *Mode/grade agreement.* A `linear`-mode module may declare only
-  `Unrestricted` and `Linear` grades. An `Affine` grade in a linear
-  module is `ModeGradeMismatch { func_idx, param_idx }`. An
+  `Unrestricted` and `Linear` grades, in every slot: each parameter and
+  the return slot. An `Affine` grade in a linear module is
+  `ModeGradeMismatch { func_idx, slot }`, where `slot` is
+  `Param(param_idx)` or `Return`. This is a check on the declared
+  bytes; it needs no usage analysis, so it is not affected by the open
+  question on checking how return values are used (below). An
   `affine`-mode module may declare any grade.
 * *Fail-closed requirements.* A verifier (or `typed-wasm-gate`) that
   sees a `requires` bit it does not implement rejects the module with
-  `UnsupportedRequirement { bit }`. This is what makes the extension
-  safe to deploy: without it, every v1-only consumer would ignore the
-  new claims and accept the module (fail-open).
-* *Absent record.* No `typedwasm.mode` section means "no mode claimed",
-  as today. A gate policy may require the record.
+  `UnsupportedRequirement { bit }`. This protects only verifiers that
+  read `typedwasm.mode`; see *Admission during migration* below for
+  verifiers that do not.
+* *v2 needs the record.* A module that carries
+  `typedwasm.ownership.v2` must also carry a `typedwasm.mode` record
+  with `requires` bit 0 set. A v2-aware verifier rejects a v2 section
+  without that record or without bit 0 as
+  `OwnershipV2WithoutRequirement`. Without this rule a module could
+  claim `Affine` in v2, ship an `Unrestricted` v1 projection and clear
+  bit 0, and a verifier that reads `typedwasm.mode` but does not
+  implement v2 would accept it unchecked. For the same reason, a
+  verifier that implements `typedwasm.mode` rejects any
+  `typedwasm.ownership.v<N>` section whose version it does not
+  implement, whatever the `requires` bits say.
+* *Absent record.* No `typedwasm.mode` section (and no v2 section)
+  means "no mode claimed", as today. A gate policy may require the
+  record.
+
+*Admission during migration.* A v1-only verifier predates both new
+sections. It reads neither, sees only the v1 projection, in which an
+`Affine` parameter is `Unrestricted`, and accepts a module that uses an
+affine parameter twice. The `requires` bit cannot help, because that
+verifier never reads it. So the v1 projection is a compatibility aid
+for v1 tooling, not an admission path: a module that carries
+`typedwasm.ownership.v2` counts as verified only when a v2-aware
+verifier has admitted it. Deployments upgrade their gate to a v2-aware
+`typed-wasm-verify` before any producer emits `Affine` grades, and a
+gate that cannot be upgraded must reject modules carrying
+`typedwasm.ownership.v2` or `typedwasm.mode` by name (a one-line policy
+that does not require implementing v2).
 
 === Wire encoding of the pair: versioned ownership v2
 
@@ -161,7 +207,7 @@ u16le  version        (= 2)
 leb    entry_count
 for each entry:
     leb    func_idx   (GLOBAL function index)
-    u8     n_params
+    leb    n_params   (unsigned LEB128; v1's u8 caps at 255)
     for each param:
         u8 grade      (0 = Unrestricted, 1 = Linear, 2 = Affine)
         u8 borrow     (0 = Owned, 1 = Shared, 2 = Exclusive)
@@ -175,12 +221,24 @@ now follow). Unknown `grade` / `borrow` bytes are malformed, not
 defaulted: the v1 "unknown → Unrestricted" fallback is fail-open and is
 not carried forward.
 
+`n_params` is LEB128 because wasm allows functions with more than 255
+parameters (the JS embedding limit is 1000), and v1's `u8 n_params`
+cannot describe them; the v1 encoder panics on such an entry. Each
+`n_params` is bounded by the remaining payload (two bytes per
+parameter plus the two return bytes) before allocation.
+
 Migration: a producer emits v2, sets `requires` bit 0 in
 `typedwasm.mode`, and keeps emitting v1 for the parameters v1 can
 express (an `Affine` parameter appears in v1 as `Unrestricted`, which
-v1 consumers already treat as unconstrained). When both sections are
-present, the v2-aware verifier checks v2 and requires v1 to be the
-projection of v2 (`OwnershipCarrierDisagreement` otherwise).
+v1 consumers already treat as unconstrained). A function with more
+than 255 parameters has no v1 entry: v1 cannot encode it, and its
+absence is the same "unconstrained to v1 consumers" outcome as an
+`Unrestricted` projection, which is acceptable only because v1-only
+verifiers are not an admission path for v2 modules (above). When both
+sections are present, the v2-aware verifier checks v2 and requires v1
+to be the projection of v2: every v2 entry with at most 255 parameters
+has exactly the projected v1 entry, and every v2 entry with more has
+none (`OwnershipCarrierDisagreement` otherwise).
 
 == Spec extension: `VerifierSpec.OwnershipIntent`
 
@@ -368,8 +426,15 @@ What it does *not* establish:
 . *Relevant grade.* "At least once, may be duplicated" is the fourth
   point of the usual lattice. No producer needs it today; the grade
   byte leaves room.
-. *Return slots.* v1 carries a return kind that the verifier does not
-  check. v2 keeps the slot; checking it needs the caller-side analysis.
+. *Return-slot usage.* v1 carries a return kind that the verifier does
+  not check. v2 keeps the slot; checking how a caller uses a returned
+  value needs the caller-side analysis. (Mode/grade agreement on the
+  declared return grade is not open: it is the `ModeGradeMismatch`
+  rule above.)
+. *Call-boundary non-aliasing.* The `Exclusive` inter-argument
+  aliasing gap described in §2 needs a caller-side obligation; its
+  shape, and whether it lives in `verify_link_graph` or in a per-module
+  pass, is open.
 . *Gate default.* Should `typed-wasm-gate` require a `typedwasm.mode`
   record from producers that declare themselves dyadic?
 
@@ -378,9 +443,12 @@ What it does *not* establish:
 * Codec: `typedwasm.ownership.v2` and `typedwasm.mode`
   parse/build with round-trip tests, hostile-count rejection, and
   rejection of unknown grade / borrow / mode bytes.
-* Verifier: `AffineUsedMultiple`, `ModeGradeMismatch`,
-  `UnsupportedRequirement`, `OwnershipCarrierDisagreement`, each with a
-  negative test that fails when the check is removed.
+* Verifier: `AffineUsedMultiple`, `ModeGradeMismatch` (one negative
+  test for a parameter slot and one for the return slot),
+  `UnsupportedRequirement`, `OwnershipV2WithoutRequirement`,
+  `OwnershipCarrierDisagreement`, each with a negative test that fails
+  when the check is removed. Codec tests include a 256-parameter v2
+  entry.
 * Spec: the sketch above moved into the package as its own module, plus
   the conservative-extension lemma.
 * Producer: Ephapax emits `typedwasm.mode` with the real mode, so

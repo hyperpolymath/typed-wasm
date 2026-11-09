@@ -50,8 +50,12 @@ link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambigu
   Proofs live in `TypedWasm/ABI/` (the checked L1-L10 core).
 
 . **Aggregate library** — the convergence infrastructure for languages that compile to
-  typed WasmGC.  AffineScript and Ephapax are independent languages that both target
-  WasmGC; they need agreed binary conventions (type layout, ABI, stdlib types, linking).
+  WebAssembly.  AffineScript and Ephapax are independent languages that need agreed
+  binary conventions (type layout, ABI, stdlib types, linking).  AffineScript compiles
+  to typed WasmGC.  Ephapax's compiler emits linear-memory wasm today: it integrates
+  through the `typedwasm.*` carrier sections checked by `typed-wasm-verify`, not through
+  the WasmGC `Layout.*` contracts.  Its vision document names typed WasmGC as a target,
+  but no Ephapax WasmGC backend exists.
   The Idris2 ABI infrastructure that typed-wasm already uses for role 1 is exactly the
   right tool for formally verifying the cross-language layout contracts.
   These proofs live in `src/abi/layout/`.

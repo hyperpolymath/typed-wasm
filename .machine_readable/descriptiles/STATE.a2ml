@@ -6,7 +6,7 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-05-27"
+last-updated = "2026-11-09"
 status = "active"  # active | paused | archived
 session = "2026-05-27 — Phase 2 carrier-ABI + Proof-debt closure pass (combined integration). Carrier-ABI (parallel session): #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A; Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72, MERGED): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation; compatCommute mutual-subschema). A11 closes 3/8 untracked (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8 incl. new TypedWasm.ABI.VerifierSpec module. Proof-debt closure pass #79/#80: #79 VerifierSpec total bodies for VerifierSpecAgreement / SourceVerifierAgreement (post-A10 items 7+8) — VADifferential/SADifferential carry inline TrustedFixture so structural witness travels with fixture metadata, all four agreement directions total by case analysis; first total no-believe_me agreement values. #80 Proofs.idr LevelAttestationW + WitnessCertificate (standards#130 long-tail) — 15-ctor witness-indexed GADT with per-level extractors, existential SomeAttestationW wrapper enabling WitnessCertificate as heterogeneous-list lift of ProofCertificate (PR #83 second slice folded in). #74 closed as superseded by #79. Test surface 545 → 627+ assertions (proof regression 25 → 107). Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
 
@@ -17,9 +17,12 @@ Two first-class roles (ADR-004):
   1. TypeLL progressive type safety for WasmGC linear memory — region schemas,
      type-safe access operations, currently a checked L1-L10 core; open-ended.
      Pipeline: katagoria → typell → typed-wasm → PanLL.
-  2. Aggregate library — convergence infrastructure for AffineScript and Ephapax
-     (both compile to WasmGC).  Provides formally verified type layout and ABI
-     conventions so cross-language calls require no marshalling layer.
+  2. Aggregate library — convergence infrastructure for AffineScript and Ephapax.
+     AffineScript compiles to typed WasmGC; Ephapax emits linear-memory wasm today and
+     integrates through the typedwasm.* carriers checked by typed-wasm-verify, not the
+     WasmGC Layout.* contracts (its vision names WasmGC; no such backend exists).
+     Provides formally verified type layout and ABI conventions so cross-language calls
+     require no marshalling layer.
 """
 completion-percentage = 70   # bumped from 55: foundation defensibly engineered; codegen pipeline kickoff complete; CI honest; 545+ test assertions across 11 surfaces; ROADMAP truthful with drift-detection aspect in place
 production-phase = "0"      # see docs/PRODUCTION-PATH.adoc — phase 0 of 6
