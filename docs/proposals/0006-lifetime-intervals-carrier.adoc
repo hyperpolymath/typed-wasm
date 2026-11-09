@@ -70,9 +70,10 @@ for each entry:
 ====
 `valid_from` and `valid_to` above are *instruction indices*. The
 access-site carrier settled the same question the other way:
-link:../decisions/0003-access-site-carrier.adoc[ADR-0003] records a
-*byte offset* from the start of the function body's locals vector, and
-the verifier maps it to the instruction that starts there (rejecting an
+link:../decisions/0003-access-site-carrier.adoc[ADR-0003] adopted
+`instruction_byte_offset`, a *byte offset* that
+link:0002-access-site-carrier.adoc[Proposal 0002] counts from the byte
+after the function body's size prefix, and the verifier maps it to the instruction that starts there (rejecting an
 offset that is not an instruction boundary). Two carriers addressing
 instructions in two different ways would make producers emit both and
 verifiers decode both. Recommendation: before this proposal is ratified,
