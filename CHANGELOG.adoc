@@ -9,6 +9,19 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== CI: standards re-pinned to metadatastician @ `e064539` (2026-11-09)
+
+* The five standards reusables (governance, hypatia-scan, mirror, scorecard,
+  secret-scanner) move from `hyperpolymath/standards@da2c748` to
+  `metadatastician/standards@e064539`, the commit panll runs green
+  (hyperpolymath/panll#171). At `da2c748` all five failed at startup on
+  every push, so the required `scan / gitleaks` check never reported.
+* `governance.yml` and `mirror.yml` grant `actions: read`, which both
+  reusables declare at workflow level at `e064539`.
+* `mirror.yml` passes the seven forge keys the reusable declares by name,
+  and `secret-scanner.yml` passes none (its reusable declares none), instead
+  of `secrets: inherit`, which handed every repository secret to the callee.
+
 ==== L15-C at the front-end: a caller's caps contain its callee's (2026-10-27)
 
 * The canonical Rust front-end (`typed-wasm-codegen`, ADR-0006) now parses
