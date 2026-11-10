@@ -273,6 +273,13 @@ pub fn verify_function(
 /// section. Modules without the section verify trivially.
 ///
 /// Rust port of OCaml `Tw_verify.verify_from_module`.
+///
+/// # Errors
+///
+/// Returns [`VerifyError::Parse`] for module or inspected-body decoding
+/// errors, [`VerifyError::MalformedCarrier`] for rejected ownership counts
+/// or incomplete function indices, and [`VerifyError::Ownership`] for
+/// collected ownership and module-isolation violations.
 pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
     // First pass: locate the ownership section (if any) and collect
     // every function body alongside its global function index.
@@ -337,7 +344,7 @@ pub fn verify_from_module(wasm_bytes: &[u8]) -> Result<(), VerifyError> {
         // No ownership section: nothing constrained, verify trivially.
         return Ok(());
     };
-    let entries = parse_ownership_section_payload(&payload);
+    let entries = parse_ownership_section_payload(&payload)?;
 
     let mut all_errors = Vec::new();
 
@@ -729,6 +736,52 @@ mod tests {
         assert!(verify_from_module(&module).is_ok());
     }
 
+    #[test]
+    fn hostile_ownership_count_is_an_error_not_an_abort() {
+        // A valid module whose ownership carrier claims 0xFFFF_FFFF
+        // entries and carries none. Before the count bound, the verifier
+        // tried to allocate ~137 GB here and the process aborted. It must
+        // now return a typed error.
+        let body = [Instruction::I32Const(0), Instruction::Return];
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types.ty().function([ValType::I32], [ValType::I32]);
+        module.section(&types);
+        let mut funcs = FunctionSection::new();
+        funcs.function(0);
+        module.section(&funcs);
+        let mut code = CodeSection::new();
+        let mut f = Function::new([]);
+        for instr in &body {
+            f.instruction(instr);
+        }
+        f.instruction(&Instruction::End);
+        code.function(&f);
+        module.section(&code);
+        let hostile = u32::MAX.to_le_bytes();
+        module.section(&CustomSection {
+            name: OWNERSHIP_SECTION_NAME.into(),
+            data: (&hostile[..]).into(),
+        });
+        let wasm = module.finish();
+        assert!(wasmparser::Validator::new().validate_all(&wasm).is_ok());
+
+        match verify_from_module(&wasm) {
+            Err(VerifyError::MalformedCarrier(crate::CarrierError::CountExceedsPayload {
+                section: "typedwasm.ownership",
+                count: u32::MAX,
+                remaining: 0,
+                ..
+            })) => {}
+            other => panic!("expected MalformedCarrier, got {other:?}"),
+        }
+        // The cross-module export extractor reads the same carrier.
+        assert!(matches!(
+            crate::extract_exports(&wasm),
+            Err(VerifyError::MalformedCarrier(_))
+        ));
+    }
+
     // ------------------------------------------------------------------
     // L13 module isolation (negative form) — parity with OCaml
     // Tw_verify.verify_module_isolation (affinescript PR #280, #35).
@@ -828,7 +881,7 @@ mod tests {
 // ----------------------------------------------------------------------
 
 #[cfg(feature = "unstable-l15")]
-use crate::section::parse_capabilities_section_payload;
+use crate::section::try_parse_capabilities_section_payload;
 #[cfg(feature = "unstable-l15")]
 use crate::{CapabilitiesError, CAPABILITIES_SECTION_NAME};
 
@@ -858,6 +911,15 @@ fn function_count(wasm_bytes: &[u8]) -> Result<u32, VerifyError> {
     Ok(import_count + local_count)
 }
 
+/// Check function and capability indices in `typedwasm.capabilities`.
+/// Returns all index violations; an absent section or unsupported version
+/// yields an empty list. Required capability lists are sorted and
+/// deduplicated by the codec before checking.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// carrier counts or name lengths as [`VerifyError::MalformedCarrier`].
 #[cfg(feature = "unstable-l15")]
 pub fn verify_capabilities_from_module(
     wasm_bytes: &[u8],
@@ -877,7 +939,7 @@ pub fn verify_capabilities_from_module(
         // No capabilities section: nothing constrained, verify trivially.
         return Ok(vec![]);
     };
-    let Some((capabilities, functions)) = parse_capabilities_section_payload(&payload) else {
+    let Some((capabilities, functions)) = try_parse_capabilities_section_payload(&payload)? else {
         // Unsupported version: lenient — return no errors. Producers
         // emitting a version we don't know are not our problem; they
         // should bump the verifier first.
@@ -917,8 +979,8 @@ pub fn verify_capabilities_from_module(
 
 #[cfg(feature = "unstable-l2")]
 use crate::section::{
-    parse_access_sites_section_payload, parse_regions_section_payload, FieldEntry, RegionEntry,
-    WasmTy, ACCESS_SITE_UNPINNED,
+    try_parse_access_sites_section_payload, try_parse_regions_section_payload, FieldEntry,
+    RegionEntry, WasmTy, ACCESS_SITE_UNPINNED,
 };
 #[cfg(feature = "unstable-l2")]
 use crate::{
@@ -926,6 +988,18 @@ use crate::{
     REGIONS_SECTION_NAME,
 };
 
+/// Check the function, region and field indices in `typedwasm.access-sites`.
+/// Returns all index violations without checking instruction offsets.
+/// An absent access-sites section yields an empty list. Missing or
+/// unsupported regions yield [`AccessSiteError::MissingDependentRegions`];
+/// with supported regions, an unsupported access-sites version yields an
+/// empty list.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// counts or name lengths in decoded carriers as
+/// [`VerifyError::MalformedCarrier`].
 #[cfg(feature = "unstable-l2")]
 pub fn verify_access_sites_from_module(
     wasm_bytes: &[u8],
@@ -958,13 +1032,13 @@ pub fn verify_access_sites_from_module(
     let Some(regions_bytes) = regions_payload else {
         return Ok(vec![AccessSiteError::MissingDependentRegions]);
     };
-    let Some(regions) = parse_regions_section_payload(&regions_bytes) else {
+    let Some(regions) = try_parse_regions_section_payload(&regions_bytes)? else {
         // Regions section present but unparseable (version mismatch).
         // Treat as missing for MissingDependentCarrier purposes —
         // we can't validate against a table we can't read.
         return Ok(vec![AccessSiteError::MissingDependentRegions]);
     };
-    let Some(entries) = parse_access_sites_section_payload(&access_payload) else {
+    let Some(entries) = try_parse_access_sites_section_payload(&access_payload)? else {
         // Unsupported access-sites version: lenient, no errors.
         return Ok(vec![]);
     };
@@ -1137,45 +1211,80 @@ fn field_byte_offset(region: &RegionEntry, field_id: usize) -> u32 {
     off
 }
 
-/// What the decode found at a pinned instruction index.
+/// What the decode found at a pinned byte offset.
 #[cfg(feature = "unstable-l2")]
-struct OpProbe {
-    /// Total operator count in the body (incl. the terminating `End`).
-    op_count: u32,
-    /// `true` iff the pinned index is within the operator stream.
-    present: bool,
-    /// `Some((tag, memarg_offset))` iff the pinned op is a memory op.
-    mem: Option<(MemOp, u64)>,
-    /// Short token of the pinned op (empty if the index was past the end).
-    token: String,
+enum OpProbe {
+    /// The offset is at or past the end of the function body.
+    PastEnd { body_len: u32 },
+    /// The offset is inside the body but no operator starts there (it
+    /// points into the locals vector or into the middle of an
+    /// instruction's immediates).
+    NotABoundary,
+    /// An operator starts exactly at the offset.
+    At {
+        /// `Some((tag, memarg_offset))` iff the operator is a memory op.
+        mem: Option<(MemOp, u64)>,
+        /// Short token naming the operator, for error messages.
+        token: String,
+    },
 }
 
-/// Decode `body` and report the operator at `index`. Streams once; does
-/// not allocate the operator list.
+/// Decode `body` and report the operator that starts at `byte_offset`,
+/// where the offset is counted from the first byte after the body's size
+/// prefix (the start of the locals vector), exactly as ADR-0003 /
+/// proposal 0002 define `instruction_byte_offset`. wasmparser's
+/// `FunctionBody::range` starts at that same byte, so the relative
+/// position of each operator is `absolute_offset - range.start`.
+///
+/// An offset at or past the body length returns `PastEnd` without decoding.
+/// For an in-range offset, streams the whole body once without allocating
+/// the operator list. It records the operator at the offset but keeps
+/// decoding to the end and
+/// then checks for trailing bytes, so a malformed instruction anywhere in
+/// the body is a decode error rather than being hidden behind a
+/// well-typed pinned site.
 #[cfg(feature = "unstable-l2")]
-fn probe_op_at(body: FunctionBody<'_>, index: usize) -> Result<OpProbe, BinaryReaderError> {
-    let reader = body.get_operators_reader()?;
-    let mut op_count: u32 = 0;
-    let mut mem: Option<(MemOp, u64)> = None;
-    let mut token = String::new();
-    let mut present = false;
-    for (i, op_result) in reader.into_iter().enumerate() {
-        let op = op_result?;
-        if i == index {
-            present = true;
-            mem = classify_mem_op(&op);
-            token = operator_token(&op);
-        }
-        op_count += 1;
+fn probe_op_at(body: FunctionBody<'_>, byte_offset: u32) -> Result<OpProbe, BinaryReaderError> {
+    let range = body.range();
+    let body_len = u32::try_from(range.len()).unwrap_or(u32::MAX);
+    if byte_offset >= body_len {
+        return Ok(OpProbe::PastEnd { body_len });
     }
-    Ok(OpProbe {
-        op_count,
-        present,
-        mem,
-        token,
-    })
+    let target = range.start + byte_offset as usize;
+    let mut reader = body.get_operators_reader()?;
+    // If no operator starts at the target, the offset falls before the
+    // first operator (inside the locals vector) or strictly inside an
+    // instruction.
+    let mut found = OpProbe::NotABoundary;
+    while !reader.eof() {
+        let (op, pos) = reader.read_with_offset()?;
+        if pos == target {
+            found = OpProbe::At {
+                mem: classify_mem_op(&op),
+                token: operator_token(&op),
+            };
+        }
+    }
+    reader.finish()?;
+    Ok(found)
 }
 
+/// Check pinned access sites against scalar field types, widths and offsets.
+/// Pinned offsets count bytes from the start of the function's locals
+/// vector (ADR-0003) and must identify the start of a matching load/store
+/// whose static offset and extent agree with the region schema.
+/// Returns successful and declared-only counts plus site violations;
+/// declared-only sites are counted without validation. An absent companion
+/// section yields an empty report. With both sections present, an unsupported
+/// version yields an empty report unless either codec returns an error.
+/// Run [`verify_access_sites_from_module`] as well to check carrier
+/// dependencies and indices.
+///
+/// # Errors
+///
+/// Propagates module and inspected-body decoding errors as
+/// [`VerifyError::Parse`], and rejected carrier counts or name lengths as
+/// [`VerifyError::MalformedCarrier`]. Site violations stay in the report.
 #[cfg(feature = "unstable-l2")]
 pub fn verify_access_typing_from_module(
     wasm_bytes: &[u8],
@@ -1216,8 +1325,8 @@ pub fn verify_access_typing_from_module(
         return Ok(report);
     };
     let (Some(regions), Some(entries)) = (
-        parse_regions_section_payload(&regions_bytes),
-        parse_access_sites_section_payload(&access_payload),
+        try_parse_regions_section_payload(&regions_bytes)?,
+        try_parse_access_sites_section_payload(&access_payload)?,
     ) else {
         return Ok(report);
     };
@@ -1232,7 +1341,7 @@ pub fn verify_access_typing_from_module(
             report.declared_only += 1;
             continue;
         }
-        let instruction_index = e.instruction_byte_offset;
+        let byte_offset = e.instruction_byte_offset;
 
         // Resolve region + field (typing can't proceed without them).
         if e.region_id >= region_count {
@@ -1308,24 +1417,40 @@ pub fn verify_access_typing_from_module(
             continue;
         }
 
-        // Decode the pinned instruction.
-        let probe = probe_op_at(bodies[body_idx].clone(), instruction_index as usize)?;
-        if !probe.present {
-            report.errors.push(AccessTypingError::AccessSiteIndexOutOfRange {
-                entry_idx,
-                func_idx: e.func_idx,
-                instruction_index,
-                op_count: probe.op_count,
-            });
-            continue;
-        }
-        let Some((mem_op, memarg_offset)) = probe.mem else {
-            report.errors.push(AccessTypingError::AccessSiteNotAMemoryOp {
-                entry_idx,
-                func_idx: e.func_idx,
-                instruction_index,
-                found: probe.token,
-            });
+        // Decode the instruction at the pinned byte offset (ADR-0003).
+        let (mem, token) = match probe_op_at(bodies[body_idx].clone(), byte_offset)? {
+            OpProbe::PastEnd { body_len } => {
+                report
+                    .errors
+                    .push(AccessTypingError::AccessSiteOffsetOutOfRange {
+                        entry_idx,
+                        func_idx: e.func_idx,
+                        byte_offset,
+                        body_len,
+                    });
+                continue;
+            }
+            OpProbe::NotABoundary => {
+                report
+                    .errors
+                    .push(AccessTypingError::AccessSiteNotAnInstructionBoundary {
+                        entry_idx,
+                        func_idx: e.func_idx,
+                        byte_offset,
+                    });
+                continue;
+            }
+            OpProbe::At { mem, token } => (mem, token),
+        };
+        let Some((mem_op, memarg_offset)) = mem else {
+            report
+                .errors
+                .push(AccessTypingError::AccessSiteNotAMemoryOp {
+                    entry_idx,
+                    func_idx: e.func_idx,
+                    byte_offset,
+                    found: token,
+                });
             continue;
         };
 
@@ -1698,6 +1823,241 @@ mod access_sites_verifier_tests {
             }
         ));
     }
+
+    // ---- ADR-0003 byte-offset resolution (access-typing pass) ----------
+
+    /// One `(i32) -> i32` function whose body is `[local.get 0,
+    /// i32.load offset=0]` with `n_i32_locals` declared i32 locals, a
+    /// memory, a regions carrier (`R { f: i32 }`) and the given raw
+    /// access-sites payload. Returns the bytes and the byte offset at
+    /// which the `i32.load` starts, read back from the encoder.
+    fn typed_load_module_raw(n_i32_locals: u32, access_payload: &[u8]) -> (Vec<u8>, u32) {
+        let mut types = TypeSection::new();
+        types.ty().function([ValType::I32], [ValType::I32]);
+        let mut funcs = FunctionSection::new();
+        funcs.function(0);
+        let mut mems = wasm_encoder::MemorySection::new();
+        mems.memory(wasm_encoder::MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        // No declaration group at all when there are no locals, so the
+        // locals vector is the single byte 0x00.
+        let locals: Vec<(u32, ValType)> = if n_i32_locals == 0 {
+            vec![]
+        } else {
+            vec![(n_i32_locals, ValType::I32)]
+        };
+        let mut f = Function::new(locals);
+        f.instruction(&Instruction::LocalGet(0));
+        let load_at = f.byte_len() as u32;
+        f.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::End);
+        let mut code = CodeSection::new();
+        code.function(&f);
+
+        let mut module = Module::new();
+        module.section(&types);
+        module.section(&funcs);
+        module.section(&mems);
+        module.section(&code);
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let rb = build_regions_section_payload(&regions);
+        module.section(&CustomSection {
+            name: REGIONS_SECTION_NAME.into(),
+            data: (&rb[..]).into(),
+        });
+        module.section(&CustomSection {
+            name: ACCESS_SITES_SECTION_NAME.into(),
+            data: access_payload.into(),
+        });
+        let bytes = module.finish();
+        assert!(wasmparser::Validator::new().validate_all(&bytes).is_ok());
+        (bytes, load_at)
+    }
+
+    fn typed_load_module(n_i32_locals: u32, entries: &[AccessSiteEntry]) -> (Vec<u8>, u32) {
+        typed_load_module_raw(n_i32_locals, &build_access_sites_section_payload(entries))
+    }
+
+    fn site(offset: u32) -> AccessSiteEntry {
+        AccessSiteEntry {
+            func_idx: 0,
+            instruction_byte_offset: offset,
+            region_id: 0,
+            field_id: 0,
+        }
+    }
+
+    #[test]
+    fn byte_offset_of_the_load_type_verifies() {
+        // With 1 declared local the locals vector is 3 bytes and
+        // local.get 0 is 2, so the load is at byte 5 — not at index 1.
+        let (_, load_at) = typed_load_module(1, &[]);
+        assert_eq!(load_at, 5);
+        let (bytes, _) = typed_load_module(1, &[site(load_at)]);
+        let report = verify_access_typing_from_module(&bytes).unwrap();
+        assert_eq!(report.type_verified, 1, "{:?}", report.errors);
+        assert!(report.errors.is_empty());
+    }
+
+    #[test]
+    fn operator_index_is_not_accepted_as_a_byte_offset() {
+        // The pre-fix convention: operator index 1. With a non-empty
+        // locals vector, byte 1 is inside the locals declaration, so it is
+        // not an instruction boundary.
+        let (bytes, _) = typed_load_module(1, &[site(1)]);
+        let report = verify_access_typing_from_module(&bytes).unwrap();
+        assert_eq!(report.type_verified, 0);
+        assert!(
+            matches!(
+                report.errors.as_slice(),
+                [AccessTypingError::AccessSiteNotAnInstructionBoundary { byte_offset: 1, .. }]
+            ),
+            "got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn offset_inside_an_instruction_is_not_a_boundary() {
+        // load_at + 1 is the i32.load's alignment immediate.
+        let (_, load_at) = typed_load_module(0, &[]);
+        let (bytes, _) = typed_load_module(0, &[site(load_at + 1)]);
+        let report = verify_access_typing_from_module(&bytes).unwrap();
+        assert!(
+            matches!(
+                report.errors.as_slice(),
+                [AccessTypingError::AccessSiteNotAnInstructionBoundary { .. }]
+            ),
+            "got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn offset_of_a_non_memory_op_is_rejected() {
+        // With no locals, byte 0 is the empty locals vector and byte 1 is
+        // local.get 0.
+        let (bytes, _) = typed_load_module(0, &[site(1)]);
+        let report = verify_access_typing_from_module(&bytes).unwrap();
+        assert!(
+            matches!(
+                report.errors.as_slice(),
+                [AccessTypingError::AccessSiteNotAMemoryOp { byte_offset: 1, .. }]
+            ),
+            "got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn offset_past_the_body_is_out_of_range() {
+        // Body: locals(1) + local.get(2) + i32.load(3) + end(1) = 7 bytes.
+        let (bytes, _) = typed_load_module(0, &[site(7)]);
+        let report = verify_access_typing_from_module(&bytes).unwrap();
+        assert!(
+            matches!(
+                report.errors.as_slice(),
+                [AccessTypingError::AccessSiteOffsetOutOfRange {
+                    byte_offset: 7,
+                    body_len: 7,
+                    ..
+                }]
+            ),
+            "got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn malformed_operator_after_the_pinned_load_is_a_decode_error() {
+        // A well-typed i32.load at the pinned offset, followed by an
+        // illegal opcode (0xFF). Stopping the decode at the pinned site
+        // would report the site as type-verified and let the gate admit
+        // an undecodable body; the rest of the body must be decoded.
+        let mut types = TypeSection::new();
+        types.ty().function([ValType::I32], [ValType::I32]);
+        let mut funcs = FunctionSection::new();
+        funcs.function(0);
+        let mut mems = wasm_encoder::MemorySection::new();
+        mems.memory(wasm_encoder::MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        let mut f = Function::new(Vec::<(u32, ValType)>::new());
+        f.instruction(&Instruction::LocalGet(0));
+        let load_at = f.byte_len() as u32;
+        f.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.raw([0xFF]);
+        f.instruction(&Instruction::End);
+        let mut code = CodeSection::new();
+        code.function(&f);
+        let mut module = Module::new();
+        module.section(&types);
+        module.section(&funcs);
+        module.section(&mems);
+        module.section(&code);
+        let regions = vec![RegionEntry {
+            name: "R".into(),
+            fields: vec![scalar_field("f", WasmTy::I32)],
+            region_byte_size: 4,
+        }];
+        let rb = build_regions_section_payload(&regions);
+        module.section(&CustomSection {
+            name: REGIONS_SECTION_NAME.into(),
+            data: (&rb[..]).into(),
+        });
+        let ab = build_access_sites_section_payload(&[site(load_at)]);
+        module.section(&CustomSection {
+            name: ACCESS_SITES_SECTION_NAME.into(),
+            data: (&ab[..]).into(),
+        });
+        let bytes = module.finish();
+        let result = verify_access_typing_from_module(&bytes);
+        assert!(
+            result.is_err(),
+            "a body that does not decode must not type-verify, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn hostile_access_sites_count_is_an_error_in_both_passes() {
+        // A valid module whose access-sites carrier claims 0xFFFF_FFFF
+        // entries and carries none. Both L2 passes must return
+        // MalformedCarrier rather than allocate or silently accept.
+        let mut hostile = crate::section::ACCESS_SITES_SECTION_VERSION
+            .to_le_bytes()
+            .to_vec();
+        hostile.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0x0F]); // LEB128 u32::MAX
+        let (bytes, _) = typed_load_module_raw(0, &hostile);
+        assert!(matches!(
+            verify_access_sites_from_module(&bytes),
+            Err(VerifyError::MalformedCarrier(_))
+        ));
+        assert!(matches!(
+            verify_access_typing_from_module(&bytes),
+            Err(VerifyError::MalformedCarrier(_))
+        ));
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -1705,7 +2065,7 @@ mod access_sites_verifier_tests {
 // ----------------------------------------------------------------------
 
 #[cfg(feature = "unstable-l13-imports")]
-use crate::section::{parse_region_imports_section_payload, FieldKind, RegionImportEntry};
+use crate::section::{try_parse_region_imports_section_payload, FieldKind, RegionImportEntry};
 #[cfg(feature = "unstable-l13-imports")]
 use crate::{
     CompatCertificate, LinkGraphReport, RegionImportsError, REGION_IMPORTS_SECTION_NAME,
@@ -1721,6 +2081,16 @@ pub const TARGET_REGION_IMPORT_BIT: u32 = 0x8000_0000;
 /// `typedwasm.region-imports`. Returns the parsed import table (empty
 /// when the section is absent) plus every violation found; cross-module
 /// agreement is `verify_link_graph`'s job.
+/// An unsupported imports version returns an empty table with
+/// [`RegionImportsError::UnparseableSection`]. Missing or unsupported
+/// regions are reported as [`RegionImportsError::MissingDependentRegions`].
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// counts or name lengths in decoded carriers as
+/// [`VerifyError::MalformedCarrier`]. Consistency violations stay in the
+/// returned list.
 #[cfg(feature = "unstable-l13-imports")]
 pub fn verify_region_imports_from_module(
     wasm_bytes: &[u8],
@@ -1745,7 +2115,7 @@ pub fn verify_region_imports_from_module(
         // Absent = "no cross-module regions imported" — trivially clean.
         return Ok((vec![], vec![]));
     };
-    let Some(imports) = parse_region_imports_section_payload(&imports_bytes) else {
+    let Some(imports) = try_parse_region_imports_section_payload(&imports_bytes)? else {
         return Ok((vec![], vec![RegionImportsError::UnparseableSection]));
     };
 
@@ -1754,7 +2124,9 @@ pub fn verify_region_imports_from_module(
     // MissingDependentCarrier (proposal 0003 §Producer obligations #1).
     let regions = regions_payload
         .as_deref()
-        .and_then(parse_regions_section_payload);
+        .map(try_parse_regions_section_payload)
+        .transpose()?
+        .flatten();
     if regions.is_none() {
         errors.push(RegionImportsError::MissingDependentRegions);
     }
@@ -1811,6 +2183,16 @@ pub fn verify_region_imports_from_module(
 /// Whole-link-graph L13 pass: per-module internal consistency, then
 /// `SchemaSub expected actual` for every import against the named
 /// producer's `typedwasm.regions` export. Subset imports are agreement.
+/// Each input pairs a module name used for producer lookup with its bytes.
+/// Returns compatibility certificates and collected consistency or schema
+/// violations. An absent or unsupported producer regions section cannot
+/// resolve imports and produces `UnresolvedProducerModule` violations.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// carrier counts or name lengths as [`VerifyError::MalformedCarrier`],
+/// including errors from [`verify_region_imports_from_module`].
 #[cfg(feature = "unstable-l13-imports")]
 pub fn verify_link_graph(modules: &[(&str, &[u8])]) -> Result<LinkGraphReport, VerifyError> {
     let mut report = LinkGraphReport::default();
@@ -1833,7 +2215,9 @@ pub fn verify_link_graph(modules: &[(&str, &[u8])]) -> Result<LinkGraphReport, V
             name,
             regions_payload
                 .as_deref()
-                .and_then(parse_regions_section_payload),
+                .map(try_parse_regions_section_payload)
+                .transpose()?
+                .flatten(),
         );
     }
 

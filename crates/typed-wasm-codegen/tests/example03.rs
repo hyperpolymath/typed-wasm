@@ -89,7 +89,7 @@ fn example03_emits_ownership_carrier_and_verifies() {
 
     let payload =
         ownership_payload(&wasm).expect("emitted example03 must carry typedwasm.ownership");
-    let entries = parse_ownership_section_payload(&payload);
+    let entries = parse_ownership_section_payload(&payload).expect("ownership carrier must decode");
     assert_eq!(
         entries.len(),
         module.ownership.len(),

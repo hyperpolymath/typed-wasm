@@ -19,8 +19,10 @@ default = []
 #   - `parse_access_sites_section_payload` /
 #     `build_access_sites_section_payload` + `AccessSiteEntry`
 #     (proposal 0002)
-#   - `verify_regions_from_module` (PR #107) and
-#     `verify_access_sites_from_module` (PR #109) verifier passes.
+#   - `verify_access_sites_from_module` (PR #109) and the decode-time
+#     `verify_access_typing_from_module` verifier passes. There is no
+#     standalone `verify_regions_from_module`; those passes decode and
+#     check the regions table as their dependency.
 unstable-l2 = []
 # L15 capability-lattice carrier codec for typed-wasm proposal 0001
 # (`[accepted]` 2026-05-30 → ADR-0002). Feature gate retained as

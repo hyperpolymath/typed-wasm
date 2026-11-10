@@ -6,7 +6,7 @@
 == Why This Exists
 
 `typed-wasm` already sits at a cross-language verification boundary (AffineScript
-and Ephapax targeting shared WasmGC layouts). This makes it a good place for a
+and Ephapax emitting carriers for one shared verifier; Ephapax targets linear memory, not WasmGC). This makes it a good place for a
 "one level higher" SPARK experiment focused on *boundary safety kernels*.
 
 This directory tracks small, fun-but-serious experiments that test whether

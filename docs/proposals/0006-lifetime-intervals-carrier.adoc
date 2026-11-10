@@ -65,6 +65,23 @@ for each entry:
                                  `FnScope` lifetime)
 ----
 
+[IMPORTANT]
+.Open before ratification: interval positions (added 2026-11-09)
+====
+`valid_from` and `valid_to` above are *instruction indices*. The
+access-site carrier settled the same question the other way:
+link:../decisions/0003-access-site-carrier.adoc[ADR-0003] adopted
+`instruction_byte_offset`, a *byte offset* that
+link:0002-access-site-carrier.adoc[Proposal 0002] counts from the byte
+after the function body's size prefix, and the verifier maps it to the instruction that starts there (rejecting an
+offset that is not an instruction boundary). Two carriers addressing
+instructions in two different ways would make producers emit both and
+verifiers decode both. Recommendation: before this proposal is ratified,
+restate both endpoints as ADR-0003 byte offsets, with `0xFFFFFFFF` kept
+as the end-of-body sentinel for `valid_to`. Not changed here, because the
+wire format is the owner's decision.
+====
+
 Absence = no L9 claim. Modules emitting `typedwasm.lifetimes` MUST
 also emit `typedwasm.ownership` for provenance-2 intervals to be
 checkable against consumption (`MissingDependentCarrier` otherwise).

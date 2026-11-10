@@ -1,0 +1,463 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+= Proposal 0007: Affine Usage Grade, Module Mode Record, Separate Borrow Axis
+:toc: preamble
+:icons: font
+
+[cols="1,3"]
+|===
+| Status       | *PROPOSED* (`[draft]`) — not adopted. Nothing in this file is implemented; no wire format, verifier pass or Idris2 module in the package changes because of it.
+| Author       | hyperpolymath
+| Date         | 2026-11-09
+| Level        | L10 (linearity) and L7 (aliasing) on emitted bytes; module-level mode declaration
+| Builds on    | `typedwasm.ownership` v1 (`crates/typed-wasm-verify/src/section.rs`, CONTRACT-ABI-ANCHOR `ownership`); link:../decisions/0008-verifier-spec-of-record.adoc[ADR-0008] (verifier spec of record); `src/abi/TypedWasm/ABI/VerifierSpec.idr`
+| Requested by | The ephapax v2 survey (2026-11-04), cross-repo action list for typed-wasm
+|===
+
+== Context
+
+=== What the wire can say today
+
+`typedwasm.ownership` v1 carries one byte per parameter, drawn from a
+single enum:
+
+[cols="1,2,3"]
+|===
+| Byte | Kind | What the verifier checks (`verify.rs::verify_function`)
+
+| 0 | `Unrestricted` | nothing
+| 1 | `Linear`       | per-path `local.get` count: min ≥ 1 and max ≤ 1
+| 2 | `SharedBorrow` | nothing
+| 3 | `ExclBorrow`   | per-path `local.get` count: max ≤ 1
+|===
+
+Unknown bytes decode to `Unrestricted` (OCaml parity). The section has
+no version field.
+
+Two things are missing.
+
+. *There is no affine grade.* A producer cannot say "this value may be
+  used at most once, and may be dropped". Ephapax is dyadic: its
+  `ephapax-affine` sublanguage (`--mode affine`) and its
+  `ephapax-linear` sublanguage (`--mode linear`) produce byte-identical
+  output today, so the affine sublanguage is invisible on the wire and
+  nothing downstream can check it.
+. *Usage and borrowing share one axis.* `Linear` is a usage grade
+  (how many times). `SharedBorrow` and `ExclBorrow` are borrow modes
+  (whether the value is a borrow, and whether the borrow is exclusive).
+  One byte cannot say "an affine value passed by exclusive borrow" or
+  "a linear value passed by shared borrow". The v1 `ExclBorrow` check
+  (max ≤ 1 loads) also happens to be the check an affine grade would
+  need, which invites encoding one as the other; that would make the
+  two meanings indistinguishable again.
+
+There is a third, structural gap: the producer's *mode* is not recorded
+anywhere. Ephapax omits `typedwasm.ownership` entirely when no parameter
+is constrained, so a mode carried inside the ownership section would
+vanish exactly when it is least visible.
+
+=== Disambiguation
+
+*ephapax-affine* is an internal sublanguage of Ephapax. It is not
+AffineScript. "Affine" here is the substructural-logic term (weakening
+allowed, contraction not), used in its standard sense.
+
+== Proposal
+
+Three independent pieces. Each can be accepted or rejected separately.
+
+=== 1. Usage grade with an `Affine` value
+
+----
+Grade = Unrestricted | Affine | Linear
+----
+
+[cols="1,3"]
+|===
+| Grade | Per-path use range check `(min, max)`
+
+| `Unrestricted` | none
+| `Affine`       | max ≤ 1 (may be dropped; never duplicated)
+| `Linear`       | min ≥ 1 and max ≤ 1 (exactly once)
+|===
+
+`Linear` implies `Affine` (subusaging order `Linear ≤ Affine ≤
+Unrestricted`). A new verifier error variant `AffineUsedMultiple
+{ func_idx, param_idx, count }` reports the one failure mode. There is
+no "dropped" error for `Affine`; dropping is the point.
+
+The `max ≤ 1` count is only as strong as the use counter. The known
+`local.set` copy bypass (a copy into another local is not counted as a
+use) applies to `Affine` exactly as it applies to `Linear` today; the
+locals-taint analysis tracked separately closes both at once.
+
+=== 2. Borrow mode as a separate axis
+
+----
+BorrowMode = Owned | Shared | Exclusive
+----
+
+[cols="1,3"]
+|===
+| Mode | Check
+
+| `Owned`     | none at the borrow level (the grade governs use)
+| `Shared`    | none (a shared borrow may be read freely)
+| `Exclusive` | no two simultaneously live references. Approximated today, as in v1, by max ≤ 1 loads.
+|===
+
+*Known gap: inter-argument aliasing.* The `Exclusive` check counts
+loads of one parameter inside the callee. It cannot see the arguments.
+A caller that passes the same address to two `Exclusive` parameters
+(or to one `Exclusive` and one `Shared` parameter) produces a callee in
+which each parameter is loaded at most once, so the check passes while
+the two references alias. The locals-taint analysis does not close
+this either: it tracks copies within one function body, not the values
+supplied at a call. Establishing "no two simultaneously live
+references" for `Exclusive` needs a call-boundary obligation: at every
+call site, the arguments bound to an `Exclusive` parameter are distinct
+from every other reference argument of that call. That obligation
+belongs to the caller-side analysis (the cross-module pass already
+inspects call sites for `Linear` parameters) and is not proposed here.
+Until it exists, `Exclusive` on the wire means "loaded at most once in
+the callee", and documentation must not describe it as a non-aliasing
+guarantee. v1 `ExclBorrow` has the same gap today.
+
+A parameter carries a `(Grade, BorrowMode)` pair. Every v1 kind is
+one pair, so v1 meaning is preserved exactly:
+
+[cols="1,1,1"]
+|===
+| v1 kind | Grade | BorrowMode
+
+| `Unrestricted` | `Unrestricted` | `Owned`
+| `Linear`       | `Linear`       | `Owned`
+| `SharedBorrow` | `Unrestricted` | `Shared`
+| `ExclBorrow`   | `Unrestricted` | `Exclusive`
+|===
+
+No v1 kind maps to `Affine`. Pairs outside the image of v1 (for example
+`(Affine, Owned)` or `(Linear, Exclusive)`) are new expressiveness.
+
+=== 3. Module mode record — `typedwasm.mode`
+
+A new, always-emitted custom section, independent of the ownership
+carrier:
+
+----
+u16le  version        (= 1)
+u8     mode           (1 = linear, 2 = affine; 0 and others: malformed)
+u32le  requires       (bitset of verifier features the module's claims
+                       depend on; bit 0 = ownership v2 semantics:
+                       Affine grade + separate borrow axis)
+----
+
+Verifier rules:
+
+* *Mode/grade agreement.* A `linear`-mode module may declare only
+  `Unrestricted` and `Linear` grades, in every slot: each parameter and
+  the return slot. An `Affine` grade in a linear module is
+  `ModeGradeMismatch { func_idx, slot }`, where `slot` is
+  `Param(param_idx)` or `Return`. This is a check on the declared
+  bytes; it needs no usage analysis, so it is not affected by the open
+  question on checking how return values are used (below). An
+  `affine`-mode module may declare any grade.
+* *Fail-closed requirements.* A verifier (or `typed-wasm-gate`) that
+  sees a `requires` bit it does not implement rejects the module with
+  `UnsupportedRequirement { bit }`. This protects only verifiers that
+  read `typedwasm.mode`; see *Admission during migration* below for
+  verifiers that do not.
+* *v2 needs the record.* A module that carries
+  `typedwasm.ownership.v2` must also carry a `typedwasm.mode` record
+  with `requires` bit 0 set. A v2-aware verifier rejects a v2 section
+  without that record or without bit 0 as
+  `OwnershipV2WithoutRequirement`. Without this rule a module could
+  claim `Affine` in v2, ship an `Unrestricted` v1 projection and clear
+  bit 0, and a verifier that reads `typedwasm.mode` but does not
+  implement v2 would accept it unchecked. For the same reason, a
+  verifier that implements `typedwasm.mode` rejects any
+  `typedwasm.ownership.v<N>` section whose version it does not
+  implement, whatever the `requires` bits say.
+* *Absent record.* No `typedwasm.mode` section (and no v2 section)
+  means "no mode claimed", as today. A gate policy may require the
+  record.
+
+*Admission during migration.* A v1-only verifier predates both new
+sections. It reads neither, sees only the v1 projection, in which an
+`Affine` parameter is `Unrestricted`, and accepts a module that uses an
+affine parameter twice. The `requires` bit cannot help, because that
+verifier never reads it. So the v1 projection is a compatibility aid
+for v1 tooling, not an admission path: a module that carries
+`typedwasm.ownership.v2` counts as verified only when a v2-aware
+verifier has admitted it. Deployments upgrade their gate to a v2-aware
+`typed-wasm-verify` before any producer emits `Affine` grades, and a
+gate that cannot be upgraded must reject modules carrying
+`typedwasm.ownership.v2` or `typedwasm.mode` by name (a one-line policy
+that does not require implementing v2).
+
+=== Wire encoding of the pair: versioned ownership v2
+
+Recommended (elegant default): a new section `typedwasm.ownership.v2`
+with a version header and two bytes per slot, emitted *alongside* v1
+during migration.
+
+----
+u16le  version        (= 2)
+leb    entry_count
+for each entry:
+    leb    func_idx   (GLOBAL function index)
+    leb    n_params   (unsigned LEB128; v1's u8 caps at 255)
+    for each param:
+        u8 grade      (0 = Unrestricted, 1 = Linear, 2 = Affine)
+        u8 borrow     (0 = Owned, 1 = Shared, 2 = Exclusive)
+    u8     ret_grade
+    u8     ret_borrow
+----
+
+Counts are bounded by the remaining payload bytes before any
+allocation (the `CarrierError::CountExceedsPayload` rule the v1 codecs
+now follow). Unknown `grade` / `borrow` bytes are malformed, not
+defaulted: the v1 "unknown → Unrestricted" fallback is fail-open and is
+not carried forward.
+
+`n_params` is LEB128 because wasm allows functions with more than 255
+parameters (the JS embedding limit is 1000), and v1's `u8 n_params`
+cannot describe them; the v1 encoder panics on such an entry. Each
+`n_params` is bounded by the remaining payload (two bytes per
+parameter plus the two return bytes) before allocation.
+
+Migration: a producer emits v2, sets `requires` bit 0 in
+`typedwasm.mode`, and keeps emitting v1 for the parameters v1 can
+express (an `Affine` parameter appears in v1 as `Unrestricted`, which
+v1 consumers already treat as unconstrained). A function with more
+than 255 parameters has no v1 entry: v1 cannot encode it, and its
+absence is the same "unconstrained to v1 consumers" outcome as an
+`Unrestricted` projection, which is acceptable only because v1-only
+verifiers are not an admission path for v2 modules (above). When both
+sections are present, the v2-aware verifier checks v2 and requires v1
+to be the projection of v2: every v2 entry with at most 255 parameters
+has exactly the projected v1 entry, and every v2 entry with more has
+none (`OwnershipCarrierDisagreement` otherwise).
+
+== Spec extension: `VerifierSpec.OwnershipIntent`
+
+`VerifierSpec.idr` models each function as a list of
+`OwnershipIntent` values (`Consumes`, `Produces`, `Borrows`,
+`BorrowsExclusive`). The proposal extends that model with an affine
+consumption intent and with the grade / borrow / mode types above.
+
+The sketch below is *not* part of the package and is not imported by
+any module. It was typechecked with Idris2 0.8.0 against this tree on
+2026-11-09 (`idris2 --check`, module placed beside `src/abi/`,
+importing `TypedWasm.ABI.VerifierSpec`); it uses no `believe_me`,
+`assert_total`, `postulate` or `assert_smaller`, under `%default
+total`.
+
+[source,idris]
+----
+module Proposal.OwnershipMode
+
+import Data.Nat
+import Data.List
+import Data.List.Elem
+import TypedWasm.ABI.VerifierSpec
+
+%default total
+
+||| Usage grade: the L10 axis (how many times a value may be used).
+public export
+data Grade = GUnrestricted | GAffine | GLinear
+
+||| Borrow mode: the L7 axis (whether the value is owned or a borrow,
+||| and whether the borrow is exclusive). Kept separate from `Grade`.
+public export
+data BorrowMode = Owned | Shared | Exclusive
+
+||| Module mode record: the producer's declared discipline.
+public export
+data ModuleMode = LinearMode | AffineMode
+
+||| Which grades a module in a given mode may declare. A linear-mode
+||| module may not declare an Affine parameter.
+public export
+data GradeAllowed : ModuleMode -> Grade -> Type where
+  LinUnr : GradeAllowed LinearMode GUnrestricted
+  LinLin : GradeAllowed LinearMode GLinear
+  AffAny : GradeAllowed AffineMode g
+
+||| The usage obligation of a grade over a per-path use range
+||| `(minUses, maxUses)`, the same range the Rust verifier computes.
+public export
+data GradeOk : Grade -> (minUses : Nat) -> (maxUses : Nat) -> Type where
+  UnrOk : GradeOk GUnrestricted mn mx
+  AffOk : LTE mx 1 -> GradeOk GAffine mn mx
+  LinOk : LTE 1 mn -> LTE mx 1 -> GradeOk GLinear mn mx
+
+||| The borrow obligation. Today's verifier approximates "no alias of an
+||| exclusive borrow" by "loaded at most once"; a locals-taint analysis
+||| would refine this without changing the axis.
+public export
+data BorrowOk : BorrowMode -> (maxUses : Nat) -> Type where
+  OwnedOk  : BorrowOk Owned mx
+  SharedOk : BorrowOk Shared mx
+  ExclOk   : LTE mx 1 -> BorrowOk Exclusive mx
+
+||| Linear obligations imply Affine ones (Linear is below Affine in the
+||| subusaging order).
+public export
+linearImpliesAffine : GradeOk GLinear mn mx -> GradeOk GAffine mn mx
+linearImpliesAffine (LinOk _ hi) = AffOk hi
+
+||| The v1 wire kinds of `typedwasm.ownership`.
+public export
+data KindV1 = Unrestricted | Linear | SharedBorrow | ExclBorrow
+
+||| Each v1 kind as a (grade, borrow) pair. No v1 kind maps to GAffine:
+||| Affine is new in v2.
+public export
+liftV1 : KindV1 -> (Grade, BorrowMode)
+liftV1 Unrestricted = (GUnrestricted, Owned)
+liftV1 Linear       = (GLinear, Owned)
+liftV1 SharedBorrow = (GUnrestricted, Shared)
+liftV1 ExclBorrow   = (GUnrestricted, Exclusive)
+
+||| The v1 verifier's check for a Linear parameter is exactly the v2
+||| grade check of its lifted pair.
+public export
+linearV1Agrees : LTE 1 mn -> LTE mx 1 -> GradeOk (fst (liftV1 Linear)) mn mx
+linearV1Agrees lo hi = LinOk lo hi
+
+||| The v1 verifier's check for an ExclBorrow parameter is exactly the v2
+||| borrow check of its lifted pair.
+public export
+exclV1Agrees : LTE mx 1 -> BorrowOk (snd (liftV1 ExclBorrow)) mx
+exclV1Agrees hi = ExclOk hi
+
+||| `VerifierSpec.OwnershipIntent` extended with affine consumption.
+public export
+data OwnershipIntentV2 : Type where
+  Legacy     : OwnershipIntent -> OwnershipIntentV2
+  ||| The function may consume the handle at most once, or drop it.
+  MayConsume : (token : Nat) -> OwnershipIntentV2
+
+||| The handle token an intent constrains, if any.
+public export
+tokenOf : OwnershipIntentV2 -> Maybe Nat
+tokenOf (Legacy (Consumes t))         = Just t
+tokenOf (Legacy (Produces t))         = Just t
+tokenOf (Legacy (Borrows _))          = Nothing
+tokenOf (Legacy (BorrowsExclusive _)) = Nothing
+tokenOf (MayConsume t)                = Just t
+
+||| No token is consumed, produced or affinely consumed twice in one
+||| intent list: the structural acceptance shape for v2 intents.
+public export
+data UniqueTokens : List OwnershipIntentV2 -> Type where
+  UTNil  : UniqueTokens []
+  UTSkip : Proposal.OwnershipMode.tokenOf i = Nothing
+        -> UniqueTokens rest
+        -> UniqueTokens (i :: rest)
+  UTCons : Proposal.OwnershipMode.tokenOf i = Just t
+        -> Not (Elem (Just t) (map Proposal.OwnershipMode.tokenOf rest))
+        -> UniqueTokens rest
+        -> UniqueTokens (i :: rest)
+
+||| Example: an affine handle next to an exclusive borrow is acceptable.
+public export
+exampleAccepted : UniqueTokens [MayConsume 0, Legacy (BorrowsExclusive 7)]
+exampleAccepted = UTCons Refl absurd' (UTSkip Refl UTNil)
+  where
+    absurd' : Not (Elem (Just (the Nat 0)) [Nothing])
+    absurd' (There later) = absurd later
+----
+
+What the sketch establishes, exactly:
+
+* `linearImpliesAffine`: the `Linear` check implies the `Affine` check
+  on any use range.
+* `linearV1Agrees`, `exclV1Agrees`: for the two v1 kinds the Rust
+  verifier constrains, the v2 check of the lifted pair is the v1 check.
+  (The two unconstrained v1 kinds lift to pairs with no obligation.)
+* `UniqueTokens` is the v2 analogue of `IntentsLinearAcceptable`, now
+  counting `MayConsume` tokens too.
+
+What it does *not* establish:
+
+* Anything about the Rust verifier. Like `VerifierSpecAgreement`, this
+  is a statement about the Idris2 model only. The existing agreement
+  records are true by construction (the verifier predicate wraps the
+  spec's own witness) and say nothing about `verify.rs`; extending them
+  to v2 the same way would inherit that limitation.
+* That `UniqueTokens (map Legacy xs)` is equivalent to
+  `IntentsLinearAcceptable xs` (the conservative-extension lemma). It
+  is the first obligation if this proposal is accepted.
+* Any cross-module rule. Passing a `Linear` value to an `Affine`
+  parameter of another module counts as one use on the caller's side
+  under today's counter, but the callee may then drop it. Whether a
+  linear-mode caller may call an affine-mode callee is open (below).
+
+== Alternatives considered
+
+. *Add byte 4 = `Affine` to v1.* Smallest change. Rejected as the
+  default: every deployed v1 consumer (the Rust verifier, the OCaml
+  `Tw_verify`, Ephapax's own mirror) decodes an unknown byte as
+  `Unrestricted`, so an affine claim would be silently dropped by all
+  of them, and the axes stay merged.
+. *Encode `Affine` as v1 `ExclBorrow`.* Old verifiers would then
+  enforce max ≤ 1, which is the right count. Rejected: it makes "affine
+  owned value" and "exclusive borrow" the same bytes, which is the
+  conflation this proposal exists to remove, and the error text would
+  report an aliasing fault for a usage fault.
+. *Carry the mode inside the ownership section.* Rejected: producers
+  omit the ownership section when nothing is constrained, so the mode
+  would be missing exactly for modules that make no per-parameter
+  claim.
+. *One combined 3×3 enum in a single byte.* Equivalent information to
+  two bytes, but every consumer would decode a product type by table
+  lookup; two bytes keep each axis independently extensible.
+
+== Open questions
+
+. *Cross-mode calls.* May a `linear`-mode module call an `affine`-mode
+  module's function whose parameter is `Affine`, passing a linear
+  value? Options: forbid at link time (`verify_link_graph`), or allow
+  and treat the call as the caller's single use.
+. *Relevant grade.* "At least once, may be duplicated" is the fourth
+  point of the usual lattice. No producer needs it today; the grade
+  byte leaves room.
+. *Return-slot usage.* v1 carries a return kind that the verifier does
+  not check. v2 keeps the slot; checking how a caller uses a returned
+  value needs the caller-side analysis. (Mode/grade agreement on the
+  declared return grade is not open: it is the `ModeGradeMismatch`
+  rule above.)
+. *Call-boundary non-aliasing.* The `Exclusive` inter-argument
+  aliasing gap described in §2 needs a caller-side obligation; its
+  shape, and whether it lives in `verify_link_graph` or in a per-module
+  pass, is open.
+. *Gate default.* Should `typed-wasm-gate` require a `typedwasm.mode`
+  record from producers that declare themselves dyadic?
+
+== Acceptance criteria (if adopted)
+
+* Codec: `typedwasm.ownership.v2` and `typedwasm.mode`
+  parse/build with round-trip tests, hostile-count rejection, and
+  rejection of unknown grade / borrow / mode bytes.
+* Verifier: `AffineUsedMultiple`, `ModeGradeMismatch` (one negative
+  test for a parameter slot and one for the return slot),
+  `UnsupportedRequirement`, `OwnershipV2WithoutRequirement`,
+  `OwnershipCarrierDisagreement`, each with a negative test that fails
+  when the check is removed. Codec tests include a 256-parameter v2
+  entry.
+* Spec: the sketch above moved into the package as its own module, plus
+  the conservative-extension lemma.
+* Producer: Ephapax emits `typedwasm.mode` with the real mode, so
+  `--mode affine` and `--mode linear` no longer produce identical bytes.
+
+== Cross-references
+
+* `crates/typed-wasm-verify/src/verify.rs` — `verify_function` (v1 checks)
+* `crates/typed-wasm-verify/src/section.rs` — v1 ownership codec
+* `src/abi/TypedWasm/ABI/VerifierSpec.idr` — `OwnershipIntent`, agreement records
+* link:../decisions/0005-trustedfixture-audit-boundary.adoc[ADR-0005] — the trust boundary of the agreement records
+* link:../decisions/0008-verifier-spec-of-record.adoc[ADR-0008] — verifier spec of record

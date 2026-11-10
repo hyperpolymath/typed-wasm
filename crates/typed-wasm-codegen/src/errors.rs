@@ -160,6 +160,9 @@ pub fn humanize(module: &Module, err: &VerifyError) -> Vec<String> {
         VerifyError::Parse(e) => {
             vec![format!("the emitted module is not valid wasm: {e}")]
         }
+        VerifyError::MalformedCarrier(e) => {
+            vec![format!("the emitted module carries a malformed typedwasm section: {e}")]
+        }
     }
 }
 

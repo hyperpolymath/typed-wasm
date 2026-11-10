@@ -82,7 +82,7 @@ cd ffi/zig && zig build test
 - [TypedQLiser](https://github.com/hyperpolymath/typedqliser) — same principle applied to database queries
 - [VCL-total](https://github.com/hyperpolymath/vql-ut) — same levels applied to database queries (sibling)
 - [AffineScript](https://github.com/hyperpolymath/affinescript) — compiles to WasmGC; uses typed-wasm as aggregate library
-- [Ephapax](https://github.com/hyperpolymath/ephapax) — compiles to WasmGC; consumes typed-wasm-verify
+- [Ephapax](https://github.com/hyperpolymath/ephapax) — compiles to linear-memory wasm (not WasmGC); consumes typed-wasm-verify
 - [ECHIDNA](https://github.com/hyperpolymath/echidna) — property-based testing of proof soundness
 
 ## License

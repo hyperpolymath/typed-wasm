@@ -48,7 +48,8 @@ jobs:
 
   # The mechanical falsifiers behind the kernel: Idris2 0.8.0 builds the ABI,
   # refuses tests/reject/*.idr for the intended reasons, and agrees with the
-  # PINNED Agda kernel (resource-algebra at the fetch-siblings.sh pin, Agda --safe --without-K)
+  # PINNED Agda kernel (resource-algebra at the fetch-siblings.sh pin, Agda
+  # --safe --without-K --cubical-compatible, PROOF-POLICY §2.1)
   # on tests/transcription/ops.tsv; both provers refuse the wrong rows.
   # Idris2 publishes no binaries and its release-tarball URL 404s (see
   # e2e.yml build-e2e), so 0.8.0 is built from source with Chez Scheme,
@@ -56,22 +57,25 @@ jobs:
   # cannot).
   kernel-proofs:
     name: Grade kernel proofs (Idris2 0.8.0 + Agda)
-    # Pinned: the job installs Agda from apt, so the image decides the Agda
-    # version, and the reject checks need 2.6.3 (tools/check-kernel-proofs.sh
-    # refuses any other). ubuntu-latest moved to 26.04 (Agda 2.8.0) on
-    # 2026-10-19.
-    runs-on: ubuntu-24.04
+    # Agda 2.6.4.3, the Debian agda-bin package the sibling repositories pin
+    # (resource-algebra, occupancy-types and choreographic-types proofs.yml),
+    # so this gate re-checks their proofs on the prover their own CI uses.
+    # tools/check-kernel-proofs.sh refuses any other Agda. Until 2026-11-09
+    # this job ran Ubuntu 24.04's Agda 2.6.3.
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
     timeout-minutes: 40
     env:
       IDRIS2_COMMIT: 15a3e4e70843f7a34100f6470c04b791330788df  # v0.8.0
     steps:
+      - name: Install Chez Scheme, GMP, build tools and the pinned Agda
+        run: |
+          apt-get update -qq
+          apt-get install --no-install-recommends -y -qq ca-certificates git make gcc libc6-dev \
+            libgmp-dev chezscheme agda-bin=2.6.4.3-1+b2
+          test "$(agda --version)" = 'Agda version 2.6.4.3'
       - name: Checkout
         uses: actions/checkout@v7.0.1
-      - name: Install Chez Scheme, GMP and Agda
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq chezscheme libgmp-dev agda-bin
-          agda --version
       - name: Build Idris2 0.8.0 from source
         run: |
           git init --quiet "$RUNNER_TEMP/idris2-src"
@@ -81,7 +85,9 @@ jobs:
           # Local tag on the verified commit, so the Makefile reports the
           # release version (0.8.0) rather than 0.8.0-<sha>.
           git -C "$RUNNER_TEMP/idris2-src" tag v0.8.0
-          make -C "$RUNNER_TEMP/idris2-src" bootstrap SCHEME=scheme -j"$(nproc)" > "$RUNNER_TEMP/idris2-build.log" 2>&1 \
+          # Debian names the Chez binary chezscheme; Ubuntu also ships scheme.
+          SCHEME="$(command -v chezscheme || command -v scheme)"
+          make -C "$RUNNER_TEMP/idris2-src" bootstrap SCHEME="$SCHEME" -j"$(nproc)" > "$RUNNER_TEMP/idris2-build.log" 2>&1 \
             || { tail -60 "$RUNNER_TEMP/idris2-build.log"; exit 1; }
           make -C "$RUNNER_TEMP/idris2-src" install > "$RUNNER_TEMP/idris2-install.log" 2>&1 \
             || { tail -60 "$RUNNER_TEMP/idris2-install.log"; exit 1; }

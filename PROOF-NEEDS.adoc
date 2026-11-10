@@ -79,7 +79,9 @@ mutation (reintroducing a narrow-width bug fails the gate).
 the code section_ and checks each pinned access lands on a load/store of
 the field’s exact type/width/offset, in-region |🟡 *in progress* (this
 session). Producer half: access sites pinned to a body-instruction index
-(`+AccessSite.instr_index: Option<usize>+`; the hand-built `+example01+`
+in the IR (`+AccessSite.instr_index: Option<usize>+`), which `+emit+`
+writes on the wire as the ADR-0003 byte offset of that instruction (the
+hand-built `+example01+`
 / paint-type representative sites are carried *declared-only*, honestly
 _not_ type-checked). Verifier half: `+verify_access_typing_from_module+`
 + `+AccessTypingReport { type_verified, declared_only, errors }+`,
@@ -239,11 +241,14 @@ in PR #116.
 `+typedwasm.access-sites+` per-instruction carrier for L2 enforcement.
 `+[accepted]+` 2026-05-30 (PR #115) → promoted to
 `+docs/decisions/0003-access-site-carrier.adoc+` (ADR-0003) in PR #116.
-* Verifier passes shipped: `+verify_regions_from_module+` (PR #107),
-`+verify_capabilities_from_module+` and
-`+verify_access_sites_from_module+` (PR #109) — all behind
+* Verifier passes shipped: `+verify_capabilities_from_module+` and
+`+verify_access_sites_from_module+` (PR #109), plus the decode-time
+`+verify_access_typing_from_module+` — all behind
 `+unstable-l2+` / `+unstable-l15+` Cargo features in
-`+crates/typed-wasm-verify/+`.
+`+crates/typed-wasm-verify/+`. There is no standalone `+verify_regions_from_module+` (earlier
+revisions of this file named one): the `+typedwasm.regions+` table is
+decoded and checked as the dependency of the access-site passes and,
+under `+unstable-l13-imports+`, of `+verify_region_imports_from_module+`.
 
 *What this closes.* L2-the-enforcement, L3, L4, L5, L6 (regions half),
 and L15-A/B on emitted wasm now have carrier-backed verifier passes.
@@ -281,8 +286,15 @@ ____
 *The two agreement records introduced by PR #72 / A13 are now
 inhabited.* `+VerifierSpecAgreement+` and `+SourceVerifierAgreement+`
 have concrete inhabitants `+verifierSpecAgreement+` /
-`+sourceVerifierAgreement+` with totally-proven bodies in every
-direction. This was the "`multi-week residual`" PR #74 explicitly
+`+sourceVerifierAgreement+` with total bodies in every direction.
+*Correction (2026-11): these bodies are tautological, true by
+construction.* `+VerifierAccepts+` and `+SourceAccepts+` are defined to
+wrap the same `+FunctionsAccepted m.functions+` witness that
+`+SpecAccepts+` wraps, so every agreement lemma just re-wraps its input.
+The records say nothing about what the Rust verifier does on bytes; the
+only Rust link is the asserted `+MkTrustedFixture+` sites (ADR-0005).
+An actual refinement statement relating the Rust verifier to the spec
+is still open. This was the "`multi-week residual`" PR #74 explicitly
 flagged. Closed in PR #79.
 
 *Design choice that unblocked the bodies.* The differential constructor

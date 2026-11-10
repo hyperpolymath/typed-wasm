@@ -53,14 +53,22 @@ The C-compatible implementation of the ABI. Provides:
 * Cross-compilation support
 * Integration test suite verifying ABI compliance across platforms
 
-=== Generated C Headers (`generated/abi/`)
+=== Generated C Headers (`generated/abi/`, planned)
 
-Auto-generated from the Idris2 ABI definitions. The bridge between the
+NOTE: Not implemented. There is no `generated/abi/` directory in the repo
+yet; the path is reserved (see link:ABI-PIPELINE.adoc[ABI-PIPELINE]) and the
+C-ABI surface in `ffi/zig/` is hand-maintained today.
+
+To be auto-generated from the Idris2 ABI definitions. The bridge between the
 formal specification and the runtime implementation.
 
-=== Standard Types (`stdlib/`)
+=== Standard Types (`stdlib/`, planned)
 
-Pre-compiled WasmGC modules for:
+NOTE: Not implemented. There is no `stdlib/` directory in the repo yet. The
+layout terms that do exist live in `src/abi/Layout/` (Idris2 only, no
+emitter).
+
+Planned: pre-compiled WasmGC modules for:
 
 [cols="1,2", options="header"]
 |===
@@ -73,7 +81,7 @@ Pre-compiled WasmGC modules for:
 | Tagged union struct: `(ref (struct (field i32) (field (ref any))))`
 
 | `String`
-| `(ref (array i8))`
+| Intended: `(ref (array i8))`. *Modelled in `Layout.Types.stringLayout` as `(ref (array i32))`*: the Idris2 model has no packed i8 storage type, so the two do not match yet.
 
 | `List[T]`
 | Linked cons cells or array-backed, per allocation policy
@@ -84,6 +92,10 @@ Pre-compiled WasmGC modules for:
 
 Both AffineScript and Ephapax can import these and know they have identical
 binary layout.
+
+NOTE: Status (2026-11). This is the design target, not current practice.
+Ephapax compiles to linear memory, not WasmGC, and no producer emits the
+`Layout.*` WasmGC layouts yet.
 
 == Type Layout Conventions
 
@@ -101,7 +113,7 @@ binary layout.
 | `i32` (0 = false, 1 = true)
 
 | `String`
-| `(ref (array i8))` — UTF-8 byte array
+| Intended: `(ref (array i8))`, a UTF-8 byte array. Currently modelled as `(ref (array i32))` (see above).
 
 | Record `{ a: T, b: U }`
 | `(ref (struct (field T) (field U)))` — fields in declaration order

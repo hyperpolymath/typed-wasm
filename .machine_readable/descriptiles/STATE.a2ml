@@ -6,7 +6,7 @@
 [metadata]
 project = "typed-wasm"
 version = "0.1.0"
-last-updated = "2026-05-27"
+last-updated = "2026-11-09"
 status = "active"  # active | paused | archived
 session = "2026-05-27 — Phase 2 carrier-ABI + Proof-debt closure pass (combined integration). Carrier-ABI (parallel session): #76 proposal 0001 multi-producer carrier sections (typedwasm.regions for L2-L6, typedwasm.capabilities for L15) [draft]; #77 unstable-l2 codec pre-stage (no verifier pass yet); #81 C5.1 real-AffineScript fixture corpus closes typed-wasm#35 part 2. #78 access-site carrier resolved option A; Encoding B (LEB128) recommended for proposal 0002. Cross-repo review opened: affinescript#402 + ephapax#165 gate proposal 0001 promotion. Proof-debt pass A10+A11+A12+A13 (PR #72, MERGED): A10 closes last 2 NAMED PROOF-NEEDS items (L12 freshness propagation; compatCommute mutual-subschema). A11 closes 3/8 untracked (Sync.WriteSync FieldVersion witness; Knowledge.Observed grounded in Sync; first composeCertificates laws). A12 closes 3 more (composeAssoc + composeHighProvenComm; RegionDisjoint + regionDisjointSym; jointBudgetCompose L8↔L15). A13 closes 5+7+8 incl. new TypedWasm.ABI.VerifierSpec module. Proof-debt closure pass #79/#80: #79 VerifierSpec total bodies for VerifierSpecAgreement / SourceVerifierAgreement (post-A10 items 7+8) — VADifferential/SADifferential carry inline TrustedFixture so structural witness travels with fixture metadata, all four agreement directions total by case analysis; first total no-believe_me agreement values. #80 Proofs.idr LevelAttestationW + WitnessCertificate (standards#130 long-tail) — 15-ctor witness-indexed GADT with per-level extractors, existential SomeAttestationW wrapper enabling WitnessCertificate as heterogeneous-list lift of ProofCertificate (PR #83 second slice folded in). #74 closed as superseded by #79. Test surface 545 → 627+ assertions (proof regression 25 → 107). Previous: 2026-05-24/25 Phase 0 closure pass (11 PRs)."
 
@@ -17,9 +17,12 @@ Two first-class roles (ADR-004):
   1. TypeLL progressive type safety for WasmGC linear memory — region schemas,
      type-safe access operations, currently a checked L1-L10 core; open-ended.
      Pipeline: katagoria → typell → typed-wasm → PanLL.
-  2. Aggregate library — convergence infrastructure for AffineScript and Ephapax
-     (both compile to WasmGC).  Provides formally verified type layout and ABI
-     conventions so cross-language calls require no marshalling layer.
+  2. Aggregate library — convergence infrastructure for AffineScript and Ephapax.
+     AffineScript compiles to typed WasmGC; Ephapax emits linear-memory wasm today and
+     integrates through the typedwasm.* carriers checked by typed-wasm-verify, not the
+     WasmGC Layout.* contracts (its vision names WasmGC; no such backend exists).
+     Provides formally verified type layout and ABI conventions so cross-language calls
+     require no marshalling layer.
 """
 completion-percentage = 70   # bumped from 55: foundation defensibly engineered; codegen pipeline kickoff complete; CI honest; 545+ test assertions across 11 surfaces; ROADMAP truthful with drift-detection aspect in place
 production-phase = "0"      # see docs/PRODUCTION-PATH.adoc — phase 0 of 6
@@ -65,9 +68,9 @@ milestones = [
   { name = "WitnessCertificate lift (heterogeneous-list certificate)", completion = 100 },  # 2026-05-27 (#83 folded into #80)
   { name = "L13 module isolation enforcement on emitted wasm", completion = 100 },  # PR #37, 2026-05-19
   { name = "L2-L6 carrier ABI proposal (proposal 0001)", completion = 100 },  # PR #76 filed 2026-05-27; [accepted] 2026-05-30 (PR #115) → ADR-0002 (PR #116)
-  { name = "L2 region-binding codec + verifier pass", completion = 100 },  # PR #77 codec, PR #107 cross-checks, PR #109 verify_regions_from_module
+  { name = "L2 region-binding codec + verifier pass", completion = 100 },  # PR #77 codec, PR #107 cross-checks, PR #109 access-site passes decode + check the regions table (no standalone verify_regions_from_module exists)
   { name = "L15 capability carrier ABI + verifier pass", completion = 100 },  # bundled into proposal 0001; verify_capabilities_from_module shipped in PR #109
-  { name = "Access-site carrier (proposal 0002)", completion = 100 },  # PR #86 [draft] → [accepted] 2026-05-30 (PR #115) → ADR-0003 (PR #116). Codec + verify_access_sites_from_module shipped in PR #109. Producer-side access-site emission gated downstream (affinescript#462 open; ephapax#251 filed 2026-05-30).
+  { name = "Access-site carrier (proposal 0002)", completion = 100 },  # PR #86 [draft] → [accepted] 2026-05-30 (PR #115) → ADR-0003 (PR #116). Codec + verify_access_sites_from_module shipped in PR #109. Producer-side access-site emission gated downstream (affinescript#462 open; ephapax#251 closed 2026-07-07 — ephapax emits ADR-0003 byte offsets for its string-runtime helpers).
   { name = "C5.1 real-AffineScript fixture corpus", completion = 100 },  # PR #81, 2026-05-27 — 4 fixtures + regenerate workflow
 ]
 
@@ -87,7 +90,7 @@ issues = [
 
 [critical-next-actions]
 actions = [
-  "Phase 2: producer-side access-site emission — gated downstream (affinescript#462 open; ephapax#251 filed 2026-05-30).",
+  "Phase 2: producer-side access-site emission — gated downstream (affinescript#462 open; ephapax#251 closed 2026-07-07 — ephapax emits ADR-0003 byte offsets for its string-runtime helpers).",
   "Phase 3: proposals 0003 (region-imports / L13 cross-module) and 0004 (capability-grants / L15-C) move from [draft] when producer-side multi-module + L15-A emission lands.",
   "Track A: extend tree-sitter grammar from region-decls v0 to full spec/grammar.ebnf parity.",
   "Track A: Idris2 parser at 188-test parity with the ReScript parser.",
@@ -194,19 +197,19 @@ proposal-0003-purpose = "L13 cross-module schema agreement"
 proposal-0004-status = "draft"
 proposal-0004-section-name = "typedwasm.capability-grants"
 proposal-0004-purpose = "L15-C per-call-site enforcement"
-# Producer-side codegen of access-sites is the remaining v1 gate:
+# AffineScript access-site codegen is the remaining producer-side v1 gate:
 producer-gates = [
   "affinescript#462 — emit typedwasm.access-sites carrier (open)",
-  "ephapax#251 — emit typedwasm.access-sites carrier (filed 2026-05-30)",
 ]
-# Closed producer-readiness items from proposal 0001 Appendix B:
+# Closed producer-side items:
 producer-gates-closed = [
+  "ephapax#251 — emit typedwasm.access-sites for string-runtime helpers (closed 2026-07-07)",
   "ephapax#250 — Codegen.region_stack + Codegen.bump_ptr + RegionInfo dead-code removal (merged 2026-05-30)",
   "affinescript#444 — Tw_section dedup (merged earlier)",
 ]
 # Self-contained handoff brief for new Claude/contributor sessions:
 producer-gates-handoff = "docs/developer/handoff-typed-access-sites-codegen.adoc"
-producer-gates-handoff-blocker = "typecheck → codegen threading of (region_id, field_id); same blocker in both producers; 3 options surfaced (IR annotation / side-table / re-resolve at codegen)"
+producer-gates-handoff-blocker = "AffineScript: typecheck → codegen threading of (region_id, field_id); 3 options surfaced (IR annotation / side-table / re-resolve at codegen). Ephapax emits access-sites for its fixed string-runtime schema."
 
 [c5-real-fixtures]
 # Real-AffineScript-emitted .wasm corpus, PR #81 landed 2026-05-27.

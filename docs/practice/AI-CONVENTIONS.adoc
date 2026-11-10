@@ -68,7 +68,7 @@ MAINTENANCE-CHECKLIST.a2ml, or SOFTWARE-DEVELOPMENT-APPROACH.a2ml in the reposit
 
 - ABI definitions: **Idris2** with dependent types (`src/abi/`).
 - FFI implementation: **Zig** with C ABI compatibility (`ffi/zig/`).
-- Generated C headers: `generated/abi/`.
+- Generated C headers: `generated/abi/` (reserved path; the directory does not exist until the generator does, see `docs/architecture/ABI-PIPELINE.adoc`).
 
 ## Build System
 
