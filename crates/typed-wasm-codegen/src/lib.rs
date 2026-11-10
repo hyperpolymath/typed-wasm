@@ -345,6 +345,9 @@ pub struct AccessSite {
     /// The 0-based instruction index (operator position) in the function
     /// body that this site pins — the load/store the verifier's L2
     /// access-typing pass checks against the field's type/width/offset.
+    /// This is an IR-level position only: [`emit`] translates it to the
+    /// ADR-0003 wire value (the operator's byte offset within the function
+    /// body, counted from the start of the locals vector) while encoding.
     /// `None` = declared-only: the producer asserts the field is reached
     /// but does not pin a concrete instruction (representative /
     /// hand-written bodies). Emitted as [`ACCESS_SITE_UNPINNED`] on the
@@ -519,6 +522,39 @@ fn op_to_instruction(op: Op) -> Instruction<'static> {
     }
 }
 
+/// `Function::byte_len` as a `u32` (wasm bodies are far below 4 GiB; a
+/// larger one saturates rather than wrapping).
+fn byte_len_u32(f: &Function) -> u32 {
+    u32::try_from(f.byte_len()).unwrap_or(u32::MAX)
+}
+
+/// Translate an IR operator index (position in `Func::body`, with the
+/// trailing `End` at `body.len()`) into the ADR-0003 wire value: the byte
+/// offset of that operator within the function body.
+///
+/// An index past the trailing `End` is a producer bug, but `emit` is
+/// infallible and the verifier is the component that must catch it, so it
+/// maps to an offset past the end of the body (`body_len + overshoot`).
+/// The verifier then reports `AccessSiteOffsetOutOfRange` instead of the
+/// fault being silently re-pinned to some real instruction.
+///
+/// The sum is clamped to `ACCESS_SITE_UNPINNED - 1`: saturating to
+/// `u32::MAX` would emit the declared-only sentinel, and the verifier would
+/// then count the producer bug as an unpinned site instead of reporting
+/// it. `body_len` is a function body length, far below that clamp, so the
+/// clamped value is still past the end of the body.
+fn instr_index_to_byte_offset(op_offsets: &[u32], body_len: u32, k: usize) -> u32 {
+    match op_offsets.get(k) {
+        Some(&off) => off,
+        None => {
+            let overshoot = k - op_offsets.len();
+            body_len
+                .saturating_add(u32::try_from(overshoot).unwrap_or(u32::MAX))
+                .min(ACCESS_SITE_UNPINNED - 1)
+        }
+    }
+}
+
 /// Lower a typed-wasm [`Module`] IR to a wasm binary with embedded
 /// `typedwasm.*` carrier sections (`ownership`, `regions`,
 /// `access-sites`), each emitted only when it has content.
@@ -562,10 +598,21 @@ pub fn emit(module: &Module) -> Vec<u8> {
 
         let mut f =
             Function::new_with_locals_types(func.locals.iter().map(|l| l.to_val_type()));
+        // `op_offsets[k]` is the byte offset of operator `k` within the
+        // function body, counted from the byte after the body's size
+        // prefix (i.e. from the start of the locals vector) — the
+        // ADR-0003 / proposal 0002 `instruction_byte_offset`.
+        // `Function::byte_len` excludes the size prefix, so reading it
+        // just before each instruction is exact for the bytes emitted.
+        // The trailing `End` gets an entry too (index `body.len()`).
+        let mut op_offsets: Vec<u32> = Vec::with_capacity(func.body.len() + 1);
         for op in &func.body {
+            op_offsets.push(byte_len_u32(&f));
             f.instruction(&op_to_instruction(*op));
         }
+        op_offsets.push(byte_len_u32(&f));
         f.instruction(&Instruction::End);
+        let body_len = byte_len_u32(&f);
         code.function(&f);
 
         if func.export {
@@ -575,11 +622,12 @@ pub fn emit(module: &Module) -> Vec<u8> {
         for site in &func.accesses {
             access_entries.push(AccessSiteEntry {
                 func_idx: global_idx,
-                // The wire slot carries the pinned instruction index, or
-                // the unpinned sentinel for declared-only sites.
+                // The wire slot carries the pinned operator's byte offset
+                // (ADR-0003), or the unpinned sentinel for declared-only
+                // sites.
                 instruction_byte_offset: site
                     .instr_index
-                    .map(|k| k as u32)
+                    .map(|k| instr_index_to_byte_offset(&op_offsets, body_len, k))
                     .unwrap_or(ACCESS_SITE_UNPINNED),
                 region_id: site.region as u32,
                 field_id: site.field as u32,
@@ -1255,6 +1303,7 @@ pub fn humanize(module: &Module, err: &VerifyError) -> Vec<String> {
                 .map(|e| humanize_cross_error(module, e))
                 .collect()
         }
+        VerifyError::MalformedCarrier(e) => vec![format!("malformed carrier: {e}")],
     }
 }
 

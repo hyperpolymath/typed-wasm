@@ -35,6 +35,18 @@ Status legend:
 | link:0004-capability-grants-carrier.adoc[0004]
 | Capability grants carrier section (`typedwasm.capability-grants`) for L15-C per-call-site enforcement
 | `[draft]`
+
+| link:0005-effects-carrier.adoc[0005]
+| Effects carrier section (`typedwasm.effects`) for L8
+| `[draft]`
+
+| link:0006-lifetime-intervals-carrier.adoc[0006]
+| Lifetime intervals carrier section (`typedwasm.lifetimes`) for L9
+| `[draft]`
+
+| link:0007-affine-grade-mode-record-borrow-axis.adoc[0007]
+| Affine usage grade, module mode record (`typedwasm.mode`) and a separate borrow axis
+| `[draft]` — PROPOSED, not adopted
 |===
 
 NOTE: Proposals 0001 and 0002 were promoted to

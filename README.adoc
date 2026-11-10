@@ -50,8 +50,12 @@ link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambigu
   Proofs live in `TypedWasm/ABI/` (the checked L1-L10 core).
 
 . **Aggregate library** — the convergence infrastructure for languages that compile to
-  typed WasmGC.  AffineScript and Ephapax are independent languages that both target
-  WasmGC; they need agreed binary conventions (type layout, ABI, stdlib types, linking).
+  WebAssembly.  AffineScript and Ephapax are independent languages that need agreed
+  binary conventions (type layout, ABI, stdlib types, linking).  AffineScript compiles
+  to typed WasmGC.  Ephapax's compiler emits linear-memory wasm today: it integrates
+  through the `typedwasm.*` carrier sections checked by `typed-wasm-verify`, not through
+  the WasmGC `Layout.*` contracts.  Its vision document names typed WasmGC as a target,
+  but no Ephapax WasmGC backend exists.
   The Idris2 ABI infrastructure that typed-wasm already uses for role 1 is exactly the
   right tool for formally verifying the cross-language layout contracts.
   These proofs live in `src/abi/layout/`.
@@ -115,11 +119,16 @@ tooling do not yet expose L11/L12 features.
 .Spec-of-record for the Rust verifier (2026-05-27, PR #79)
 ====
 `TypedWasm.ABI.VerifierSpec` is the Idris2 spec-of-record for
-`crates/typed-wasm-verify/`.  It carries totally-proven
-`VerifierSpecAgreement` and `SourceVerifierAgreement` records (with
+`crates/typed-wasm-verify/`.  It carries
+`VerifierSpecAgreement` and `SourceVerifierAgreement` records with total
 concrete inhabitants `verifierSpecAgreement` /
-`sourceVerifierAgreement`) bridging the spec to the verifier and the
-source checker — closes post-A10 audit items 7 + 8.  See the
+`sourceVerifierAgreement` (post-A10 audit items 7 + 8). These
+inhabitants are true by construction, not a proof about the Rust
+verifier: `VerifierAccepts` and `SourceAccepts` are defined to wrap the
+same `FunctionsAccepted` witness that `SpecAccepts` wraps, so each
+agreement lemma only re-wraps its input. Nothing in the Idris2 model is
+connected to the Rust code or to its verdicts on bytes; the only link is
+the asserted `MkTrustedFixture` construction sites (ADR-0005).  See the
 link:docs/wiki/Proof-Debt-Status.md[Proof-Debt-Status wiki page] for
 the design and what remains in the proof-debt long-tail.
 ====
@@ -251,7 +260,7 @@ Design proposals for Phase 2+ features are tracked in link:docs/proposals/[`docs
 * **Proposal 0003** — link:docs/proposals/0003-region-imports-carrier.adoc[Region imports carrier section] (`typedwasm.region-imports`) for L13 cross-module schema agreement. Status: `[draft]`.
 * **Proposal 0004** — link:docs/proposals/0004-capability-grants-carrier.adoc[Capability grants carrier section] (`typedwasm.capability-grants`) for L15-C per-call-site enforcement. Status: `[draft]`.
 
-The post-codegen verifier's `verify_access_sites_from_module` pass shipped in PR #109 and reads `typedwasm.access-sites`; `verify_regions_from_module` and `verify_capabilities_from_module` (PRs #107 / #109) cover L3–L6 and L15-A/B. Producer-side codegen of access-sites is the remaining gate for L2-the-enforcement on emitted bytes (AffineScript: affinescript#462; Ephapax: ephapax#251). Self-contained handoff brief for the producer-side work at link:docs/developer/handoff-typed-access-sites-codegen.adoc[`docs/developer/handoff-typed-access-sites-codegen.adoc`].
+The post-codegen verifier's `verify_access_sites_from_module` pass shipped in PR #109 and reads `typedwasm.access-sites`; the decode-time `verify_access_typing_from_module` resolves each ADR-0003 byte offset to the instruction there and checks it against the field. There is no standalone `verify_regions_from_module`: the `typedwasm.regions` table (L3–L6 schema) is decoded and checked as the dependency of those passes. `verify_capabilities_from_module` (PR #109) covers L15-A/B. Producer-side emission of access-sites: the in-tree `typed-wasm-codegen` emits pinned byte offsets; Ephapax emits them for its string-runtime helpers (ephapax#251, closed 2026-07-07); AffineScript is still open (affinescript#462). Self-contained handoff brief for the producer-side work at link:docs/developer/handoff-typed-access-sites-codegen.adoc[`docs/developer/handoff-typed-access-sites-codegen.adoc`].
 
 == Related Projects
 
@@ -260,7 +269,7 @@ The post-codegen verifier's `verify_access_sites_from_module` pass shipped in PR
 - https://github.com/hyperpolymath/vql-ut[VCL-total] — Progressive type safety for VeriSimDB
 - https://github.com/hyperpolymath/echidna[ECHIDNA] — Property-based prover testing
 - https://github.com/hyperpolymath/affinescript[AffineScript] — Compiles to WasmGC; uses this repo as aggregate library
-- https://github.com/hyperpolymath/ephapax[Ephapax] — Compiles to WasmGC; uses this repo as aggregate library
+- https://github.com/hyperpolymath/ephapax[Ephapax] — Compiles to linear-memory wasm (not WasmGC); emits the `typedwasm.*` carriers and runs `typed-wasm-verify` on them. It does not use the WasmGC `Layout.*` contracts.
 
 == GraalVM Implications
 

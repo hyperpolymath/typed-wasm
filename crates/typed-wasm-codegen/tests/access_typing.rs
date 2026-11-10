@@ -21,7 +21,10 @@
 //                  pass with no teeth would "verify" a miscompilation.
 
 use typed_wasm_codegen::{emit, emit_example01, parser, Field, Func, Memory, Module, Op, Region, Scalar, Wty};
-use typed_wasm_verify::{verify_access_typing_from_module, AccessTypingError};
+use typed_wasm_verify::section::{parse_access_sites_section_payload, AccessSiteEntry};
+use typed_wasm_verify::{
+    verify_access_typing_from_module, AccessTypingError, ACCESS_SITES_SECTION_NAME,
+};
 
 // ---- positive: real lowering type-verifies -------------------------------
 
@@ -206,17 +209,138 @@ fn teeth_index_past_end_is_out_of_range() {
     };
     let bytes = emit(&rig(region_ab(), func));
     let report = verify_access_typing_from_module(&bytes).expect("typing pass runs");
+    // Body bytes: locals vec (1) + local.get 0 (2) + i32.load (3) + end
+    // (1) = 7. IR index 9 overshoots the 3 operators by 6, so the emitter
+    // writes offset 7 + 6 = 13, which the verifier reports as past the end.
     assert!(
         matches!(
             report.errors.as_slice(),
-            [AccessTypingError::AccessSiteIndexOutOfRange {
-                instruction_index: 9,
+            [AccessTypingError::AccessSiteOffsetOutOfRange {
+                byte_offset: 13,
+                body_len: 7,
                 ..
             }]
         ),
-        "expected AccessSiteIndexOutOfRange 9, got {:?}",
+        "expected AccessSiteOffsetOutOfRange 13 >= 7, got {:?}",
         report.errors
     );
+}
+
+#[test]
+fn teeth_huge_index_never_collides_with_unpinned_sentinel() {
+    // body_len (7) + an overshoot near u32::MAX saturates. A saturated
+    // offset of u32::MAX would be the ACCESS_SITE_UNPINNED sentinel, so a
+    // producer bug would be counted as a declared-only site instead of
+    // being reported. The emitter must clamp below the sentinel.
+    let func = Func {
+        name: "bad".into(),
+        params: vec![Wty::I32],
+        results: vec![Wty::I32],
+        locals: vec![],
+        body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
+        accesses: vec![pinned(0, 0, (u32::MAX - 1) as usize)],
+        export: true,
+    };
+    let bytes = emit(&rig(region_ab(), func));
+    let report = verify_access_typing_from_module(&bytes).expect("typing pass runs");
+    assert_eq!(
+        report.declared_only, 0,
+        "an invalid pinned index must not be laundered into a declared-only site"
+    );
+    assert!(
+        matches!(
+            report.errors.as_slice(),
+            [AccessTypingError::AccessSiteOffsetOutOfRange { body_len: 7, .. }]
+        ),
+        "expected AccessSiteOffsetOutOfRange, got {:?}",
+        report.errors
+    );
+}
+
+// ---- ADR-0003: the wire carries BYTE OFFSETS, not operator indices -------
+
+/// Pull the decoded `typedwasm.access-sites` entries out of emitted bytes.
+fn access_entries(bytes: &[u8]) -> Vec<AccessSiteEntry> {
+    for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+        if let wasmparser::Payload::CustomSection(r) = payload.expect("valid wasm") {
+            if r.name() == ACCESS_SITES_SECTION_NAME {
+                return parse_access_sites_section_payload(r.data())
+                    .expect("access-sites carrier must decode");
+            }
+        }
+    }
+    panic!("no access-sites section emitted");
+}
+
+#[test]
+fn emitted_offset_is_the_adr_0003_byte_offset() {
+    // One declared i32 local, so the locals vector is 3 bytes
+    // (count=1, n=1, type=i32). Then local.get 0 is 2 bytes, so the
+    // i32.load (IR index 1) starts at byte 5 of the body. An emitter that
+    // wrote the operator index would put 1 on the wire.
+    let func = Func {
+        name: "good".into(),
+        params: vec![Wty::I32],
+        results: vec![Wty::I32],
+        locals: vec![Wty::I32],
+        body: vec![Op::LocalGet(0), Op::I32Load { offset: 0 }],
+        accesses: vec![pinned(0, 0, 1)],
+        export: true,
+    };
+    let bytes = emit(&rig(region_ab(), func));
+    let entries = access_entries(&bytes);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].instruction_byte_offset, 5,
+        "byte offset, not index 1"
+    );
+
+    let report = verify_access_typing_from_module(&bytes).expect("typing pass runs");
+    assert_eq!(report.type_verified, 1);
+    assert!(report.errors.is_empty(), "got {:?}", report.errors);
+}
+
+#[test]
+fn every_real_lowered_offset_lands_on_its_instruction() {
+    // For the parser's real lowering, decode each body independently and
+    // check that every pinned wire offset is the start of a load/store.
+    // This pins the producer convention to the bytes, not to the verifier.
+    let module = parser::parse_module(MIXED).expect("fixture must parse");
+    let bytes = emit(&module);
+    let mut bodies = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(&bytes) {
+        if let wasmparser::Payload::CodeSectionEntry(body) = payload.expect("valid wasm") {
+            bodies.push(body);
+        }
+    }
+    let entries = access_entries(&bytes);
+    assert_eq!(entries.len(), 3);
+    for e in &entries {
+        let body = &bodies[e.func_idx as usize];
+        let start = body.range().start;
+        let mut hit = false;
+        for item in body
+            .get_operators_reader()
+            .unwrap()
+            .into_iter_with_offsets()
+        {
+            let (op, pos) = item.unwrap();
+            if pos - start == e.instruction_byte_offset as usize {
+                let name = format!("{op:?}");
+                assert!(
+                    name.contains("Load") || name.contains("Store"),
+                    "offset {} lands on {name}",
+                    e.instruction_byte_offset
+                );
+                hit = true;
+            }
+        }
+        assert!(
+            hit,
+            "offset {} is not an instruction boundary",
+            e.instruction_byte_offset
+        );
+    }
 }
 
 #[test]

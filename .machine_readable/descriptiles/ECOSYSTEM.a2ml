@@ -25,7 +25,7 @@ projects = [
   { name = "nextgen-typing", relationship = "coordination-parent", notes = "Coordination monorepo for the full type theory pipeline. Canonical architecture doc lives there." },
   { name = "katagoria", relationship = "research-upstream", notes = "Research origination space. Type theory level candidates originate there before promotion to typell and typed-wasm." },
   { name = "nextgen-languages/affinescript", relationship = "aggregate-library-consumer", notes = "Compiles to typed WasmGC. Uses typed-wasm as aggregate library for binary layout conventions." },
-  { name = "nextgen-languages/ephapax", relationship = "aggregate-library-consumer", notes = "Compiles to typed WasmGC. Uses typed-wasm as aggregate library for binary layout conventions." },
+  { name = "nextgen-languages/ephapax", relationship = "aggregate-library-consumer", notes = "Compiles to linear-memory wasm (not WasmGC). Emits typedwasm.* carriers checked by typed-wasm-verify; does not use the WasmGC Layout.* contracts." },
 ]
 
 [integration-points]

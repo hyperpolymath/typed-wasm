@@ -168,8 +168,9 @@ Active design work:
   Adopts two producer-neutral custom sections
   (`typedwasm.regions`, `typedwasm.capabilities`) alongside the
   existing `typedwasm.ownership`. Wire codec landed in PR #107;
-  verifier passes `verify_regions_from_module` and
-  `verify_capabilities_from_module` landed in PR #109 behind
+  verifier pass `verify_capabilities_from_module` landed in PR #109
+  (there is no standalone `verify_regions_from_module`: the regions
+  table is decoded and checked by the access-site passes) behind
   `unstable-l2` / `unstable-l15` Cargo features.
 * **Proposal 0002** —
   link:proposals/0002-access-site-carrier.adoc[Access-site carrier

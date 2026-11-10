@@ -121,7 +121,7 @@ opMatchesField (FloatStore b) ty =
 public export
 record SpecSite where
   constructor MkSpecSite
-  siteOp       : OpClass     -- the op decoded at the pinned instruction index
+  siteOp       : OpClass     -- the op decoded at the pinned ADR-0003 byte offset
   siteOffset   : Nat         -- the op's static memarg offset
   siteField    : WasmType    -- the declared type of the field it reaches
   siteFieldOff : Nat         -- the field's packed byte offset (PackedLayout)

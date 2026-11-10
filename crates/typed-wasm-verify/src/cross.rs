@@ -37,6 +37,12 @@ use crate::{CrossError, FuncInterface, OwnershipKind, VerifyError, OWNERSHIP_SEC
 /// the ownership section are treated as fully `Unrestricted`.
 ///
 /// Rust port of OCaml `Tw_interface.extract_exports`.
+///
+/// # Errors
+///
+/// Propagates module decoding errors as [`VerifyError::Parse`] and rejected
+/// ownership counts or incomplete function indices as
+/// [`VerifyError::MalformedCarrier`].
 pub fn extract_exports(wasm_bytes: &[u8]) -> Result<Vec<FuncInterface>, VerifyError> {
     let mut ownership_payload: Option<Vec<u8>> = None;
     let mut func_exports: Vec<(String, u32)> = Vec::new();
@@ -64,7 +70,7 @@ pub fn extract_exports(wasm_bytes: &[u8]) -> Result<Vec<FuncInterface>, VerifyEr
     // `Tw_interface.ownership_index_of_module`.
     let ownership_by_idx: HashMap<u32, (Vec<OwnershipKind>, OwnershipKind)> =
         match ownership_payload {
-            Some(payload) => parse_ownership_section_payload(&payload)
+            Some(payload) => parse_ownership_section_payload(&payload)?
                 .into_iter()
                 .map(|e| (e.func_idx, (e.param_kinds, e.ret_kind)))
                 .collect(),
@@ -209,6 +215,17 @@ mod tests {
     /// The function body is trivial (just returns).
     fn callee_module(export_name: &str, param_kinds: Vec<OwnershipKind>) -> Vec<u8> {
         let n_params = param_kinds.len() as u32;
+        let payload = build_ownership_section_payload(&[OwnershipEntry {
+            func_idx: 0,
+            param_kinds,
+            ret_kind: OwnershipKind::Unrestricted,
+        }]);
+        callee_module_with_payload(export_name, n_params, &payload)
+    }
+
+    /// As [`callee_module`], but with a raw `typedwasm.ownership` payload
+    /// (for malformed-carrier tests).
+    fn callee_module_with_payload(export_name: &str, n_params: u32, payload: &[u8]) -> Vec<u8> {
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
@@ -234,14 +251,9 @@ mod tests {
         code.function(&f);
         module.section(&code);
 
-        let payload = build_ownership_section_payload(&[OwnershipEntry {
-            func_idx: 0,
-            param_kinds,
-            ret_kind: OwnershipKind::Unrestricted,
-        }]);
         let custom = CustomSection {
             name: OWNERSHIP_SECTION_NAME.into(),
-            data: payload.as_slice().into(),
+            data: payload.into(),
         };
         module.section(&custom);
 
@@ -300,6 +312,25 @@ mod tests {
                 param_kinds: vec![OwnershipKind::Linear],
                 ret_kind: OwnershipKind::Unrestricted,
             }]
+        );
+    }
+
+    #[test]
+    fn absent_trailing_entry_cannot_erase_a_linear_signature() {
+        // count = 2 passes the 2 * 6-byte lower bound (13 bytes follow),
+        // but entry 0 (func 0, seven Linear params) consumes every byte.
+        // Entry 1 is entirely absent. A zero-filled synthesis of it would
+        // be (func 0, no params, Unrestricted) and would replace entry 0
+        // in the func_idx map, so the caller check would skip all seven
+        // Linear params. The carrier must be rejected instead.
+        let mut payload = vec![2, 0, 0, 0, 0, 0, 0, 0, 7];
+        payload.extend([1u8; 7]); // seven Linear params
+        payload.push(0); // ret_kind
+        let bytes = callee_module_with_payload("consume7", 7, &payload);
+        let result = extract_exports(&bytes);
+        assert!(
+            matches!(result, Err(VerifyError::MalformedCarrier(_))),
+            "an absent entry must not be synthesised over a decoded one, got {result:?}"
         );
     }
 
