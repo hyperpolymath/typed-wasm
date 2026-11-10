@@ -361,6 +361,25 @@ const EXPECTED = [
   ["Proofs.idr", /^fullChain12Legacy\s*:/m, "fullChain12 projects to fullCert12"],
   ["Proofs.idr", /^fullChain15\s*:/m, "fullCert15 as a chain"],
   ["Proofs.idr", /^fullChain15Legacy\s*:/m, "fullChain15 projects to fullCert15"],
+
+  // Certified.idr — certificates about one access.  Every level of a
+  // `Certified s n` is a witness about the same `Subject`, so a certificate
+  // says something about its access (`certFieldTyped`), which a
+  // subject-free `ProgressiveW` cannot.
+  ["Certified.idr", /^record\s+Subject/m, "The access a certificate is about"],
+  ["Certified.idr", /^data\s+Attest\s/m, "Subject-indexed attestation"],
+  ["Certified.idr", /^forget\s*:/m, "Attestation forgets its subject"],
+  ["Certified.idr", /^data\s+Certified/m, "Subject-indexed certificate chain"],
+  ["Certified.idr", /^forgetChain\s*:/m, "Certificate forgets to ProgressiveW"],
+  ["Certified.idr", /^certMonotone\s*:/m, "Every level 1..n has a witness about the subject"],
+  ["Certified.idr", /^certMonotoneForget\s*:/m, "Monotonicity commutes with forgetting"],
+  ["Certified.idr", /^certFieldTyped\s*:/m, "Certified access reads a field at its declared type"],
+  ["Certified.idr", /^certPointer\s*:/m, "Certified access holds a pointer into its own schema"],
+  ["Certified.idr", /^certInBounds\s*:/m, "Certified access index is in bounds"],
+  ["Certified.idr", /^certResult\s*:/m, "Certified access returns its access type"],
+  ["Certified.idr", /^simpleReadCertified\s*:/m, "simpleReadCert about one access"],
+  ["Certified.idr", /^simpleReadCertifiedForget\s*:/m, "Forgetting gives simpleReadChain"],
+  ["Certified.idr", /^exampleCertified\s*:/m, "A concrete certificate (the type is inhabited)"],
 ];
 
 // ----------------------------------------------------------------------
