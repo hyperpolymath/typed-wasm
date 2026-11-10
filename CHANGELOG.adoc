@@ -9,18 +9,18 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
-==== CI: standards re-pinned to metadatastician @ `e064539` (2026-11-09)
+==== Kernel-proofs gate on Agda 2.6.4.3, PROOF-POLICY §2.1 flags (2026-11-09)
 
-* The five standards reusables (governance, hypatia-scan, mirror, scorecard,
-  secret-scanner) move from `hyperpolymath/standards@da2c748` to
-  `metadatastician/standards@e064539`, the commit panll runs green
-  (hyperpolymath/panll#171). At `da2c748` all five failed at startup on
-  every push, so the required `scan / gitleaks` check never reported.
-* `governance.yml` and `mirror.yml` grant `actions: read`, which both
-  reusables declare at workflow level at `e064539`.
-* `mirror.yml` passes the seven forge keys the reusable declares by name,
-  and `secret-scanner.yml` passes none (its reusable declares none), instead
-  of `secrets: inherit`, which handed every repository secret to the callee.
+* The `kernel-proofs` job (Contract Gate) runs in `debian:trixie-slim` with
+  `agda-bin=2.6.4.3-1+b2`, the prover resource-algebra, occupancy-types and
+  choreographic-types pin in their own CI, so this gate re-checks their
+  proofs on the same Agda. It ran Ubuntu 24.04's 2.6.3 before.
+  `tools/check-kernel-proofs.sh` refuses any Agda but 2.6.4.3.
+* The gate's own Agda checks (choreographic-types' KCut slice and rejects,
+  the transcription table, the negative controls) run under
+  `--safe --without-K --cubical-compatible`, PROOF-POLICY §2.1's canonical
+  invocation, and with `LC_ALL=C.UTF-8`: Agda stops with exit 42 on
+  Unicode warnings without a UTF-8 locale.
 
 ==== L15-C at the front-end: a caller's caps contain its callee's (2026-10-27)
 
