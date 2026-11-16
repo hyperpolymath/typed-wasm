@@ -9,6 +9,17 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Status words from PROOF-POLICY §5 only (2026-11-16)
+
+* `DESIGNED` is not one of the §5 statuses (PROVEN, PROVEN-WITH-AXIOMS,
+  TESTED, ASSUMED, OPEN). Each use meant "designed, not proved", so it now
+  reads OPEN: the L11 worst-case obligation (`Tropical.idr`), the L13
+  binding (`Occupancy.idr`), the choreography grading (`Choreography.idr`)
+  and the matching rows of `LEVEL-STATUS.adoc`.
+* `ResourceAlgebra/HWM.idr` no longer says it inherits `DESIGNED` from the
+  source. Upstream H-2 now reads PROVEN downstream (occupancy-types adopts
+  `Instances.HWM`), with signed drift OPEN.
+
 ==== Certificates about one access (2026-11-09)
 
 * New module `Certified.idr`. Every witness in a `ProgressiveW` chain hides
