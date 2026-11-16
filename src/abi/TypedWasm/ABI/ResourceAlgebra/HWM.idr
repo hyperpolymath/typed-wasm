@@ -7,10 +7,12 @@
 -- (resource-algebra H-2); PROVEN against the definition below.
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Instances/HWM.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
--- (unchanged since cf9235c, the pin it was first transcribed at)
+--   src/ResourceAlgebra/Instances/HWM.agda @ f0818f2b108e273c47a52dda6b9406381071bcbb
+-- (definitions and law statements unchanged since cf9235c, the pin it was
+-- first transcribed at; later upstream commits restated proofs, added
+-- lemmas and adopted the PROOF-POLICY §2.1 flags)
 -- Correspondence status: ASSUMED (transcription); operation table TESTED on
--- both sides by tests/transcription.  occupancy-types @ af95728 builds its
+-- both sides by tests/transcription.  occupancy-types @ ead4478 builds its
 -- reclamation law (OccupancyTypes/Reclaim.agda) on that same Agda module.
 --
 -- The model: a grade records the peak live state reached during a run and

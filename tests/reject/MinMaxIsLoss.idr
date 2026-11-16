@@ -2,7 +2,7 @@
 -- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 --
 -- MUST FAIL (tools/check-kernel-proofs.sh).  Mirrors resource-algebra
--- tests/reject/MinMaxIsLoss.agda @ 0b338c9.
+-- tests/reject/MinMaxIsLoss.agda @ f0818f2.
 --
 -- The bottleneck sequence keeps the worst hop; it does not add the hops.
 -- Accepting this would let a min-max bound (L11's Level11BottleneckProof) be

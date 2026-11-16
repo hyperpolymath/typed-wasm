@@ -13,8 +13,9 @@
 --        alternatives and differ only in sequence
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Separation.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
--- (S-1..S-3 unchanged since cf9235c; S-4 added with Instances/MinMax)
+--   src/ResourceAlgebra/Separation.agda @ f0818f2b108e273c47a52dda6b9406381071bcbb
+-- (statements of S-1..S-3 unchanged since cf9235c; S-4 added with
+-- Instances/MinMax; later upstream commits restated the proofs)
 -- Correspondence status: ASSUMED (transcription).
 --
 -- These are the reason typed-wasm does not fold its grades into one: L11's

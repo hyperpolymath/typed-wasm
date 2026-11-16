@@ -13,6 +13,9 @@
 --
 -- PROVENANCE.  Ported and re-proved from hyperpolymath/occupancy-types
 --   src/OccupancyTypes/{Order,Timeline,Reclaim,Witness}.agda @ af957280075699c659de0abd9a3b0defade77309
+-- and checked at the pin ead44781e33a616c541bc9ef12a7340a37a90a73, where
+-- Timeline, Reclaim and Witness are unchanged; Order restates proofs and
+-- takes four order lemmas from resource-algebra instead of defining them
 -- (fetched by scripts/fetch-siblings.sh), which states them over
 -- resource-algebra's Instances/HWM.agda, the source of
 -- TypedWasm.ABI.ResourceAlgebra.HWM.  Agda is the proof kernel; these Idris2

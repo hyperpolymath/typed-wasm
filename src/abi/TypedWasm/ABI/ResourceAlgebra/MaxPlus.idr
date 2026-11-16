@@ -6,8 +6,10 @@
 -- THE ONE DEFINITION OF MAX-PLUS IN THIS TREE (tools/check-grade-kernel.sh).
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Instances/MaxPlus.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
--- (unchanged since cf9235c, the pin it was first transcribed at)
+--   src/ResourceAlgebra/Instances/MaxPlus.agda @ f0818f2b108e273c47a52dda6b9406381071bcbb
+-- (definitions and law statements unchanged since cf9235c, the pin it was
+-- first transcribed at; later upstream commits restated proofs, added
+-- lemmas and adopted the PROOF-POLICY §2.1 flags)
 -- which is itself the tropical-types grade (TropicalSessionTypes.lean).
 -- Correspondence status: ASSUMED (transcription); operation table TESTED on
 -- both sides by tests/transcription.  The Lean bridge (resource-algebra M-2)

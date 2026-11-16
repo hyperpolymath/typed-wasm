@@ -8,7 +8,7 @@
 -- Level11BottleneckProof) is `minMaxSeq`, not a copy of it.
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Instances/MinMax.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
+--   src/ResourceAlgebra/Instances/MinMax.agda @ f0818f2b108e273c47a52dda6b9406381071bcbb
 -- Correspondence status: ASSUMED (transcription); the sequence's operation
 -- table is TESTED on both sides by tests/transcription.
 --

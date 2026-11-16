@@ -4,16 +4,21 @@
 -- ResourceAlgebra/Nat.idr — the ℕ lemmas the grade kernel's instances need.
 --
 -- Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Prelude.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
+--   src/ResourceAlgebra/Prelude.agda @ f0818f2b108e273c47a52dda6b9406381071bcbb
 -- (the max-over-min lemmas at the end came upstream with Instances/MinMax;
--- everything else is unchanged since cf9235c)
+-- the other lemma statements are unchanged since cf9235c)
 -- Correspondence status: ASSUMED (transcription).
 --
 -- The Agda development is builtins-only, so it defines its own `max`, `min`
--- and `_≤_`.  Idris2's base library already has the same definitions, clause
--- for clause: `Data.Nat.maximum`, `Data.Nat.minimum` (structural on Z/S) and
--- `LTE` (LTEZero/LTESucc).  They are used here instead of being declared a
--- second time, together with base's associativity / commutativity /
+-- and `_≤_`.  Idris2's base library has `Data.Nat.maximum` and
+-- `Data.Nat.minimum`, the same definitions clause for clause (structural on
+-- Z/S), and `LTE` (LTEZero/LTESucc).  Upstream's `_≤_` is no longer an
+-- indexed family: it is a record over a relation defined by recursion on ℕ,
+-- so that it checks under --cubical-compatible, with smart constructors
+-- z≤n and s≤s in the places of LTEZero and LTESucc.  The two types are
+-- logically equivalent, not the same definition; every lemma statement over
+-- them reads the same.  Base's definitions are used here instead of being
+-- declared a second time, together with its associativity / commutativity /
 -- idempotence / upper-bound lemmas.  This module holds only what base lacks.
 --
 -- Direction note: base states associativity as  l ∘ (c ∘ r) = (l ∘ c) ∘ r,
