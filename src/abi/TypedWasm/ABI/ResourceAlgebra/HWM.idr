@@ -3,8 +3,9 @@
 --
 -- ResourceAlgebra/HWM.idr — the occupancy grade: high-water mark (peak, drift).
 --
--- STATUS (inherited from the source): DESIGNED as occupancy-types' algebra
--- (resource-algebra H-2); PROVEN against the definition below.
+-- STATUS: PROVEN against the definition below.  Upstream, resource-algebra
+-- H-2 (that HWM is occupancy-types' occupancy algebra) is PROVEN downstream:
+-- occupancy-types adopts Instances.HWM; signed drift is OPEN there.
 --
 -- Transcribed from hyperpolymath/resource-algebra
 --   src/ResourceAlgebra/Instances/HWM.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe

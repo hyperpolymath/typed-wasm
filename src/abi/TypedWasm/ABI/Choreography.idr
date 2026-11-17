@@ -255,7 +255,7 @@ traceSoundness c tr legal =
 -- ASSUMED; see KCut.idr).  Fragment: finite messages and binary choice,
 -- plain merge, synchronous.
 --
--- DESIGNED, not proved: that the graded protocol is the choreography's own
+-- OPEN (not proved): that the graded protocol is the choreography's own
 -- (its messages are the declared `messages`, its runs the `LegalTrace`s).
 -- `PartiesDeclared` only checks that every party index names a declared
 -- role.  Asynchrony (queues) is OPEN upstream.

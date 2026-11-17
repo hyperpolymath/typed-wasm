@@ -592,7 +592,7 @@ bottleneckCeilsEdges p e el = rewrite p.isBottleneck in hubCeiling e el
 --   Level11WorstCaseProof               MaxPlus (max-plus).  A branching
 --       access plan's worst case: max over alternatives, sum along a
 --       sequence; the bound is `worstCase plan ≼ Val bound`, which is ℕ's ≤.
---       DESIGNED as an obligation: no surface syntax, checker or attestation
+--       OPEN as an obligation: no surface syntax, checker or attestation
 --       uses it yet.
 --   Level11BottleneckProof              MinMax (min-max), the kernel instance
 --       ResourceAlgebra/MinMax.idr: `tropMax` is its sequence.  NOT MaxPlus
