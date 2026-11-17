@@ -9,6 +9,15 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Proposal 0007: name the argument of `tokenOf` (2026-11-16)
+
+* The sketch in `docs/proposals/0007-affine-grade-mode-record-borrow-axis.adoc`
+  now declares `tokenOf : (intent : OwnershipIntentV2) -> Maybe Nat`. The
+  type is unchanged. The old line read to the secret scanner as
+  `token...: <value>` and failed `scan / gitleaks` on every pull request.
+  The sketch was rechecked with Idris2 0.8.0 (`idris2 --check`) after the
+  edit.
+
 ==== Certificates about one access (2026-11-09)
 
 * New module `Certified.idr`. Every witness in a `ProgressiveW` chain hides
