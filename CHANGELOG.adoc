@@ -31,6 +31,22 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
   source. Upstream H-2 now reads PROVEN downstream (occupancy-types adopts
   `Instances.HWM`), with signed drift OPEN.
 
+==== Siblings re-pinned: resource-algebra f0818f2, occupancy-types ead4478 (2026-11-16)
+
+* `scripts/fetch-siblings.sh` pins resource-algebra at `f0818f2` (was
+  `0b338c9`) and occupancy-types at `ead4478` (was `8f09c0b`). The two move
+  in one commit: at `f0818f2` the kernel's `_≤_` is a record over a relation
+  defined by recursion on ℕ (so that it checks under `--cubical-compatible`),
+  and occupancy-types builds against it only from `ead4478`
+  (occupancy-types#25).
+* Upstream restated proofs and added lemmas. The definitions and law
+  statements the grade kernel transcribes are unchanged, and so are
+  occupancy-types' Timeline, Reclaim, Witness and both expected rejections.
+  The transcription table regenerates identically.
+* The module headers that cite a pin now name the one the gate checks.
+  `ResourceAlgebra/Nat.idr` no longer says `_≤_` and Idris2's `LTE` agree
+  clause for clause: they are logically equivalent.
+
 ==== Certificates about one access (2026-11-09)
 
 * New module `Certified.idr`. Every witness in a `ProgressiveW` chain hides

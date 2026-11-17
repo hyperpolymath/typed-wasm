@@ -2,7 +2,7 @@
 -- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 --
 -- MUST FAIL (tools/check-kernel-proofs.sh).  Mirrors occupancy-types
--- tests/reject/DriftIsPeak.agda @ af95728 (R-6).
+-- tests/reject/DriftIsPeak.agda @ ead4478 (R-6; unchanged since af95728).
 --
 -- What is live at a cut is not the peak reached before it; identifying them
 -- is exactly "an L13 boundary never reclaims anything".

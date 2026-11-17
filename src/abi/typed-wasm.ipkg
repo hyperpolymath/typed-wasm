@@ -23,7 +23,7 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.KCut
         , TypedWasm.ABI.Choreography
         -- Grade kernel (PWL-01): transcribed from hyperpolymath/resource-algebra
-        -- @ 0b338c9; the one definition of min-plus (Loss), of max-plus
+        -- @ f0818f2; the one definition of min-plus (Loss), of max-plus
         -- (MaxPlus) and of min-max (MinMax) in the tree — tools/check-grade-kernel.sh.
         , TypedWasm.ABI.ResourceAlgebra
         , TypedWasm.ABI.ResourceAlgebra.Nat
@@ -32,7 +32,7 @@ modules = TypedWasm.ABI.Region
         , TypedWasm.ABI.ResourceAlgebra.HWM
         , TypedWasm.ABI.ResourceAlgebra.MinMax
         , TypedWasm.ABI.ResourceAlgebra.Separation
-        -- L13 occupancy (PWL-01 step 3): R-1..R-5 ported from occupancy-types @ af95728
+        -- L13 occupancy (PWL-01 step 3): R-1..R-5 ported from occupancy-types @ af95728 (pin ead4478)
         , TypedWasm.ABI.Occupancy
         , TypedWasm.ABI.Echo
         , TypedWasm.ABI.Tropical

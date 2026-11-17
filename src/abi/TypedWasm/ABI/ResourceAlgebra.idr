@@ -10,10 +10,12 @@
 -- (tools/check-grade-kernel.sh enforces that).
 --
 -- PROVENANCE.  Transcribed from hyperpolymath/resource-algebra
---   src/ResourceAlgebra/Core.agda @ 0b338c9fc45cd04e7ee7d00b3855cd59d56a2afe
--- (unchanged since cf9235c, the pin it was first transcribed at)
--- (fetched by scripts/fetch-siblings.sh).  Agda --safe --without-K is the
--- proof kernel; this Idris2 module is the ABI layer and re-proves the same
+--   src/ResourceAlgebra/Core.agda @ f0818f2b108e273c47a52dda6b9406381071bcbb
+-- (definitions and law statements unchanged since cf9235c, the pin it was
+-- first transcribed at; later upstream commits restated proofs, added
+-- lemmas and adopted the PROOF-POLICY §2.1 flags)
+-- (fetched by scripts/fetch-siblings.sh).  Agda --safe --without-K
+-- --cubical-compatible is the proof kernel; this Idris2 module is the ABI layer and re-proves the same
 -- laws.  Correspondence status: ASSUMED (transcription).  The instance
 -- operation tables are additionally checked on both sides, by Agda `refl`
 -- against the pinned sources and by Idris2 `Refl` against this port
