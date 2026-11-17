@@ -249,10 +249,10 @@ consumption intent and with the grade / borrow / mode types above.
 
 The sketch below is *not* part of the package and is not imported by
 any module. It was typechecked with Idris2 0.8.0 against this tree on
-2026-11-09 (`idris2 --check`, module placed beside `src/abi/`,
-importing `TypedWasm.ABI.VerifierSpec`); it uses no `believe_me`,
-`assert_total`, `postulate` or `assert_smaller`, under `%default
-total`.
+2026-11-09, and rechecked on 2026-11-16 (`idris2 --check`, module
+placed beside `src/abi/`, importing `TypedWasm.ABI.VerifierSpec`); it
+uses no `believe_me`, `assert_total`, `postulate` or `assert_smaller`,
+under `%default total`.
 
 [source,idris]
 ----
@@ -343,7 +343,7 @@ data OwnershipIntentV2 : Type where
 
 ||| The handle token an intent constrains, if any.
 public export
-tokenOf : OwnershipIntentV2 -> Maybe Nat
+tokenOf : (intent : OwnershipIntentV2) -> Maybe Nat
 tokenOf (Legacy (Consumes t))         = Just t
 tokenOf (Legacy (Produces t))         = Just t
 tokenOf (Legacy (Borrows _))          = Nothing
