@@ -162,7 +162,7 @@ order `+Finite n ≼ c+` (`+costBoundedIsLossOrder+` /
 kernel's `+otimesMono+` (`+costBoundedSeq+`, PROVEN);
 `+Level11WorstCaseProof+` grades a branching plan in MaxPlus with
 `+worstCaseThen+` / `+worstCaseOneOf+` from `+otimesMono+` /
-`+oplusMono+` (PROVEN; the obligation itself DESIGNED — no surface or
+`+oplusMono+` (PROVEN; the obligation itself OPEN — no surface or
 attestation uses it). `+Level11BottleneckProof+` is MinMax, not MaxPlus,
 and stays as it is (`+tests/reject/TropicalIsNotMaxPlus.idr+`).*
 
@@ -196,7 +196,7 @@ and peak both fit its declared maximum (`+OccupancyGradedMemory+`;
 `+tests/reject/InitialOverMaximum.idr+` refuses the peak-only bound), a
 declared `+boundary+` as the cut
 that frees peak − drift (`+BoundaryCut+`, `+boundaryOccupancy+`,
-`+fitsAcrossBoundary+`) — is DESIGNED: nothing links the grade to
+`+fitsAcrossBoundary+`) — is OPEN: nothing links the grade to
 `+memory.grow+` and no checker emits it. `+striated+` occupancy OPEN
 (surface-only construct).*
 
@@ -223,7 +223,7 @@ MaxPlus, HWM: PROVEN in Idris2; correspondence ASSUMED; K-7 TESTED by
 `+tests/reject/{UnprojectableChoice,InconsistentCut}.idr+`; K-4 not
 re-checked here). Fragment: finite, binary choice, plain merge,
 synchronous. That the graded protocol IS the choreography's
-`+messages+` / `+LegalTrace+` is DESIGNED (only `+PartiesDeclared+` is
+`+messages+` / `+LegalTrace+` is OPEN (only `+PartiesDeclared+` is
 checked); asynchrony OPEN upstream.*
 |===
 
@@ -452,7 +452,7 @@ refused for the intended reason.
 occupancy over the kernel's HWM grade: occupancy-types
 (`+Reclaim.agda+` / `+Timeline.agda+` / `+Witness.agda+` @ `+af95728+`, checked at `+ead4478+`)
 R-1..R-5 ported and re-proved; L13 binding (`+OccupancyGradedMemory+`,
-`+BoundaryCut+`, `+boundaryFrees+`, `+fitsAcrossBoundary+`) DESIGNED.
+`+BoundaryCut+`, `+boundaryFrees+`, `+fitsAcrossBoundary+`) OPEN.
 
 |VerifierSpec.idr |0 |0 |0 |Introduced A13 (2026-05-26, PR #72) as
 statement-level spec-of-record for post-A10 items 7+8. *Promoted to

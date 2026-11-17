@@ -18,6 +18,19 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
   The sketch was rechecked with Idris2 0.8.0 (`idris2 --check`) after the
   edit.
 
+==== Status words from PROOF-POLICY §5 only (2026-11-16)
+
+* `DESIGNED` is not one of the §5 statuses (PROVEN, PROVEN-WITH-AXIOMS,
+  TESTED, ASSUMED, OPEN). Each use meant "designed, not proved", so it now
+  reads OPEN: the L11 worst-case obligation (`Tropical.idr`), the L13
+  binding (`Occupancy.idr`), the choreography grading (`Choreography.idr`)
+  and the matching rows of `LEVEL-STATUS.adoc`. Earlier entries in this
+  changelog keep the word they were written with; read their `DESIGNED`
+  as OPEN.
+* `ResourceAlgebra/HWM.idr` no longer says it inherits `DESIGNED` from the
+  source. Upstream H-2 now reads PROVEN downstream (occupancy-types adopts
+  `Instances.HWM`), with signed drift OPEN.
+
 ==== Siblings re-pinned: resource-algebra f0818f2, occupancy-types ead4478 (2026-11-16)
 
 * `scripts/fetch-siblings.sh` pins resource-algebra at `f0818f2` (was

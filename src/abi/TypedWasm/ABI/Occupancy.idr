@@ -27,7 +27,7 @@
 -- -> noReclaim / reclaimed (R-4); Witness -> witness* (R-5); the R-6 rejects
 -- are tests/reject/{CostIsOccupancy,DriftIsPeak}.idr.
 --
--- WHAT IS DESIGNED, NOT PROVED.  That the HWM unit is a WebAssembly page of
+-- WHAT IS OPEN (NOT PROVED).  That the HWM unit is a WebAssembly page of
 -- the private memory, that a module's run is the sequence of its phases, and
 -- that a declared L13 boundary is where the run is cut: no operational
 -- semantics links the grade to `memory.grow` or to actual frees, and no
@@ -164,7 +164,7 @@ witnessStrict =
   reclaimed witnessA witnessB (LTESucc (LTESucc LTEZero)) (LTESucc LTEZero)
 
 -- ============================================================================
--- L13 binding — private memory and boundaries (DESIGNED; see header)
+-- L13 binding — private memory and boundaries (OPEN; see header)
 -- ============================================================================
 
 ||| What a cut reclaims: peak − drift.
