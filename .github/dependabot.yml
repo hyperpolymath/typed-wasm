@@ -3,6 +3,12 @@
 # Covers common ecosystems - remove unused ones for your project
 
 version: 2
+
+multi-ecosystem-groups:
+  js-locks:
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
 updates:
   # GitHub Actions - always include
   - package-ecosystem: "github-actions"
@@ -53,10 +59,17 @@ updates:
   # This entry declared directory: "/", where no package.json exists, so it scanned
   # a root with nothing to update while the real manifest went unwatched.
   - package-ecosystem: "npm"
-    directory: "/tools/tree-sitter-twasm"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
+    directories:
+      - "/"
+      - "/tools/tree-sitter-twasm"
+    multi-ecosystem-group: "js-locks"
+    patterns: ["*"]
+
+  # Bun: bun.lock is at the root, so this watches "/". npm also watches "/" (root package.json) as well as /tools/tree-sitter-twasm
+  - package-ecosystem: "bun"
+    directory: "/"
+    multi-ecosystem-group: "js-locks"
+    patterns: ["*"]
 
 # Removed 2026-10-10 as dead weight, measured with `git ls-files`: mix (no mix.exs),
 # pip (no pyproject/requirements/setup.py), nix (no flake.nix or shell.nix). An
