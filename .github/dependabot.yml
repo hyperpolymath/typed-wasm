@@ -58,6 +58,13 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 3
 
+  # Bun (bun.lock): same directory and schedule as npm, so Dependabot keeps bun.lock in step
+  - package-ecosystem: "bun"
+    directory: "/tools/tree-sitter-twasm"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+
 # Removed 2026-10-10 as dead weight, measured with `git ls-files`: mix (no mix.exs),
 # pip (no pyproject/requirements/setup.py), nix (no flake.nix or shell.nix). An
 # ecosystem with no manifest cannot open a PR, it can only imply coverage. Each is
