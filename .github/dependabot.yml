@@ -3,6 +3,11 @@
 # Covers common ecosystems - remove unused ones for your project
 
 version: 2
+
+multi-ecosystem-groups:
+  js-locks:
+    schedule:
+      interval: "weekly"
 updates:
   # GitHub Actions - always include
   - package-ecosystem: "github-actions"
@@ -56,15 +61,15 @@ updates:
     directories:
       - "/"
       - "/tools/tree-sitter-twasm"
-    schedule:
-      interval: "weekly"
+    multi-ecosystem-group: "js-locks"
+    patterns: ["*"]
     open-pull-requests-limit: 3
 
   # Bun: bun.lock is at the root, so this watches "/". npm also watches "/" (root pnpm-lock.yaml) as well as /tools/tree-sitter-twasm
   - package-ecosystem: "bun"
     directory: "/"
-    schedule:
-      interval: "weekly"
+    multi-ecosystem-group: "js-locks"
+    patterns: ["*"]
     open-pull-requests-limit: 3
 
 # Removed 2026-10-10 as dead weight, measured with `git ls-files`: mix (no mix.exs),
