@@ -53,14 +53,16 @@ updates:
   # This entry declared directory: "/", where no package.json exists, so it scanned
   # a root with nothing to update while the real manifest went unwatched.
   - package-ecosystem: "npm"
-    directory: "/tools/tree-sitter-twasm"
+    directories:
+      - "/"
+      - "/tools/tree-sitter-twasm"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
 
-  # Bun (bun.lock): same directory and schedule as npm, so Dependabot keeps bun.lock in step
+  # Bun: bun.lock is at the root, so this watches "/". npm also watches "/" (root pnpm-lock.yaml) as well as /tools/tree-sitter-twasm
   - package-ecosystem: "bun"
-    directory: "/tools/tree-sitter-twasm"
+    directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
