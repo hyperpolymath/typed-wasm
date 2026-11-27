@@ -65,7 +65,7 @@ updates:
     multi-ecosystem-group: "js-locks"
     patterns: ["*"]
 
-  # Bun: bun.lock is at the root, so this watches "/". npm also watches "/" (root pnpm-lock.yaml) as well as /tools/tree-sitter-twasm
+  # Bun: bun.lock is at the root, so this watches "/". npm also watches "/" (root package.json) as well as /tools/tree-sitter-twasm
   - package-ecosystem: "bun"
     directory: "/"
     multi-ecosystem-group: "js-locks"
